@@ -12,8 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run test:e2e",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run test:e2e",
     "fixtures:synthetic": "node scripts/make-synthetic-charts.ts",
+    "bench:axes": "node bench/axes/run.ts",
     "bench:axes:corpus": "python bench/axes/generate.py"
   },
   "dependencies": {

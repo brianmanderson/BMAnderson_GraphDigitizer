@@ -29,7 +29,12 @@
       "Bash(npm run fixtures:synthetic)",
       "PowerShell(npm run test:e2e)",
       "PowerShell(npm run verify)",
-      "PowerShell(npx playwright test:*)"
+      "PowerShell(npx playwright test:*)",
+      "Bash(npm run bench:axes)",
+      "Bash(npm run bench:axes:*)",
+      "Bash(node bench/axes/run.ts:*)",
+      "PowerShell(npm run bench:axes)",
+      "PowerShell(npm run bench:axes:*)"
     ]
   }
 }

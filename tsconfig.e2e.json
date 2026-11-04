@@ -1,5 +1,6 @@
 {
-  // Playwright specs and offline scripts: Node, plus the DOM lib for code passed to page.evaluate.
+  // Playwright specs, offline scripts and the axis benchmark: Node, plus the DOM lib for code
+  // passed to page.evaluate.
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
     "target": "ES2023",
@@ -20,5 +21,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["playwright.config.ts", "e2e", "scripts"]
+  "include": ["playwright.config.ts", "e2e", "scripts", "bench"]
 }
