@@ -1,0 +1,234 @@
+/**
+ * Canvas rendering of the workspace: image, calibration overlay, ref markers and data points.
+ * All geometry is converted from image pixels with the view transform at draw time.
+ */
+
+import { REF_NAMES, forward, type Calibration, type RefName } from '../core/index.ts';
+import type { DocState } from '../state/doc.ts';
+import { formatValue } from './table.ts';
+import { axisTicks } from './ticks.ts';
+import { imageToScreen, type View } from './view.ts';
+
+export type Target = { kind: 'ref'; ref: RefName } | { kind: 'point'; datasetId: string; pointId: string };
+
+export const REF_COLORS: Readonly<Record<'X' | 'Y', string>> = { X: '#c92a2a', Y: '#5f3dc4' };
+const OVERLAY = 'rgba(12, 133, 153, 0.32)';
+const OVERLAY_AXIS = 'rgba(12, 133, 153, 0.85)';
+const POINT_RADIUS = 4.5;
+
+export interface DrawInput {
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+  dpr: number;
+  view: View;
+  image: HTMLImageElement | null;
+  doc: DocState;
+  calibration: Calibration | null;
+  selected: Target | null;
+  hovered: Target | null;
+  /** Ref markers are emphasised while calibrating. */
+  step: 'image' | 'axes' | 'data';
+}
+
+const sameTarget = (a: Target | null, b: Target): boolean =>
+  a !== null &&
+  a.kind === b.kind &&
+  (a.kind === 'ref' ? a.ref === (b as { ref: RefName }).ref : a.pointId === (b as { pointId: string }).pointId);
+
+export function drawWorkspace(input: DrawInput): void {
+  const { ctx, width, height, dpr, view, image, doc } = input;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (!image) return;
+
+  const { width: iw, height: ih } = doc.image;
+  const s = view.scale;
+  const left = view.offsetX - s / 2;
+  const top = view.offsetY - s / 2;
+  ctx.save();
+  ctx.imageSmoothingEnabled = s < 3;
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(left, top, iw * s, ih * s);
+  ctx.shadowBlur = 0;
+  ctx.drawImage(image, left, top, iw * s, ih * s);
+  ctx.restore();
+
+  if (input.calibration) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, iw * s, ih * s);
+    ctx.clip();
+    drawOverlay(input, input.calibration);
+    ctx.restore();
+  }
+
+  for (const d of doc.datasets) {
+    for (const p of d.points) {
+      const target: Target = { kind: 'point', datasetId: d.id, pointId: p.id };
+      drawPoint(ctx, imageToScreen(view, p.px, p.py), d.color, sameTarget(input.selected, target), sameTarget(input.hovered, target));
+    }
+  }
+
+  for (const name of REF_NAMES) {
+    const r = doc.refs[name];
+    if (!r) continue;
+    const target: Target = { kind: 'ref', ref: name };
+    drawRef(ctx, imageToScreen(view, r.px, r.py), name, input.step === 'axes', sameTarget(input.hovered, target) || sameTarget(input.selected, target));
+  }
+}
+
+function line(ctx: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x: number; y: number }) {
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+}
+
+function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline) {
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.strokeText(text, x, y);
+  ctx.fillText(text, x, y);
+}
+
+/** Faint gridlines at round values plus the two calibrated axis lines, drawn via the fit. */
+function drawOverlay(input: DrawInput, cal: Calibration) {
+  const { ctx, view, doc } = input;
+  const { width: iw, height: ih } = doc.image;
+  const corners = [
+    [-0.5, -0.5],
+    [iw - 0.5, -0.5],
+    [-0.5, ih - 0.5],
+    [iw - 0.5, ih - 0.5],
+  ].map(([px, py]) => cal.pixelToLinear(px!, py!));
+  const uLo = Math.min(...corners.map((c) => c.u));
+  const uHi = Math.max(...corners.map((c) => c.u));
+  const wLo = Math.min(...corners.map((c) => c.w));
+  const wHi = Math.max(...corners.map((c) => c.w));
+  const toScreen = (u: number, w: number) => {
+    const p = cal.linearToPixel(u, w);
+    return imageToScreen(view, p.px, p.py);
+  };
+  // The X refs share one y (w) value and the Y refs one x (u) value: those are the axis lines.
+  const wAxis = cal.pixelToLinear(doc.refs.X1!.px, doc.refs.X1!.py).w;
+  const uAxis = cal.pixelToLinear(doc.refs.Y1!.px, doc.refs.Y1!.py).u;
+  const fmt = { significantFigures: doc.settings.significantFigures, dateFormat: doc.settings.dateFormat };
+
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = OVERLAY;
+  const xTicks = axisTicks(doc.xScale, uLo, uHi, [cal.refValues.X1, cal.refValues.X2]);
+  const yTicks = axisTicks(doc.yScale, wLo, wHi, [cal.refValues.Y1, cal.refValues.Y2]);
+  for (const v of xTicks) {
+    const u = forward(doc.xScale, v)!;
+    line(ctx, toScreen(u, wLo), toScreen(u, wHi));
+  }
+  for (const v of yTicks) {
+    const w = forward(doc.yScale, v)!;
+    line(ctx, toScreen(uLo, w), toScreen(uHi, w));
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle = OVERLAY_AXIS;
+  ctx.lineWidth = 1.5;
+  line(ctx, toScreen(uLo, wAxis), toScreen(uHi, wAxis));
+  line(ctx, toScreen(uAxis, wLo), toScreen(uAxis, wHi));
+
+  ctx.fillStyle = OVERLAY_AXIS;
+  for (const v of xTicks) {
+    const p = toScreen(forward(doc.xScale, v)!, wAxis);
+    label(ctx, formatValue(v, doc.xScale, fmt), p.x + 3, p.y + 3, 'left', 'top');
+  }
+  for (const v of yTicks) {
+    const p = toScreen(uAxis, forward(doc.yScale, v)!);
+    label(ctx, formatValue(v, doc.yScale, fmt), p.x + 4, p.y - 3, 'left', 'bottom');
+  }
+}
+
+function drawPoint(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, color: string, selected: boolean, hovered: boolean) {
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, hovered ? POINT_RADIUS + 1.5 : POINT_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  if (selected) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, POINT_RADIUS + 4.5, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
+}
+
+function drawRef(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, name: RefName, active: boolean, hovered: boolean) {
+  const color = REF_COLORS[name[0] as 'X' | 'Y'];
+  const arm = hovered ? 12 : 9;
+  ctx.save();
+  ctx.globalAlpha = active ? 1 : 0.55;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  line(ctx, { x: p.x - arm, y: p.y }, { x: p.x + arm, y: p.y });
+  line(ctx, { x: p.x, y: p.y - arm }, { x: p.x, y: p.y + arm });
+  ctx.lineWidth = 1.25;
+  ctx.strokeStyle = color;
+  line(ctx, { x: p.x - arm, y: p.y }, { x: p.x + arm, y: p.y });
+  line(ctx, { x: p.x, y: p.y - arm }, { x: p.x, y: p.y + arm });
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  const tw = ctx.measureText(name).width;
+  // X labels sit above-right, Y labels below-right, so X1 and Y1 at a shared origin stay legible.
+  const lx = p.x + 7;
+  const ly = name[0] === 'X' ? p.y - 22 : p.y + 7;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(lx, ly, tw + 8, 15, 3);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, lx + 4, ly + 8);
+  ctx.restore();
+}
+
+/** Screen distance (CSS px) within which a click grabs a marker. */
+export const HIT_RADIUS = 9;
+
+/**
+ * The marker under screen point (x, y). Only the current step's markers are live: refs while
+ * calibrating, data points otherwise, so a click in one step cannot move the other's markers.
+ * Among overlapping points the active dataset's win.
+ */
+export function hitTest(doc: DocState, view: View, x: number, y: number, step: DrawInput['step']): Target | null {
+  let best: Target | null = null;
+  let bestD = Infinity;
+  const consider = (target: Target, px: number, py: number, bias: number) => {
+    const s = imageToScreen(view, px, py);
+    const d = Math.hypot(s.x - x, s.y - y);
+    if (d <= HIT_RADIUS && d + bias < bestD) {
+      best = target;
+      bestD = d + bias;
+    }
+  };
+  if (step === 'axes') {
+    for (const name of REF_NAMES) {
+      const r = doc.refs[name];
+      if (r) consider({ kind: 'ref', ref: name }, r.px, r.py, 0);
+    }
+  } else if (step === 'data') {
+    for (const d of doc.datasets) {
+      const bias = d.id === doc.activeDatasetId ? 0 : 2;
+      for (const p of d.points) consider({ kind: 'point', datasetId: d.id, pointId: p.id }, p.px, p.py, bias);
+    }
+  }
+  return best;
+}
