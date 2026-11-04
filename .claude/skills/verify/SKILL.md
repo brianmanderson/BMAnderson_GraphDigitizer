@@ -49,9 +49,14 @@ to get there; fix the code. From Phase 4 on, also `npm run bench:axes` (must not
 - Clicks land within ~0.5 CSS px, so value tolerances are derived from px-per-unit at the fitted
   zoom (comments in each spec). A tolerance miss means a real offset — e.g. a broken pixel
   convention — not flakiness.
-- The Windows clipboard reads back CRLF; compare clipboard text with `split(/?
-/)`.
+- The Windows clipboard reads back CRLF; compare clipboard text with `split(/\r?\n/)`.
 - Drop and paste are simulated with a `DataTransfer` in the page (`dropFile`, `pasteFile`).
+- `precision.spec.ts` runs one test at `deviceScaleFactor: 2` and compares loupe pixels with the
+  source image exactly (any smoothing or off-by-one mapping fails it). Undo specs scope the
+  toolbar Undo to the `History` group because a notice can carry its own "Undo" button.
+- Autosave tests wait by polling IndexedDB (`readAutosave()` in helpers) before reloading, not
+  by sleeping. Downloads are saved under `test.info().outputPath(suggestedFilename)` before
+  re-opening, since the temp download path has a GUID name.
 
 ## Seeing it run
 
@@ -59,7 +64,9 @@ to get there; fix the code. From Phase 4 on, also `npm run bench:axes` (must not
 `.claude/launch.json`. Check the console for errors. In the Browser pane, load a fixture by
 fetching `/fixtures/...` in the page and dispatching a `drop` on `[data-testid=workspace]`
 (the dev server serves the repo root). If the pane isn't painting, screenshots can be stale and
-the first auto-fit waits for a resize: read state with `get_page_text` instead. Stop the server before deleting
+the first auto-fit waits for a resize (press F): read state with `get_page_text` instead. Reloads
+restore the last autosave (IndexedDB); to check Save project without writing to Downloads,
+capture the blob by patching `HTMLAnchorElement.prototype.click` in the page. Stop the server before deleting
 `node_modules`/`dist` on Windows (file locks).
 
 ## Proving a new test can fail

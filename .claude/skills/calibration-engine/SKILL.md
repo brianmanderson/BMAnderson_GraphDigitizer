@@ -26,7 +26,11 @@ description: >
    dates (`03/04/2024`) are rejected, and `2024.5` is not May — both deliberate.
 4. **DOM-free.** `tsconfig.core.json` has no DOM lib and ESLint bans browser globals there.
    Workers (Phases 4–5) import this module.
-5. **UI never reimplements math.** Components call `calibrate`, `pixelToValue`,
+5. **Saved projects are versioned.** `parseProject` (`projectFile.ts`) is the only way JSON
+   becomes a `Project`: it migrates (`MIGRATIONS[v]` upgrades v → v+1), validates and never
+   throws on bad input. A schema change bumps `PROJECT_VERSION`, adds a migration and a
+   `projectFile.test.ts` case, and updates SPEC → Data model.
+6. **UI never reimplements math.** Components call `calibrate`, `pixelToValue`,
    `valueToPixel`, `parseDateTime`, `formatDateTime`.
 
 ## Error kinds (`CalibrationError['kind']`)
@@ -52,6 +56,7 @@ Add it to `SCALE_TYPES`, `SCALE_LABELS`, `DOMAIN_RULES`, `isInDomain`, `forward`
 - `calibrate.test.ts` — synthetic charts with known geometry (axis-aligned, ±5° rotation,
   shear, non-square, flipped x/y, transposed); all 25 scale pairs round-trip; log10 ≡ ln;
   every error kind; date axes across DST changes and leap days.
+- `projectFile.test.ts` — current/v1 files, newer-version refusal, every damaged-field message.
 - `fixture-km.test.ts` — the real Kaplan–Meier figure in `fixtures/real/`: other ticks within
   1% of axis range, plateau row 295 ≈ 0.162.
 
