@@ -103,6 +103,19 @@ Types live in `src/core/project.ts`. `version` was added in Phase 1 so saved pro
 Points are stored in **image pixel coordinates (sub-pixel floats)**; values are always derived.
 Re-calibrating or changing a scale type must update the table instantly without moving points.
 
+**Pixel convention (decided in Phase 2).** Integer coordinates are pixel *centres*: pixel column
+`i` spans `[i − ½, i + ½)`, so the image's outer edges are at −½ and `width − ½`. This matches
+how `fixtures/real/*.json` labels pixels (column 134 = the axis line's column) and makes "the
+pixel under the cursor" `Math.round(px)` for the Phase 3 loupe. A uniform shift would cancel in
+the affine fit anyway; the convention only matters for display and fixtures.
+
+**Project ↔ editor state.** The UI edits a `DocState` (`src/state/doc.ts`): the Project plus
+what it cannot hold yet — refs placed so far (as typed text), the chosen scales, and the active
+dataset. `toProject` sets `calibration` only once all four refs are placed (values may still be
+invalid; `calibrate()` reports that), stores numeric ref text as numbers on numeric axes and
+date text as typed; `fromProject` inverts it. Scale choices made before all four refs exist are
+not saved — Phase 3 may extend the Project if that matters.
+
 ## Technical decisions
 
 - **Fully client-side.** Images never leave the browser (research data may be unpublished).
@@ -114,15 +127,53 @@ Re-calibrating or changing a scale type must update the table instantly without 
 - Automation (Phases 4–5): hand-rolled image analysis in TS/Web Workers first; Tesseract.js
   for OCR. Pull in OpenCV.js only if a benchmark shows the simple approach is insufficient.
 
+## Digitizing UI (decided in Phase 2)
+
+- **Layout** (fits 1366×768): toolbar (open, zoom −/+/%, Fit) · canvas workspace · 360 px side
+  panel with step tabs Image → Axes → Data, the step's controls, and the live table with export
+  buttons below · status bar with the cursor's pixel and (x, y).
+- **Loading**: file picker, drop onto the workspace, or paste anywhere. Any `image/*` that the
+  browser decodes is accepted except SVG (vector input is a non-goal); others are rejected with
+  a message naming the file. Loading over existing refs/points asks first and starts a fresh
+  document (settings are kept).
+- **View**: `screen = image · scale + offset` (`src/ui/view.ts`), zoom 5 %–6400 % about the
+  cursor (wheel) or the centre (buttons), pan with middle-drag or Space+drag, `F`/Fit. Image
+  smoothing is off from 3× so pixel edges show. The view never touches stored coordinates.
+- **Step-scoped markers**: refs can be placed/dragged only in the Axes step and points only in
+  the Data step, so a click in one step never moves the other's markers. In Axes, a *click* on an
+  existing ref still places the pending one (X1 and Y1 usually share the origin); a *drag* moves
+  it. Placement and drags are limited to the image area.
+- **Calibration UX**: guided order X1 → X2 → Y1 → Y2; after a click the value input takes focus.
+  "Move" re-places a ref; Delete on a selected ref clears it. Blank values prompt ("Type the
+  known value…"); otherwise the engine's error message is shown verbatim. Date inputs show the
+  parsed UTC interpretation or the parser's message.
+- **Overlay**: after a valid fit, dashed gridlines at round values plus the two calibrated axis
+  lines, drawn through `linearToPixel` and clipped to the image. Ticks (`src/ui/ticks.ts`) are
+  1-2-5 steps for linear, decades for log, values between the refs for reciprocal when the image
+  reaches 1/v = 0, and fixed millisecond steps for dates (not calendar-aligned months/years — it
+  is a sanity check, not an axis renderer).
+- **Datasets**: always at least one; new ones get the next unused name/colour and become active.
+  Deleting a dataset that has points asks first. Selecting another dataset's point makes that
+  dataset active. (Phase 3 undo may replace these confirm dialogs.)
+- **Table**: one section per dataset; `#` is the placement number and stays with its point
+  when sorting by X (rows without an x value sort last). Unrepresentable values (`null`) show as
+  "—". Significant figures (default 4) and the date format are Project settings; "Sort by X"
+  and "Pixel columns" are session view options.
+- **Exports follow the table view** (sort, pixel columns, significant figures, date format):
+  one CSV for all datasets with a `dataset` column (RFC 4180, CRLF, `<image>-data.csv`); the same
+  cells as TSV on the clipboard (LF; tabs/newlines in cells become spaces); the full Project as
+  JSON including the image data URL (`<image>-project.json`). Blank cells for `null` values.
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):
 
 ```
-npm run typecheck && npm run lint && npm test
+npm run typecheck && npm run lint && npm test && npm run test:e2e
 ```
 
-From Phase 4 on, `npm run bench:axes` must also run and not regress against the recorded
+`npm run verify` runs all four. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
+dev server on port 5174. From Phase 4 on, `npm run bench:axes` must also run and not regress against the recorded
 baseline.
 
 ## Non-goals (for now)
@@ -133,3 +184,8 @@ PDF/vector import, automatic curve tracing, polar/ternary/map axes, accounts or 
 
 `fixtures/real/` holds real-world figures with hand-labelled ground truth (`<name>.json`
 beside each image). Use them in e2e tests (Phase 2+) and the axis benchmark (Phase 4+).
+
+`fixtures/synthetic/` holds generated charts with exact geometry (linear scatter; date × log10)
+and their ground truth, written by `npm run fixtures:synthetic`
+(`scripts/make-synthetic-charts.ts`, renders in Playwright's Chromium). Regenerate only when
+changing the generator, and commit the PNG and JSON together.

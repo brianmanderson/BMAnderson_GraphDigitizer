@@ -21,7 +21,15 @@
       "PowerShell(npm run lint)",
       "PowerShell(npm test)",
       "PowerShell(npm run build)",
-      "PowerShell(npx vitest run:*)"
+      "PowerShell(npx vitest run:*)",
+      "Bash(npm run test:e2e)",
+      "Bash(npm run verify)",
+      "Bash(npx playwright test:*)",
+      "Bash(npx playwright install chromium)",
+      "Bash(npm run fixtures:synthetic)",
+      "PowerShell(npm run test:e2e)",
+      "PowerShell(npm run verify)",
+      "PowerShell(npx playwright test:*)"
     ]
   }
 }
