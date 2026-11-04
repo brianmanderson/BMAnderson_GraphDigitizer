@@ -136,7 +136,8 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
 - Tests: Vitest for logic; Playwright for a small set of end-to-end flows (added in Phase 2;
   Phase 3 adds a 2× device-pixel-ratio run for the loupe).
 - Automation (Phases 4–5): hand-rolled image analysis in TS/Web Workers first; Tesseract.js
-  for OCR. Pull in OpenCV.js only if a benchmark shows the simple approach is insufficient.
+  for OCR. Pull in OpenCV.js only if a benchmark shows the simple approach is insufficient
+  (Phase 4: it did not — see below).
 
 ## Digitizing UI (decided in Phase 2)
 
@@ -227,17 +228,71 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
 - **Preferences** (loupe on/off and zoom, snap) are remembered per browser in `localStorage`;
   they are not part of the project.
 
+## Axis detection and benchmark (decided in Phase 4)
+
+- **Module**: `src/auto/` — pure TS, no DOM (checked by `tsconfig.core.json` and ESLint like
+  `src/core`), so Phase 5 can run it in a Web Worker. `detectAxes({ width, height, data })` takes
+  RGBA bytes and returns the skew angle, the X/Y axis lines (sub-pixel offset, ends, contrast,
+  thickness, confidence), the plot box (four corners; whether top/right are drawn frame lines),
+  per-axis tick sets and the strongest line candidates. Not wired into the UI in Phase 4.
+- **Pipeline**: adaptive darkness (pixel darker than the local mean over ~1/40 of the short side;
+  ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
+  clearly better), refined once from the median tilt of the longest fitted lines → per row/column
+  of the skew-corrected frame, the **longest gap-bridged ink run** (text never forms one) →
+  bands → sub-pixel offset = median of clean cross-profile centroids → axis pair = strong
+  horizontal × vertical candidates that meet with the plot above/right (L corner or cross),
+  ranked by strength, extent and tick evidence → plot box to the far axis ends or a frame line of
+  similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
+  estimates the angle; profiles run in the rotated frame. OpenCV.js was not needed.
+- **Ticks**: short perpendicular marks on both sides of each axis (adjacent columns summed for
+  thin antialiased ticks; a walk ends where darkness halves, so a tick doesn't run into a lighter
+  gridline; longer runs and blobs wider than a tick are not ticks); a lattice fit picks evenly
+  spaced majors (tolerance max(1.2 px, 7 % of the spacing), which also absorbs month-length
+  jitter on date axes); shorter marks between them are minors; minors at log10(2…9) of each
+  interval give `pattern: 'log'` (a scale hint for Phase 5). **Fewer than three majors without
+  three minors to back them means no ticks and confidence 0** — an axis with labels only must not
+  get invented ticks. Confidences are heuristics in 0–1 (documented in `ticks.ts`/`detect.ts`).
+- **Corpus** (`bench/axes/`): 60 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~1.5 MB) varying scale (linear/log10/date), gridlines,
+  12 fonts, 72–200 DPI, line/scatter/bar, frame (box, L, axes through zero, ggplot-style with no
+  axis lines), tick direction and length, minor and mirrored ticks, x labels without tick marks,
+  grey axes, rotation ±0.5–3° (bilinear, white fill) and JPEG q30–90. Agg pixel snapping is off so
+  ground truth is exact (snapping moved lines by up to 1 px); about half the charts are "crisp"
+  (spines placed on pixel centres, odd whole-pixel widths). A self-check fails generation if a
+  drawn axis is > 0.35 px from its label. Real figures are listed in `bench/axes/real/manifest.json`
+  (label format: `bench/axes/truth.ts`; the `fixtures/real/` JSON are valid labels).
+- **Metrics** (`npm run bench:axes`, ~5 s): an axis is *found* when the detected line is within
+  2 px of the true line at both ends; a plot box when every corner is within 4 px; ticks match
+  within 2 px along the axis (4 px across); tick recall counts major ticks on axes with tick
+  marks, precision all reported ticks there; `bare` counts ticks reported on axes without tick
+  marks (must stay 0). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
+- **Regression gate**: `bench/axes/baseline.json` holds the metrics of the accepted detector
+  (timings excluded). `bench:axes` exits 1 when axes-found, box-found, tick recall, minor recall
+  or precision drops — or `bare` rises — overall or in any category; it is part of `npm run verify`.
+  `-- --update` rewrites the baseline, only for an explained improvement or trade-off.
+- **Phase 4 baseline** (61 images): axes found 95.1 % (all but the three ggplot-style charts),
+  median line error 0.02 px, plot box 95 %, major-tick recall 84.9 %, minor 67.7 %, precision
+  99.3 %, no ticks on bare axes. The KM figure: both axes exact, 13/13 ticks. Known failures:
+  no drawn axis lines (ggplot), ticks hidden by bars or shorter than a thick axis line (bar
+  charts 62.5 % recall), the tick at a corner (inside the other axis), log axes with two decades
+  and invisible minors (no ticks), box corners at free axis ends off by half the line width when
+  lines have projecting caps.
+- **KM label correction**: pixel analysis in Phase 4 found very faint 3-px x tick marks (grey
+  ~170–200) at every label of `fixtures/real/km-pericardial-effusion.jpg`, which had been labelled
+  "no x tick marks"; the label now says `tickMarks: true` (positions unchanged, within 1 px).
+  The labels-only case is covered by five synthetic charts (`x-no-tickmarks`).
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):
 
 ```
-npm run typecheck && npm run lint && npm test && npm run test:e2e
+npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run test:e2e
 ```
 
-`npm run verify` runs all four. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
-dev server on port 5174. From Phase 4 on, `npm run bench:axes` must also run and not regress against the recorded
-baseline.
+`npm run verify` runs all five. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
+dev server on port 5174. `bench:axes` (Phase 4) fails on any regression against
+`bench/axes/baseline.json` (see above).
 
 ## Non-goals (for now)
 
@@ -246,7 +301,8 @@ PDF/vector import, automatic curve tracing, polar/ternary/map axes, accounts or 
 ## Test fixtures
 
 `fixtures/real/` holds real-world figures with hand-labelled ground truth (`<name>.json`
-beside each image). Use them in e2e tests (Phase 2+) and the axis benchmark (Phase 4+).
+beside each image). Use them in e2e tests (Phase 2+) and the axis benchmark (Phase 4+, listed in
+`bench/axes/real/manifest.json`). Label from measured pixels, including whether tick marks exist.
 
 `fixtures/synthetic/` holds generated charts with exact geometry (linear scatter; date × log10)
 and their ground truth, written by `npm run fixtures:synthetic`
