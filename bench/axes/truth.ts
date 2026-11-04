@@ -20,7 +20,8 @@
  *
  * Pixels follow the app's convention (integer = pixel centre). With the row/col shorthand, a
  * tick's missing coordinate is the axis line's, and the scored line runs between the extreme
- * ticks. Extra fields (description, knownValues, pitfalls…) are ignored, so the e2e fixtures in
+ * ticks. `knownValues` is kept for the calibration score; other extra fields (description,
+ * pitfalls…) are ignored, so the e2e fixtures in
  * fixtures/real/ are valid labels as they are.
  */
 
@@ -55,6 +56,8 @@ export interface Truth {
   plotBox: [P, P, P, P] | null;
   x: TruthAxis;
   y: TruthAxis;
+  /** The label's `knownValues` as written (real figures), for the calibration score. */
+  knownValues: unknown;
 }
 
 type Json = Record<string, unknown>;
@@ -121,5 +124,6 @@ export function loadTruth(jsonPath: string, source: Truth['source'], extraTags: 
     plotBox: box as [P, P, P, P] | null,
     x: axis(raw.xAxis, 'x', jsonPath),
     y: axis(raw.yAxis, 'y', jsonPath),
+    knownValues: raw.knownValues ?? null,
   };
 }
