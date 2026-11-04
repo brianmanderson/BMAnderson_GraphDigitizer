@@ -2,9 +2,9 @@
  * The editable document behind the UI: a Project plus the in-progress parts the Project type
  * cannot hold yet (scale choices and refs before all four are placed, the active dataset).
  *
- * Every change goes through `docReducer`, a pure function, so undo/redo (Phase 3) can wrap it
- * and persistence can snapshot it via `toProject` / `fromProject`. Ids are supplied by the
- * caller in the action, which keeps the reducer deterministic.
+ * Every change goes through `docReducer`, a pure function; undo/redo (`history.ts`) wraps it and
+ * persistence snapshots it via `toProject` / `fromProject`. Ids are supplied by the caller in the
+ * action, which keeps the reducer deterministic.
  */
 
 import {
@@ -15,10 +15,12 @@ import {
   type CalibrationSpec,
   type Dataset,
   type DataPoint,
+  type DraftCalibration,
   type Project,
   type ProjectImage,
   type ProjectSettings,
   type RefName,
+  type RefPoint,
   type ScaleType,
 } from '../core/index.ts';
 
@@ -195,51 +197,68 @@ export function nextUnplacedRef(refs: DocState['refs']): RefName | null {
   return REF_NAMES.find((name) => !refs[name]) ?? null;
 }
 
+/**
+ * A draft ref as a Project ref. Numeric text is stored as a number so saved projects carry plain
+ * values; date text and anything unparseable stay as typed, and calibrate() reports the latter.
+ */
+function projectRef(state: DocState, name: RefName, r: DraftRef): RefPoint {
+  const scale = name.startsWith('X') ? state.xScale : state.yScale;
+  const text = r.value.trim();
+  const n = text === '' ? NaN : Number(text);
+  return { px: r.px, py: r.py, value: scale !== 'date' && Number.isFinite(n) ? n : r.value };
+}
+
 /** Spec for calibrate(), once all four refs are placed (values may still be invalid). */
 export function calibrationSpec(state: DocState): CalibrationSpec | null {
   const refs = completeRefs(state.refs);
   if (!refs) return null;
   const out = {} as CalibrationRefs;
-  for (const name of REF_NAMES) {
-    const r = refs[name];
-    const scale = name.startsWith('X') ? state.xScale : state.yScale;
-    // Numeric text is stored as a number so saved projects carry plain values; date text and
-    // anything unparseable stay as typed, and calibrate() reports the latter.
-    const text = r.value.trim();
-    const n = text === '' ? NaN : Number(text);
-    out[name] = { px: r.px, py: r.py, value: scale !== 'date' && Number.isFinite(n) ? n : r.value };
-  }
+  for (const name of REF_NAMES) out[name] = projectRef(state, name, refs[name]);
   return { xScale: state.xScale, yScale: state.yScale, refs: out };
+}
+
+/** The scales and the refs placed so far, for saving a calibration that is not complete yet. */
+function draftCalibration(state: DocState): DraftCalibration {
+  const refs: DraftCalibration['refs'] = {};
+  for (const name of REF_NAMES) {
+    const r = state.refs[name];
+    if (r) refs[name] = projectRef(state, name, r);
+  }
+  return { xScale: state.xScale, yScale: state.yScale, refs };
 }
 
 /** The document as a Project (docs/SPEC.md → Data model), for JSON export and saving. */
 export function toProject(state: DocState): Project {
+  const calibration = calibrationSpec(state);
   return {
     version: PROJECT_VERSION,
     image: state.image,
-    calibration: calibrationSpec(state),
+    calibration,
+    ...(!calibration && { draftCalibration: draftCalibration(state) }),
     datasets: state.datasets,
     settings: state.settings,
   };
 }
 
-/** Rebuild an editable document from a Project (the inverse of toProject). */
-export function fromProject(project: Project): DocState {
+/**
+ * Rebuild an editable document from a Project (the inverse of toProject). The active dataset is
+ * not part of the Project; `activeDatasetId` restores it when it names an existing dataset.
+ */
+export function fromProject(project: Project, activeDatasetId?: string): DocState {
+  const cal = project.calibration ?? project.draftCalibration;
   const refs: DocState['refs'] = {};
-  if (project.calibration) {
-    for (const name of REF_NAMES) {
-      const r = project.calibration.refs[name];
-      refs[name] = { px: r.px, py: r.py, value: String(r.value) };
-    }
+  for (const name of REF_NAMES) {
+    const r = cal?.refs[name];
+    if (r) refs[name] = { px: r.px, py: r.py, value: String(r.value) };
   }
   const datasets = project.datasets.length > 0 ? project.datasets : newDoc(project.image, 'dataset-1').datasets;
   return {
     image: project.image,
-    xScale: project.calibration?.xScale ?? 'linear',
-    yScale: project.calibration?.yScale ?? 'linear',
+    xScale: cal?.xScale ?? 'linear',
+    yScale: cal?.yScale ?? 'linear',
     refs,
     datasets,
-    activeDatasetId: datasets[0]!.id,
+    activeDatasetId: datasets.find((d) => d.id === activeDatasetId)?.id ?? datasets[0]!.id,
     settings: { ...DEFAULT_SETTINGS, ...project.settings },
   };
 }

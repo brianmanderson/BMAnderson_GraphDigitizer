@@ -136,8 +136,41 @@ describe('Project conversion', () => {
       point: { id: 'p1', px: 50.5, py: 20.25 },
     });
     const project = toProject(s);
-    expect(project.version).toBe(1);
+    expect(project.version).toBe(2);
+    expect('draftCalibration' in project).toBe(false);
     const back = fromProject(JSON.parse(JSON.stringify(project)));
     expect(toProject(back)).toEqual(project);
+  });
+
+  it('saves a calibration in progress as draftCalibration and restores it', () => {
+    const s = apply(
+      newDoc(image, 'd1'),
+      { type: 'set-scale', axis: 'x', scale: 'date' },
+      { type: 'set-scale', axis: 'y', scale: 'log10' },
+      { type: 'place-ref', ref: 'X1', px: 10, py: 90 },
+      { type: 'set-ref-value', ref: 'X1', value: '2024-03-15' },
+      { type: 'place-ref', ref: 'Y1', px: 10, py: 90 },
+      { type: 'set-ref-value', ref: 'Y1', value: '10' },
+    );
+    const project = toProject(s);
+    expect(project.calibration).toBeNull();
+    expect(project.draftCalibration).toEqual({
+      xScale: 'date',
+      yScale: 'log10',
+      refs: { X1: { px: 10, py: 90, value: '2024-03-15' }, Y1: { px: 10, py: 90, value: 10 } },
+    });
+    const back = fromProject(JSON.parse(JSON.stringify(project)));
+    expect(back.xScale).toBe('date');
+    expect(back.yScale).toBe('log10');
+    expect(back.refs).toEqual(s.refs);
+    expect(toProject(back)).toEqual(project);
+  });
+
+  it('restores the active dataset when it still exists', () => {
+    const s = docReducer(newDoc(image, 'd1'), { type: 'add-dataset', dataset: { id: 'd2', name: 'B', color: '#000000', points: [] } });
+    const project = toProject(s);
+    expect(fromProject(project, 'd2').activeDatasetId).toBe('d2');
+    expect(fromProject(project, 'gone').activeDatasetId).toBe('d1');
+    expect(fromProject(project).activeDatasetId).toBe('d1');
   });
 });

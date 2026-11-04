@@ -87,10 +87,11 @@ test('linear chart: load → calibrate → place points → table, edit and expo
   expect(tsv).toHaveLength(6);
   expect(tsv[1]!.split('\t').slice(0, 2)).toEqual(['Dataset 1', '1']);
 
-  // JSON download is the full Project.
+  // JSON download is the full Project (format 2 since Phase 3; a calibrated project has no draft).
   const [jsonDl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download JSON' }).click()]);
   const project = JSON.parse(readFileSync((await jsonDl.path())!, 'utf8'));
-  expect(project.version).toBe(1);
+  expect(project.version).toBe(2);
+  expect(project).not.toHaveProperty('draftCalibration');
   expect(project.image).toMatchObject({ width: 640, height: 480, name: 'synthetic-linear.png' });
   expect(project.image.dataUrl).toMatch(/^data:image\/png;base64,/);
   expect(project.calibration).toMatchObject({ xScale: 'linear', yScale: 'linear' });

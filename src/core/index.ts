@@ -3,4 +3,5 @@
 export * from './calibrate.ts';
 export * from './dates.ts';
 export * from './project.ts';
+export * from './projectFile.ts';
 export * from './scales.ts';

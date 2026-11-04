@@ -8,7 +8,11 @@
 import { DEFAULT_DATE_FORMAT } from './dates.ts';
 import type { ScaleType } from './scales.ts';
 
-export const PROJECT_VERSION = 1;
+/**
+ * Schema version of saved projects. 2 added `draftCalibration`; files of older versions are
+ * migrated on load by `parseProject` (projectFile.ts).
+ */
+export const PROJECT_VERSION = 2;
 
 export const REF_NAMES = ['X1', 'X2', 'Y1', 'Y2'] as const;
 
@@ -28,6 +32,13 @@ export interface CalibrationSpec {
   xScale: ScaleType;
   yScale: ScaleType;
   refs: CalibrationRefs;
+}
+
+/** A calibration in progress: the scales chosen and whichever refs have been placed so far. */
+export interface DraftCalibration {
+  xScale: ScaleType;
+  yScale: ScaleType;
+  refs: Partial<CalibrationRefs>;
 }
 
 export interface ProjectImage {
@@ -61,7 +72,10 @@ export interface Project {
   /** Schema version, for loading saved projects across releases. */
   version: typeof PROJECT_VERSION;
   image: ProjectImage;
+  /** Set once all four refs are placed (their values may still be invalid). */
   calibration: CalibrationSpec | null;
+  /** Only while `calibration` is null: the scales and refs entered so far (version 2+). */
+  draftCalibration?: DraftCalibration;
   datasets: Dataset[];
   settings: ProjectSettings;
 }
