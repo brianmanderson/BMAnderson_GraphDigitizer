@@ -36,7 +36,7 @@ const toolbarButton = (page: Page, name: 'Undo' | 'Redo') =>
 const refHint = (page: Page, ref: string) =>
   page.getByLabel(`${ref} value`).locator('xpath=..').locator('.hint.muted').textContent();
 
-test('undo/redo covers refs, scales, points and datasets; deleting and replacing offer Undo instead of a prompt', async ({ page }) => {
+test('undo/redo covers refs, scales, points and lines; deleting and replacing offer Undo instead of a prompt', async ({ page }) => {
   page.on('dialog', (d) => {
     throw new Error(`unexpected dialog: ${d.message()}`);
   });
@@ -77,39 +77,39 @@ test('undo/redo covers refs, scales, points and datasets; deleting and replacing
   await expect.poll(() => refHint(page, 'X2')).not.toBe(before);
   await toolbarButton(page, 'Undo').click();
 
-  // Points and datasets.
+  // Points and lines.
   await page.getByRole('button', { name: 'Continue to Data' }).click();
   await clickImage(page, linear.points[0]!.px, linear.points[0]!.py);
   await clickImage(page, linear.points[1]!.px, linear.points[1]!.py);
-  await page.getByRole('button', { name: '+ Add dataset' }).click();
+  await page.getByRole('button', { name: '+ Add line' }).click();
   await clickImage(page, linear.points[2]!.px, linear.points[2]!.py);
-  expect(await tableRows(page, 'Dataset 2')).toHaveLength(1);
+  expect(await tableRows(page, 'Line 2')).toHaveLength(1);
 
-  // Deleting a dataset with points no longer asks; the notice offers Undo.
-  await page.getByRole('button', { name: 'Delete Dataset 2' }).click();
-  await expect(page.getByTestId('table-Dataset 2')).toHaveCount(0);
+  // Deleting a line with points no longer asks; the notice offers Undo.
+  await page.getByRole('button', { name: 'Delete Line 2' }).click();
+  await expect(page.getByTestId('table-Line 2')).toHaveCount(0);
   const notice = page.getByTestId('notice');
-  await expect(notice).toContainText('Deleted "Dataset 2" and its 1 point.');
+  await expect(notice).toContainText('Deleted "Line 2" and its 1 point.');
   await notice.getByRole('button', { name: 'Undo' }).click();
-  expect(await tableRows(page, 'Dataset 2')).toHaveLength(1);
+  expect(await tableRows(page, 'Line 2')).toHaveLength(1);
   await expect(notice.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 
   // Loading another image over the work is undoable too.
   await loadViaPicker(page, 'synthetic/synthetic-date-log.png');
   await expect(notice).toContainText('Undo brings back the previous work');
-  await expect(page.getByTestId('table-Dataset 1')).toHaveCount(0);
+  await expect(page.getByTestId('table-Line 1')).toHaveCount(0);
   await notice.getByRole('button', { name: 'Undo' }).click();
-  expect(await tableRows(page, 'Dataset 1')).toHaveLength(2);
-  expect(await tableRows(page, 'Dataset 2')).toHaveLength(1);
+  expect(await tableRows(page, 'Line 1')).toHaveLength(2);
+  expect(await tableRows(page, 'Line 2')).toHaveLength(1);
   await goToStep(page, 'Axes');
   await expect(page.getByTestId('calibration-ok')).toBeVisible();
   await page.keyboard.press('Control+y');
-  await expect(page.getByTestId('table-Dataset 1')).toHaveCount(0);
+  await expect(page.getByTestId('table-Line 1')).toHaveCount(0);
 
   // An Undo offer goes stale once something else changes the history.
   await page.keyboard.press('Control+z');
   await goToStep(page, 'Data');
-  await page.getByRole('button', { name: 'Delete Dataset 2' }).click();
+  await page.getByRole('button', { name: 'Delete Line 2' }).click();
   await clickImage(page, 300, 300);
   await expect(notice.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 });
@@ -120,9 +120,9 @@ test('autosave restores everything after a reload; a saved project file reopens'
   await page.getByRole('button', { name: 'Continue to Data' }).click();
   await clickImage(page, 400, 295);
   await clickImage(page, 300, 300);
-  await page.getByLabel('Dataset name').fill('Effusion');
-  await page.getByRole('button', { name: '+ Add dataset' }).click();
-  await page.getByLabel('Dataset name').nth(1).fill('Other');
+  await page.getByLabel('Line name').fill('Effusion');
+  await page.getByRole('button', { name: '+ Add line' }).click();
+  await page.getByLabel('Line name').nth(1).fill('Other');
   await clickImage(page, 200, 320);
   await page.getByLabel('Pixel columns').check();
   const effusion = await tableRows(page, 'Effusion');
@@ -138,7 +138,7 @@ test('autosave restores everything after a reload; a saved project file reopens'
     .toBe('Effusion:2,Other:1');
   await page.reload();
   await expect(page.getByTestId('notice')).toContainText('Restored km-pericardial-effusion.jpg from your last session');
-  // Restored into the Data step, with the active dataset and every value as before.
+  // Restored into the Data step, with the active line and every value as before.
   await expect(page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: /Data/ })).toHaveAttribute('aria-current', 'step');
   await expect(page.getByLabel('Make Other active')).toBeChecked();
   await page.getByLabel('Pixel columns').check();

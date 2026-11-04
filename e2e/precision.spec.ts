@@ -16,7 +16,7 @@ import {
 const plateauRow = kmTruth.knownValues[0]!.py!;
 
 /** Pixel columns of the first row of a dataset table, as numbers. */
-async function firstPixel(page: Page, dataset = 'Dataset 1') {
+async function firstPixel(page: Page, dataset = 'Line 1') {
   const [row] = await tableRows(page, dataset);
   return row ? { px: Number(row[3]), py: Number(row[4]) } : null;
 }
@@ -61,7 +61,7 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   await page.keyboard.press('Alt+ArrowLeft');
   await expect.poll(async () => (await loupeState(page)).px).toBeCloseTo(p0.px + 0.9, 6);
   // Alt+Left must not have navigated the browser back.
-  await expect(page.getByTestId('table-Dataset 1')).toBeVisible();
+  await expect(page.getByTestId('table-Line 1')).toBeVisible();
   const moved = (await firstPixel(page))!;
   expect(moved.px).toBeCloseTo(p0.px + 0.9, 1);
   expect(moved.py).toBeCloseTo(p0.py - 10, 1);
@@ -82,7 +82,7 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   await expect.poll(async () => (await tableRows(page)).length).toBe(1);
 
   // Holding a key nudges repeatedly but undoes in one step.
-  await page.getByTestId('table-Dataset 1').locator('tbody tr').first().click();
+  await page.getByTestId('table-Line 1').locator('tbody tr').first().click();
   for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
   await expect.poll(async () => (await firstPixel(page))!.py).toBeCloseTo(p0.py + 5, 1);
   await page.keyboard.press('Control+z');

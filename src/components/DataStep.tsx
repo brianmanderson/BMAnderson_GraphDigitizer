@@ -23,7 +23,7 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
       </p>
       {!calibrated && <p className="info">The axes are not calibrated yet, so the table shows pixels only.</p>}
 
-      <ul className="datasets" aria-label="Datasets">
+      <ul className="datasets" aria-label="Lines">
         {doc.datasets.map((d) => (
           <li key={d.id} className={d.id === doc.activeDatasetId ? 'active' : undefined}>
             <input
@@ -45,7 +45,7 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
               value={d.name}
               onChange={(e) => onRename(d.id, e.target.value)}
               onFocus={() => onActivate(d.id)}
-              aria-label="Dataset name"
+              aria-label="Line name"
             />
             <span className="count" title="Points">
               {d.points.length}
@@ -56,7 +56,7 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
               onClick={() => onDelete(d.id)}
               disabled={doc.datasets.length <= 1}
               aria-label={`Delete ${d.name}`}
-              title={doc.datasets.length <= 1 ? 'There must be at least one dataset' : `Delete ${d.name}`}
+              title={doc.datasets.length <= 1 ? 'There must be at least one line' : `Delete ${d.name}`}
             >
               ✕
             </button>
@@ -65,7 +65,7 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
       </ul>
       <div className="row">
         <button type="button" className="small" onClick={onAdd}>
-          + Add dataset
+          + Add line
         </button>
         <button type="button" className="small" onClick={onDeleteSelected} disabled={selected?.kind !== 'point'}>
           Delete selected point

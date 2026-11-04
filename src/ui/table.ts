@@ -62,7 +62,7 @@ export function exportCells(
   scales: { xScale: ScaleType; yScale: ScaleType },
   options: TableOptions,
 ): string[][] {
-  const header = ['dataset', '#', 'x', 'y'];
+  const header = ['line', '#', 'x', 'y'];
   if (options.showPixels) header.push('px', 'py');
   const out = [header];
   for (const d of datasets) {

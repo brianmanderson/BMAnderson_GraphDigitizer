@@ -19,8 +19,8 @@ implementation — do not copy their branding, layout, or assets.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
    (points with known y values), then type the value for each.
 4. **Digitize** — click to place data points; drag to move; select + delete; multiple named,
-   colour-coded datasets.
-5. **Output** — live table of (x, y) per dataset; export CSV, copy as TSV (pastes into Excel),
+   colour-coded **lines** (the UI's word for a dataset: one curve or series).
+5. **Output** — live table of (x, y) per line; export CSV, copy as TSV (pastes into Excel),
    download JSON.
 
 ## Calibration math (the correctness core)
@@ -165,17 +165,23 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   1-2-5 steps for linear, decades for log, values between the refs for reciprocal when the image
   reaches 1/v = 0, and fixed millisecond steps for dates (not calendar-aligned months/years — it
   is a sanity check, not an axis renderer).
-- **Datasets**: always at least one; new ones get the next unused name/colour and become active.
-  Deleting a dataset is an undo step (no prompt since Phase 3). Selecting another dataset's point
-  makes that dataset active.
-- **Table**: one section per dataset; `#` is the placement number and stays with its point
+- **Lines** (datasets): always at least one; new ones get the next unused name/colour and become
+  active. Deleting a line is an undo step (no prompt since Phase 3). Selecting another line's
+  point makes that line active.
+- **Table**: one section per line; `#` is the placement number and stays with its point
   when sorting by X (rows without an x value sort last). Unrepresentable values (`null`) show as
   "—". Significant figures (default 4) and the date format are Project settings; "Sort by X"
   and "Pixel columns" are session view options.
 - **Exports follow the table view** (sort, pixel columns, significant figures, date format):
-  one CSV for all datasets with a `dataset` column (RFC 4180, CRLF, `<image>-data.csv`); the same
+  one CSV for all lines with a `line` column (RFC 4180, CRLF, `<image>-data.csv`); the same
   cells as TSV on the clipboard (LF; tabs/newlines in cells become spaces); the full Project as
   JSON including the image data URL (`<image>-project.json`). Blank cells for `null` values.
+
+**"Lines", not "datasets" (decided in Phase 5).** The UI calls each dataset a *line*: the first
+is "Line 1", the button is "+ Add line", new ones are "Line 2", "Line 3"…, and table headings,
+aria-labels ("Line name", "Lines") and the CSV/TSV column header (`line`) say so. The data model
+keeps the field `datasets` (and the code its `Dataset` names), so saved project files are
+unchanged and need no format bump; projects saved earlier keep their "Dataset 1" names.
 
 ## Precision tools and persistence (decided in Phase 3)
 

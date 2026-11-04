@@ -75,7 +75,7 @@ export function newDoc(image: ProjectImage, firstDatasetId: string, settings?: P
     xScale: 'linear',
     yScale: 'linear',
     refs: {},
-    datasets: [{ id: firstDatasetId, name: 'Dataset 1', color: DATASET_COLORS[0], points: [] }],
+    datasets: [{ id: firstDatasetId, name: 'Line 1', color: DATASET_COLORS[0], points: [] }],
     activeDatasetId: firstDatasetId,
     settings: { ...(settings ?? DEFAULT_SETTINGS) },
   };
@@ -171,14 +171,14 @@ export function hasWork(state: DocState | null): boolean {
   return state !== null && (Object.keys(state.refs).length > 0 || state.datasets.some((d) => d.points.length > 0));
 }
 
-/** A name and colour for the next dataset that don't repeat the existing ones. */
+/** A name ("Line 2", "Line 3"…) and colour for the next dataset (a "line" in the UI) that don't repeat the existing ones. */
 export function nextDatasetDefaults(state: DocState): { name: string; color: string } {
   const names = new Set(state.datasets.map((d) => d.name));
   let n = state.datasets.length + 1;
-  while (names.has(`Dataset ${n}`)) n++;
+  while (names.has(`Line ${n}`)) n++;
   const used = new Set(state.datasets.map((d) => d.color.toLowerCase()));
   const color = DATASET_COLORS.find((c) => !used.has(c)) ?? DATASET_COLORS[state.datasets.length % DATASET_COLORS.length]!;
-  return { name: `Dataset ${n}`, color };
+  return { name: `Line ${n}`, color };
 }
 
 /** The four refs, once all are placed; otherwise null. */

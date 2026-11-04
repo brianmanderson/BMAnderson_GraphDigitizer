@@ -62,8 +62,8 @@ export async function calibrate(page: Page, refs: Record<RefName, { px: number; 
   await expect(page.getByTestId('calibration-ok')).toBeVisible();
 }
 
-/** Table rows of one dataset as text cells: #, X, Y[, px, py]. */
-export async function tableRows(page: Page, dataset = 'Dataset 1'): Promise<string[][]> {
+/** Table rows of one line (dataset) as text cells: #, X, Y[, px, py]. */
+export async function tableRows(page: Page, dataset = 'Line 1'): Promise<string[][]> {
   const table = page.getByTestId(`table-${dataset}`);
   if ((await table.count()) === 0) return [];
   return table.locator('tbody tr').evaluateAll((trs) =>

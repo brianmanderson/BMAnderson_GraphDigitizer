@@ -103,15 +103,15 @@ describe('table', () => {
     ]);
   });
 
-  it('exports one CSV with a dataset column, quoting names that need it', () => {
+  it('exports one CSV with a line column, quoting names that need it', () => {
     const cells = exportCells([dataset('A', [[50, 50]]), dataset('B, "treated"', [[100, 0]])], linearCal(), { xScale: 'linear', yScale: 'linear' }, {
       ...opts,
       showPixels: true,
     });
     expect(toCsv(cells)).toBe(
-      'dataset,#,x,y,px,py\r\nA,1,5,0.5,50.0,50.0\r\n"B, ""treated""",1,10,1,100.0,0.0\r\n',
+      'line,#,x,y,px,py\r\nA,1,5,0.5,50.0,50.0\r\n"B, ""treated""",1,10,1,100.0,0.0\r\n',
     );
-    expect(toTsv(cells).split('\n')[0]).toBe('dataset\t#\tx\ty\tpx\tpy');
+    expect(toTsv(cells).split('\n')[0]).toBe('line\t#\tx\ty\tpx\tpy');
   });
 
   it('keeps TSV cells on one line', () => {

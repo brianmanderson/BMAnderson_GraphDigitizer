@@ -94,10 +94,10 @@ describe('docReducer', () => {
     expect(s.activeDatasetId).toBe('d1');
   });
 
-  it('suggests unused dataset names and colours', () => {
+  it('suggests unused line names (Line 2, …) and colours', () => {
     const s = newDoc(image, 'd1');
     const next = nextDatasetDefaults(s);
-    expect(next.name).toBe('Dataset 2');
+    expect(next.name).toBe('Line 2');
     expect(next.color).not.toBe(s.datasets[0]!.color);
   });
 

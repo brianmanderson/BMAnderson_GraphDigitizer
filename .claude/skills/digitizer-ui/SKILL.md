@@ -73,9 +73,9 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - Toolbar groups `History` (Undo/Redo; a notice may have its own "Undo" button, so scope to the
   group) and `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select).
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
-  `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<dataset name>`.
+  `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
-  `Sort by X`, `Significant figures`, `Date format`, `Dataset name`, `Make <name> active`,
+  `Sort by X`, `Significant figures`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`,
   `Delete <name>`, the `Steps` navigation and the export button labels.
 
 ## Fixtures
