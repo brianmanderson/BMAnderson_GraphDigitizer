@@ -56,19 +56,49 @@ y grows downward and the fit absorbs that. Also expose the inverse (value → pi
 overlays. Reject degenerate calibrations (singular system, coincident points, X2 = X1 values,
 out-of-domain values) with a clear message instead of producing NaN/Infinity.
 
+**Engine contract (decided in Phase 1, `src/core/`).**
+
+- Scale ids: `linear`, `log10`, `ln`, `reciprocal`, `date` (shown as "Date/time").
+- Ref values: a number, or text. On numeric scales text must be a plain number (`" 2.5 "`,
+  `"1e-3"`). On `date` axes text is parsed as a date/time; a number is taken as epoch ms.
+- `calibrate(refs, xScale, yScale)` returns `{ ok: true, calibration }` or
+  `{ ok: false, error }`. Error kinds, checked in this order: `invalid-pixel` (non-finite ref
+  position), `invalid-value` (unparseable text, NaN/±Infinity), `out-of-domain`,
+  `reciprocal-straddles-zero`, `equal-values` (equal after the scale transform, e.g.
+  `2` and `"2.0"`), `coincident-points` (the two refs of one axis < 1e-6 px apart; X1 and Y1
+  may share a pixel — the usual origin), `singular-system` (X-ref and Y-ref directions within
+  sin θ < 1e-9 of parallel), `numeric-overflow` (values so extreme the coefficients are not
+  finite). Each error carries a user-facing `message`.
+- `pixelToValue` returns `{ x, y }` with a component `null` where the scale cannot represent the
+  value (reciprocal at u = 0, log overflow, dates beyond ±8.64e15 ms). `valueToPixel` returns
+  `null` for out-of-domain values. Neither ever returns NaN/Infinity.
+
+**Dates.** Parsed to epoch ms, UTC unless the text carries a zone (`Z`, `UTC`, `GMT`, `±HH`,
+`±HHmm`, `±HH:mm`); the host time zone is never used, so DST cannot shift values. Accepted:
+`2024-03-15`, `2024/03/15`, `2024.03.15`, `2024-03`, `2024`, each date form + `[T ]HH:mm[:ss[.fff]]`
+with optional `AM/PM` and zone, `15 Mar 2024`, `15-Mar-2024`, `Mar 15, 2024`, `March 15th 2024`,
+`Mar 2024`, and numeric `DD/MM/YYYY` or `MM/DD/YYYY` **only when unambiguous** (one part > 12, or
+both equal) — `03/04/2024` is rejected as ambiguous. `2024.5` is rejected (it reads as a decimal
+year). Named zones other than UTC/GMT (`EST`, `CET`) are rejected as ambiguous. Formatting uses
+tokens `YYYY MMM MM DD HH mm ss SSS` (UTC) with `[literal]` text.
+
 ## Data model
 
 ```ts
 Project {
+  version: 1                               // schema version, for saved projects
   image: { dataUrl, width, height, name }
   calibration: {
     xScale, yScale,                        // ScaleType
     refs: { X1, X2, Y1, Y2 }               // each { px, py, value: number | string }
   } | null
   datasets: [{ id, name, color, points: [{ id, px, py }] }]
-  settings: { significantFigures, dateFormat }
+  settings: { significantFigures, dateFormat }   // defaults: 4, 'YYYY-MM-DD HH:mm'
 }
 ```
+
+Types live in `src/core/project.ts`. `version` was added in Phase 1 so saved projects
+(Phase 3) can be migrated.
 
 Points are stored in **image pixel coordinates (sub-pixel floats)**; values are always derived.
 Re-calibrating or changing a scale type must update the table instantly without moving points.
