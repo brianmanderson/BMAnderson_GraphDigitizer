@@ -119,8 +119,9 @@ kbd {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   padding: 6px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -176,7 +177,7 @@ kbd {
   min-width: 0;
   min-height: 0;
 }
-.workspace canvas {
+.workspace > canvas {
   position: absolute;
   inset: 0;
   display: block;
@@ -501,4 +502,80 @@ tbody tr.selected {
   border-top: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   min-height: 24px;
+}
+
+/* ---------- Phase 3: toolbar groups, notice, loupe ---------- */
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.toolbar button {
+  white-space: nowrap;
+}
+button.icon-text {
+  min-width: 30px;
+  font-size: 16px;
+  line-height: 1;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+button.toggle[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Takes the rest of the toolbar row; a long notice shortens with an ellipsis rather than wrapping. */
+.notice-slot {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+.notice-slot .notice {
+  min-width: 0;
+  max-width: 100%;
+}
+.notice-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.notice .small {
+  flex: none;
+}
+.statusbar .bad {
+  color: var(--error);
+}
+
+.loupe {
+  position: absolute;
+  top: 12px;
+  /* Never in the way of a click: the loupe flips away from the cursor and ignores the pointer. */
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.loupe.top-left {
+  left: 12px;
+}
+.loupe.top-right {
+  right: 12px;
+}
+.loupe canvas {
+  display: block;
+}
+.loupe-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--border);
 }

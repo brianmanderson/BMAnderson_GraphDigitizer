@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -9,9 +10,11 @@ import {
 } from 'react';
 import type { Calibration, RefName } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
-import { drawWorkspace, hitTest, type Target } from '../ui/draw.ts';
-import { firstFile } from '../ui/loadImage.ts';
-import { clampToImage, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
+import { REF_COLORS, drawWorkspace, findTargetPos, hitTest, type Target } from '../ui/draw.ts';
+import { firstFile, imagePixels } from '../ui/loadImage.ts';
+import { drawLoupe, loupeCell, loupeCorner, loupeOrigin, LOUPE_SIZE, type LoupeMarker } from '../ui/loupe.ts';
+import { findSnapTarget, snapOptions, type SnapTarget } from '../ui/snap.ts';
+import { clampToImage, imageToScreen, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
 
 export type Step = 'image' | 'axes' | 'data';
 
@@ -30,19 +33,26 @@ interface Props {
   placingRef: RefName | null;
   onPlaceRef: (ref: RefName, px: number, py: number) => void;
   onAddPoint: (px: number, py: number) => void;
-  onMoveTarget: (target: Target, px: number, py: number) => void;
+  /** `gesture` is the same for every move of one drag, so the drag is one undo step. */
+  onMoveTarget: (target: Target, px: number, py: number, gesture: number) => void;
   onCursor: (pos: { px: number; py: number } | null) => void;
+  loupe: { enabled: boolean; zoom: number };
+  /** Show the loupe on the selected marker (it was just nudged with the keyboard). */
+  loupeOnSelection: boolean;
+  snap: boolean;
   onFile: (file: File) => void;
   onOpenFile: () => void;
 }
 
 /** Pointer movement (CSS px) below which a press counts as a click, not a drag. */
 const CLICK_SLOP = 3;
+let gestureSeq = 0;
 
 type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
-  | { kind: 'drag'; target: Target; startX: number; startY: number; dx: number; dy: number; moved: boolean }
+  | { kind: 'drag'; id: number; target: Target; startX: number; startY: number; dx: number; dy: number; moved: boolean }
   | { kind: 'click'; startX: number; startY: number };
+
 
 const isTypingTarget = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
@@ -62,6 +72,66 @@ export function Workspace(props: Props) {
   const [dropping, setDropping] = useState(false);
   const gesture = useRef<Gesture | null>(null);
   const [gestureKind, setGestureKind] = useState<Gesture['kind'] | null>(null);
+  const [dragTarget, setDragTarget] = useState<Target | null>(null);
+  /** Pointer position over the canvas (CSS px), or null when it is elsewhere. */
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const loupeRef = useRef<HTMLCanvasElement>(null);
+
+  const pixels = useMemo(() => (props.snap && image ? imagePixels(image) : null), [props.snap, image]);
+  const pointerAt = pointer ? screenToImage(view, pointer.x, pointer.y) : null;
+  const pointerOnImage = !!(doc && pointerAt && isOnImage(pointerAt.px, pointerAt.py, doc.image.width, doc.image.height));
+  // Snapping applies to new points: preview it while hovering in the Data step.
+  const snapTarget: SnapTarget | null =
+    pixels && step === 'data' && pointerAt && pointerOnImage && gestureKind === null && !props.loupeOnSelection
+      ? findSnapTarget(pixels, pointerAt.px, pointerAt.py, snapOptions(view.scale))
+      : null;
+  const activeColor = doc?.datasets.find((d) => d.id === doc.activeDatasetId)?.color ?? '#d6336c';
+
+  // The loupe follows the marker being dragged, else a just-nudged selection, else the cursor
+  // while a click would place something (or grab the marker under it).
+  const placing = (step === 'axes' && props.placingRef !== null) || step === 'data';
+  let loupeAt: { px: number; py: number } | null = null;
+  if (doc && dragTarget) loupeAt = findTargetPos(doc, dragTarget);
+  else if (doc && props.loupeOnSelection && props.selected) loupeAt = findTargetPos(doc, props.selected);
+  else if (pointerOnImage && gestureKind === null && !spaceHeld && (placing || hovered)) loupeAt = pointerAt;
+  const loupe =
+    props.loupe.enabled && doc && image && loupeAt
+      ? (() => {
+          const sizeDevice = Math.round(LOUPE_SIZE * size.dpr);
+          const cell = loupeCell(view.scale, props.loupe.zoom, size.dpr);
+          return {
+            at: loupeAt,
+            corner: loupeCorner(imageToScreen(view, loupeAt.px, loupeAt.py), size.width),
+            sizeDevice,
+            cell,
+            originX: loupeOrigin(loupeAt.px, cell, sizeDevice),
+            originY: loupeOrigin(loupeAt.py, cell, sizeDevice),
+          };
+        })()
+      : null;
+
+  useLayoutEffect(() => {
+    const ctx = loupeRef.current?.getContext('2d');
+    if (!ctx || !loupe || !doc || !image) return;
+    const markers: LoupeMarker[] = [];
+    for (const d of doc.datasets) for (const p of d.points) markers.push({ px: p.px, py: p.py, color: d.color });
+    for (const [name, r] of Object.entries(doc.refs)) {
+      if (r) markers.push({ px: r.px, py: r.py, color: REF_COLORS[name[0] as 'X' | 'Y'] });
+    }
+    drawLoupe({
+      ctx,
+      image,
+      imageWidth: doc.image.width,
+      imageHeight: doc.image.height,
+      px: loupe.at.px,
+      py: loupe.at.py,
+      cell: loupe.cell,
+      size: loupe.sizeDevice,
+      dpr: size.dpr,
+      markers,
+      snap: snapTarget && { px: snapTarget.px, py: snapTarget.py, color: activeColor },
+    });
+  });
 
   // Latest props for the native listeners registered once below.
   const latest = useRef(props);
@@ -137,6 +207,7 @@ export function Workspace(props: Props) {
       selected: props.selected,
       hovered,
       step,
+      snap: snapTarget && { ...snapTarget, color: activeColor },
     });
   });
 
@@ -155,10 +226,20 @@ export function Workspace(props: Props) {
       const hit = hitTest(doc, view, x, y, step);
       if (hit) {
         props.onSelect(hit);
+        setDragTarget(hit);
         const pos = targetPos(doc, hit);
         const at = screenToImage(view, x, y);
         // Keep the grab offset so the marker doesn't jump to the cursor.
-        gesture.current = { kind: 'drag', target: hit, startX: x, startY: y, dx: pos.px - at.px, dy: pos.py - at.py, moved: false };
+        gesture.current = {
+          kind: 'drag',
+          id: ++gestureSeq,
+          target: hit,
+          startX: x,
+          startY: y,
+          dx: pos.px - at.px,
+          dy: pos.py - at.py,
+          moved: false,
+        };
       } else {
         gesture.current = { kind: 'click', startX: x, startY: y };
       }
@@ -177,6 +258,7 @@ export function Workspace(props: Props) {
     if (!doc) return;
     const { x, y } = local(e);
     const at = screenToImage(view, x, y);
+    setPointer({ x, y });
     props.onCursor(isOnImage(at.px, at.py, doc.image.width, doc.image.height) ? at : null);
     const g = gesture.current;
     if (!g) {
@@ -193,7 +275,7 @@ export function Workspace(props: Props) {
       if (!g.moved && Math.hypot(x - g.startX, y - g.startY) < CLICK_SLOP) return;
       g.moved = true;
       const p = clampToImage(at.px + g.dx, at.py + g.dy, doc.image.width, doc.image.height);
-      props.onMoveTarget(g.target, p.px, p.py);
+      props.onMoveTarget(g.target, p.px, p.py, g.id);
     }
   };
 
@@ -201,6 +283,7 @@ export function Workspace(props: Props) {
     const g = gesture.current;
     gesture.current = null;
     setGestureKind(null);
+    setDragTarget(null);
     if (!doc || !g || g.kind === 'pan') return;
     const { x, y } = local(e);
     const at = screenToImage(view, x, y);
@@ -221,13 +304,13 @@ export function Workspace(props: Props) {
     if (step === 'axes' && props.placingRef) {
       props.onPlaceRef(props.placingRef, at.px, at.py);
     } else if (step === 'data') {
-      props.onAddPoint(at.px, at.py);
+      const snapped = pixels ? findSnapTarget(pixels, at.px, at.py, snapOptions(view.scale)) : null;
+      props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py);
     } else {
       props.onSelect(null);
     }
   };
 
-  const placing = (step === 'axes' && props.placingRef !== null) || step === 'data';
   const cursor =
     gestureKind === 'pan' || gestureKind === 'drag'
       ? 'grabbing'
@@ -269,10 +352,12 @@ export function Workspace(props: Props) {
         onPointerCancel={() => {
           gesture.current = null;
           setGestureKind(null);
+          setDragTarget(null);
         }}
         onPointerLeave={() => {
           if (!gesture.current) {
             setHovered(null);
+            setPointer(null);
             props.onCursor(null);
           }
         }}
@@ -285,6 +370,29 @@ export function Workspace(props: Props) {
         data-offset-x={view.offsetX}
         data-offset-y={view.offsetY}
       />
+      {loupe && (
+        <div
+          className={`loupe ${loupe.corner}`}
+          data-testid="loupe"
+          data-corner={loupe.corner}
+          // The loupe's mapping, for tests: image (px, py) at the centre, device px per image px,
+          // and the device-pixel position of image pixel 0's top-left corner.
+          data-px={loupe.at.px}
+          data-py={loupe.at.py}
+          data-cell={loupe.cell}
+          data-origin-x={loupe.originX}
+          data-origin-y={loupe.originY}
+          {...(snapTarget && { 'data-snap-px': snapTarget.px, 'data-snap-py': snapTarget.py })}
+        >
+          <canvas ref={loupeRef} width={loupe.sizeDevice} height={loupe.sizeDevice} style={{ width: LOUPE_SIZE, height: LOUPE_SIZE }} />
+          <div className="loupe-caption">
+            <span data-testid="loupe-pixel">
+              pixel ({Math.round(loupe.at.px)}, {Math.round(loupe.at.py)})
+            </span>
+            <span>{snapTarget ? 'snap ◎' : `${props.loupe.zoom}×`}</span>
+          </div>
+        </div>
+      )}
       {!doc && (
         <div className="empty-state">
           <p className="empty-title">Drop a chart image here</p>
@@ -303,7 +411,5 @@ export function Workspace(props: Props) {
 }
 
 function targetPos(doc: DocState, t: Target): { px: number; py: number } {
-  if (t.kind === 'ref') return doc.refs[t.ref]!;
-  const p = doc.datasets.find((d) => d.id === t.datasetId)?.points.find((q) => q.id === t.pointId);
-  return p ?? { px: 0, py: 0 };
+  return findTargetPos(doc, t) ?? { px: 0, py: 0 };
 }

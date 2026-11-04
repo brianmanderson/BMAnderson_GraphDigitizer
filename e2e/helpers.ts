@@ -99,3 +99,73 @@ export async function pasteFile(page: Page, rel: string, name: string, type: str
     { base64, name, type },
   );
 }
+
+interface KmTruth {
+  xAxis: { axisLineRow: number; ticks: { value: number; px: number }[] };
+  yAxis: { axisLineCol: number; ticks: { value: number; py: number }[] };
+  knownValues: { x: [number, number]; y: number; py?: number }[];
+}
+
+export const kmTruth = readFixtureJson<KmTruth>('real/km-pericardial-effusion.json');
+
+/** Drop the real Kaplan–Meier figure and calibrate it from its labelled ticks (0–120, 0–1). */
+export async function loadAndCalibrateKm(page: Page) {
+  await dropFile(page, 'real/km-pericardial-effusion.jpg', 'km-pericardial-effusion.jpg', 'image/jpeg');
+  await expect(page.getByTestId('notice')).toContainText('Loaded km-pericardial-effusion.jpg');
+  const tick = <T extends { value: number }>(ticks: T[], value: number) => ticks.find((t) => t.value === value)!;
+  const row = kmTruth.xAxis.axisLineRow;
+  const col = kmTruth.yAxis.axisLineCol;
+  await calibrate(page, {
+    X1: { px: tick(kmTruth.xAxis.ticks, 0).px, py: row, value: '0' },
+    X2: { px: tick(kmTruth.xAxis.ticks, 120).px, py: row, value: '120' },
+    Y1: { px: col, py: tick(kmTruth.yAxis.ticks, 0).py, value: '0' },
+    Y2: { px: col, py: tick(kmTruth.yAxis.ticks, 1).py, value: '1' },
+  });
+}
+
+export async function goToStep(page: Page, step: 'Image' | 'Axes' | 'Data') {
+  await page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: new RegExp(step) }).click();
+}
+
+/** The loupe's state from its data attributes (see Workspace.tsx). */
+export async function loupeState(page: Page) {
+  return page.getByTestId('loupe').evaluate((el) => {
+    const d = (el as HTMLElement).dataset;
+    return {
+      corner: d.corner,
+      px: Number(d.px),
+      py: Number(d.py),
+      cell: Number(d.cell),
+      originX: Number(d.originX),
+      originY: Number(d.originY),
+      snap: d.snapPx === undefined ? null : { px: Number(d.snapPx), py: Number(d.snapPy) },
+    };
+  });
+}
+
+/** The parts of a saved Project the specs look at. */
+export interface SavedProject {
+  version: number;
+  image: { name: string; width: number; height: number; dataUrl: string };
+  calibration: { xScale: string; yScale: string } | null;
+  draftCalibration?: { xScale: string; yScale: string; refs: Record<string, { px: number; py: number; value: number | string }> };
+  datasets: { id: string; name: string; color: string; points: { id: string; px: number; py: number }[] }[];
+}
+
+/** The autosaved project in IndexedDB, or null. */
+export async function readAutosave(page: Page): Promise<{ project: SavedProject; activeDatasetId: string } | null> {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('graph-digitizer', 1);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains('autosave')) return resolve(null);
+          const get = db.transaction('autosave').objectStore('autosave').get('current');
+          get.onsuccess = () => resolve(get.result ?? null);
+          get.onerror = () => reject(get.error);
+        };
+      }),
+  );
+}

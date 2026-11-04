@@ -11,6 +11,12 @@ import { imageToScreen, type View } from './view.ts';
 
 export type Target = { kind: 'ref'; ref: RefName } | { kind: 'point'; datasetId: string; pointId: string };
 
+/** Where a marker is, or null when it no longer exists (e.g. after an undo). */
+export function findTargetPos(doc: DocState, t: Target): { px: number; py: number } | null {
+  if (t.kind === 'ref') return doc.refs[t.ref] ?? null;
+  return doc.datasets.find((d) => d.id === t.datasetId)?.points.find((q) => q.id === t.pointId) ?? null;
+}
+
 export const REF_COLORS: Readonly<Record<'X' | 'Y', string>> = { X: '#c92a2a', Y: '#5f3dc4' };
 const OVERLAY = 'rgba(12, 133, 153, 0.32)';
 const OVERLAY_AXIS = 'rgba(12, 133, 153, 0.85)';
@@ -29,6 +35,8 @@ export interface DrawInput {
   hovered: Target | null;
   /** Ref markers are emphasised while calibrating. */
   step: 'image' | 'axes' | 'data';
+  /** Where a click would place the next point when snapping is on (image px, blob size). */
+  snap: { px: number; py: number; width: number; height: number; color: string } | null;
 }
 
 const sameTarget = (a: Target | null, b: Target): boolean =>
@@ -78,6 +86,30 @@ export function drawWorkspace(input: DrawInput): void {
     const target: Target = { kind: 'ref', ref: name };
     drawRef(ctx, imageToScreen(view, r.px, r.py), name, input.step === 'axes', sameTarget(input.hovered, target) || sameTarget(input.selected, target));
   }
+
+  if (input.snap) drawSnap(ctx, view, input.snap);
+}
+
+/** Dashed ring around the blob a click would snap to, with a dot at its centroid. */
+function drawSnap(ctx: CanvasRenderingContext2D, view: View, snap: NonNullable<DrawInput['snap']>) {
+  const p = imageToScreen(view, snap.px, snap.py);
+  const radius = Math.max(7, (Math.max(snap.width, snap.height) * view.scale) / 2 + 4);
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([4, 3]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = snap.color;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 1.75, 0, Math.PI * 2);
+  ctx.fillStyle = snap.color;
+  ctx.fill();
+  ctx.restore();
 }
 
 function line(ctx: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x: number; y: number }) {

@@ -1,26 +1,32 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { calibrateSpec, type RefName } from './core/index.ts';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { calibrateSpec, parseProject, parseProjectText, type Project, type RefName } from './core/index.ts';
 import { AxesStep } from './components/AxesStep.tsx';
 import { DataStep } from './components/DataStep.tsx';
 import { DataTable } from './components/DataTable.tsx';
 import { Workspace, type Step } from './components/Workspace.tsx';
 import {
-  appReducer,
   calibrationSpec,
+  fromProject,
   hasWork,
   newDoc,
   nextDatasetDefaults,
   nextUnplacedRef,
   toProject,
   type AppAction,
+  type DocState,
 } from './state/doc.ts';
-import type { Target } from './ui/draw.ts';
+import { EMPTY_HISTORY, canRedo, canUndo, historyReducer } from './state/history.ts';
+import { readAutosave, writeAutosave } from './ui/autosave.ts';
+import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
-import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, loadImageFile } from './ui/loadImage.ts';
+import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, isProjectFile, loadImageFile } from './ui/loadImage.ts';
+import { DEFAULT_LOUPE_ZOOM, LOUPE_ZOOMS } from './ui/loupe.ts';
+import { nudgeDirection, nudgeStep, nudged } from './ui/nudge.ts';
 import { exportCells, formatValue, toCsv, toTsv, type TableOptions } from './ui/table.ts';
 import { IDENTITY_VIEW, fitView, zoomAt, type View } from './ui/view.ts';
 
-type Notice = { kind: 'error' | 'info'; text: string };
+/** `undoRev`: the history revision this notice's Undo button undoes; hidden once it moves on. */
+type Notice = { kind: 'error' | 'info'; text: string; undoRev?: number };
 
 const newId = () => crypto.randomUUID();
 
@@ -33,43 +39,83 @@ const STEPS: { id: Step; label: string }[] = [
   { id: 'data', label: 'Data' },
 ];
 
+/** The step to show for a restored or opened document: Data once the axes are calibrated. */
+function stepFor(doc: DocState): Step {
+  const spec = calibrationSpec(doc);
+  return spec && calibrateSpec(spec).ok ? 'data' : 'axes';
+}
+
+const targetKey = (t: Target) => (t.kind === 'ref' ? t.ref : `${t.datasetId}/${t.pointId}`);
+
+/** Precision-tool preferences, remembered per browser (not part of the project). */
+interface Prefs {
+  loupe: boolean;
+  loupeZoom: number;
+  snap: boolean;
+}
+const PREFS_KEY = 'graph-digitizer:prefs';
+const DEFAULT_PREFS: Prefs = { loupe: true, loupeZoom: DEFAULT_LOUPE_ZOOM, snap: false };
+
+function loadPrefs(): Prefs {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>;
+    return {
+      loupe: typeof raw.loupe === 'boolean' ? raw.loupe : DEFAULT_PREFS.loupe,
+      loupeZoom: (LOUPE_ZOOMS as readonly number[]).includes(raw.loupeZoom ?? NaN) ? raw.loupeZoom! : DEFAULT_PREFS.loupeZoom,
+      snap: typeof raw.snap === 'boolean' ? raw.snap : DEFAULT_PREFS.snap,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
 export function App() {
-  const [doc, rawDispatch] = useReducer(appReducer, null);
+  const [history, historyDispatch] = useReducer(historyReducer, EMPTY_HISTORY);
+  const doc = history.present;
   const [step, setStep] = useState<Step>('image');
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  /** The decoded image, tagged with the document image it was decoded from. */
+  const [decoded, setDecoded] = useState<{ of: DocState['image']; el: HTMLImageElement } | null>(null);
   const [view, setView] = useState<View>(IDENTITY_VIEW);
   const viewport = useRef({ width: 0, height: 0 });
-  const [selected, setSelected] = useState<Target | null>(null);
+  const [selectedRaw, setSelected] = useState<Target | null>(null);
   /** A ref the user chose to (re-)place; otherwise the next unplaced ref is placed. */
   const [chosenRef, setChosenRef] = useState<RefName | null>(null);
   const [focusRef, setFocusRef] = useState<RefName | null>(null);
   const [cursor, setCursor] = useState<{ px: number; py: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [tableView, setTableView] = useState({ showPixels: false, sortByX: false });
+  const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
+  /** The selection was just nudged with the keyboard: the loupe shows it until the mouse moves. */
+  const [loupeOnSelection, setLoupeOnSelection] = useState(false);
+  const [autosaved, setAutosaved] = useState<{ ok: boolean; at: number } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const projectInput = useRef<HTMLInputElement>(null);
 
-  const dispatch = useCallback((a: AppAction) => rawDispatch(a), []);
+  const dispatch = useCallback((action: AppAction, group?: string) => {
+    historyDispatch(group === undefined ? { type: 'edit', action } : { type: 'edit', action, group });
+  }, []);
+  const undo = useCallback(() => historyDispatch({ type: 'undo' }), []);
+  const redo = useCallback(() => historyDispatch({ type: 'redo' }), []);
   const onFocused = useCallback(() => setFocusRef(null), []);
+
+  // A selection whose marker an undo removed is no selection.
+  const selected = selectedRaw && doc && findTargetPos(doc, selectedRaw) ? selectedRaw : null;
+  const image = decoded && doc && decoded.of === doc.image ? decoded.el : null;
 
   const spec = useMemo(() => (doc ? calibrationSpec(doc) : null), [doc]);
   const result = useMemo(() => (spec ? calibrateSpec(spec) : null), [spec]);
   const calibration = result?.ok ? result.calibration : null;
   const placingRef = doc ? (chosenRef ?? nextUnplacedRef(doc.refs)) : null;
 
-  // Decode the image for drawing whenever the document's image changes.
-  const dataUrl = doc?.image.dataUrl;
   useEffect(() => {
-    if (!dataUrl) return;
-    let live = true;
-    decodeImage(dataUrl).then(
-      (img) => live && setImage(img),
-      () => live && setNotice({ kind: 'error', text: 'The image could not be displayed.' }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [dataUrl]);
-
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // Storage unavailable (private mode, quota): preferences just aren't remembered.
+    }
+  }, [prefs]);
 
   /** Image size to fit once the workspace has been measured (it may not be on first load). */
   const pendingFit = useRef<{ width: number; height: number } | null>(null);
@@ -95,30 +141,149 @@ export function App() {
     [fitImage],
   );
 
+  // Whenever the document's image changes (load, open, restore, or undo across a load): decode
+  // it for drawing and fit it to the window.
+  const docImage = doc?.image ?? null;
+  useEffect(() => {
+    if (!docImage) return;
+    let live = true;
+    fitImage(docImage.width, docImage.height);
+    decodeImage(docImage.dataUrl).then(
+      (el) => live && setDecoded({ of: docImage, el }),
+      () => live && setNotice({ kind: 'error', text: 'The image could not be displayed.' }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [docImage, fitImage]);
+
+  /** Replace the document with an undoable step, and say so with an Undo button when work was replaced. */
+  const replaceDoc = useCallback(
+    (next: DocState, text: string) => {
+      const replacesWork = hasWork(doc);
+      dispatch({ type: 'replace-doc', doc: next });
+      setSelected(null);
+      setChosenRef(null);
+      setStep(stepFor(next));
+      setNotice({
+        kind: 'info',
+        text: replacesWork ? `${text} Undo brings back the previous work.` : text,
+        ...(replacesWork && { undoRev: history.rev + 1 }),
+      });
+    },
+    [doc, dispatch, history.rev],
+  );
+
+  const openProject = useCallback(
+    async (file: File) => {
+      const parsed = parseProjectText(await file.text());
+      if (!parsed.ok) {
+        setNotice({ kind: 'error', text: `"${file.name}": ${parsed.message}` });
+        return;
+      }
+      const { project } = parsed;
+      try {
+        const el = await decodeImage(project.image.dataUrl);
+        if (el.naturalWidth !== project.image.width || el.naturalHeight !== project.image.height) {
+          setNotice({
+            kind: 'error',
+            text: `"${file.name}": the embedded image is ${el.naturalWidth} × ${el.naturalHeight} px, but the project says ${project.image.width} × ${project.image.height} px.`,
+          });
+          return;
+        }
+      } catch {
+        setNotice({ kind: 'error', text: `"${file.name}": the embedded image could not be decoded.` });
+        return;
+      }
+      const migrated = parsed.migratedFrom === null ? '' : ` (converted from format ${parsed.migratedFrom})`;
+      replaceDoc(fromProject(project), `Opened ${file.name}${migrated}.`);
+    },
+    [replaceDoc],
+  );
+
   const handleFile = useCallback(
     async (file: File) => {
-      if (hasWork(doc) && !window.confirm('Load a new image? The current calibration and points will be cleared.')) return;
+      if (isProjectFile(file)) {
+        await openProject(file);
+        return;
+      }
       const loaded = await loadImageFile(file);
       if (!loaded.ok) {
         setNotice({ kind: 'error', text: loaded.message });
         return;
       }
-      setImage(null);
-      dispatch({ type: 'replace-doc', doc: newDoc(loaded.image, newId(), doc?.settings) });
-      setSelected(null);
-      setChosenRef(null);
-      setStep('axes');
-      fitImage(loaded.image.width, loaded.image.height);
-      setNotice({ kind: 'info', text: `Loaded ${loaded.image.name} (${loaded.image.width} × ${loaded.image.height} px).` });
+      const next = newDoc(loaded.image, newId(), doc?.settings);
+      replaceDoc(next, `Loaded ${loaded.image.name} (${loaded.image.width} × ${loaded.image.height} px).`);
     },
-    [doc, dispatch, fitImage],
+    [doc, openProject, replaceDoc],
   );
 
-  // Paste an image from the clipboard anywhere on the page.
+  // Autosave: restore the last session once on start, then save after every change (debounced).
+  const docRef = useRef(doc);
+  useLayoutEffect(() => {
+    docRef.current = doc;
+  });
+  const restoreDone = useRef(false);
+  useEffect(() => {
+    let live = true;
+    readAutosave()
+      .then((raw) => {
+        if (!live) return;
+        restoreDone.current = true;
+        const rec = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+        const parsed = rec ? parseProject(rec.project) : null;
+        // Never clobber an image the user loaded while the autosave was being read.
+        if (!parsed?.ok || docRef.current !== null) return;
+        const active = typeof rec?.activeDatasetId === 'string' ? rec.activeDatasetId : undefined;
+        const restored = fromProject(parsed.project, active);
+        historyDispatch({ type: 'reset', doc: restored });
+        setStep(stepFor(restored));
+        const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
+        setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
+      })
+      .catch(() => {
+        restoreDone.current = true;
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const pendingSave = useRef<DocState | null>(null);
+  const saveNow = useCallback(() => {
+    const d = pendingSave.current;
+    if (!d) return;
+    pendingSave.current = null;
+    const project: Project = toProject(d);
+    const savedAt = Date.now();
+    writeAutosave({ project, activeDatasetId: d.activeDatasetId, savedAt }).then(
+      () => setAutosaved({ ok: true, at: savedAt }),
+      () => setAutosaved({ ok: false, at: savedAt }),
+    );
+  }, []);
+  useEffect(() => {
+    if (!doc || !restoreDone.current) return;
+    pendingSave.current = doc;
+    const t = setTimeout(saveNow, 400);
+    return () => clearTimeout(t);
+  }, [doc, saveNow]);
+  useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState === 'hidden') saveNow();
+    };
+    window.addEventListener('pagehide', saveNow);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.removeEventListener('pagehide', saveNow);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  }, [saveNow]);
+
+  // Paste an image (or a project file) from the clipboard anywhere on the page.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const file = firstFile(e.clipboardData);
-      if (file && file.type.startsWith('image/')) {
+      if (file && (file.type.startsWith('image/') || isProjectFile(file))) {
         e.preventDefault();
         void handleFile(file);
       } else if (!isTypingTarget(e.target)) {
@@ -140,9 +305,57 @@ export function App() {
     setSelected(null);
   }, [selected, dispatch]);
 
+  const saveProject = useCallback(() => {
+    if (!doc) return;
+    downloadText(`${baseName(doc.image.name)}-project.json`, JSON.stringify(toProject(doc), null, 2), 'application/json');
+  }, [doc]);
+
+  /** Arrow keys move the selection (refs in Axes, points in Data); returns whether it did. */
+  const nudgeSelected = useCallback(
+    (e: KeyboardEvent): boolean => {
+      const dir = nudgeDirection(e.key);
+      if (!dir || !doc || !selected) return false;
+      if ((selected.kind === 'ref' ? 'axes' : 'data') !== step) return false;
+      const pos = findTargetPos(doc, selected);
+      if (!pos) return false;
+      const amount = nudgeStep(e);
+      const p = nudged(pos, dir, amount, doc.image.width, doc.image.height);
+      setLoupeOnSelection(true);
+      if (p.px === pos.px && p.py === pos.py) return true;
+      // Holding a key (or pressing it repeatedly) is one undo step.
+      const group = `nudge:${targetKey(selected)}:${e.key}:${amount}`;
+      if (selected.kind === 'ref') dispatch({ type: 'place-ref', ref: selected.ref, ...p }, group);
+      else dispatch({ type: 'move-point', datasetId: selected.datasetId, pointId: selected.pointId, ...p }, group);
+      return true;
+    },
+    [doc, selected, step, dispatch],
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.altKey) {
+        // Undo/redo work everywhere, text fields included: every edit is in the app's history.
+        const k = e.key.toLowerCase();
+        if (k === 'z' || k === 'y') {
+          e.preventDefault();
+          if (k === 'y' || e.shiftKey) redo();
+          else undo();
+        } else if (k === 's') {
+          e.preventDefault();
+          saveProject();
+        } else if (k === 'o') {
+          e.preventDefault();
+          projectInput.current?.click();
+        }
+        return;
+      }
+      if (mod || isTypingTarget(e.target)) return;
+      if (nudgeSelected(e)) {
+        e.preventDefault(); // Alt+Left would otherwise navigate back.
+        return;
+      }
+      if (e.altKey) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selected) {
           e.preventDefault();
@@ -151,13 +364,23 @@ export function App() {
       } else if (e.key === 'Escape') {
         setSelected(null);
         setChosenRef(null);
+        setLoupeOnSelection(false);
       } else if (e.key === 'f' || e.key === 'F') {
         fit();
+      } else if (e.key === 'z' || e.key === 'Z') {
+        setPrefs((p) => ({ ...p, loupe: !p.loupe }));
+      } else if (e.key === 's' || e.key === 'S') {
+        setPrefs((p) => ({ ...p, snap: !p.snap }));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, deleteSelected, fit]);
+  }, [selected, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
+
+  const onCursor = useCallback((pos: { px: number; py: number } | null) => {
+    setCursor(pos);
+    setLoupeOnSelection(false);
+  }, []);
 
   const onPlaceRef = useCallback(
     (ref: RefName, px: number, py: number) => {
@@ -181,9 +404,10 @@ export function App() {
   );
 
   const onMoveTarget = useCallback(
-    (t: Target, px: number, py: number) => {
-      if (t.kind === 'ref') dispatch({ type: 'place-ref', ref: t.ref, px, py });
-      else dispatch({ type: 'move-point', datasetId: t.datasetId, pointId: t.pointId, px, py });
+    (t: Target, px: number, py: number, gesture: number) => {
+      const group = `drag:${gesture}`;
+      if (t.kind === 'ref') dispatch({ type: 'place-ref', ref: t.ref, px, py }, group);
+      else dispatch({ type: 'move-point', datasetId: t.datasetId, pointId: t.pointId, px, py }, group);
     },
     [dispatch],
   );
@@ -191,6 +415,7 @@ export function App() {
   const onSelect = useCallback(
     (t: Target | null) => {
       setSelected(t);
+      setLoupeOnSelection(false);
       if (t?.kind === 'point' && doc && t.datasetId !== doc.activeDatasetId) {
         dispatch({ type: 'set-active-dataset', datasetId: t.datasetId });
       }
@@ -210,15 +435,8 @@ export function App() {
   const onTableOptions = useCallback(
     (patch: Partial<TableOptions>) => {
       const { significantFigures, dateFormat, ...rest } = patch;
-      if (significantFigures !== undefined || dateFormat !== undefined) {
-        dispatch({
-          type: 'set-settings',
-          settings: {
-            ...(significantFigures !== undefined && { significantFigures }),
-            ...(dateFormat !== undefined && { dateFormat }),
-          },
-        });
-      }
+      if (significantFigures !== undefined) dispatch({ type: 'set-settings', settings: { significantFigures } }, 'settings:significantFigures');
+      if (dateFormat !== undefined) dispatch({ type: 'set-settings', settings: { dateFormat } }, 'settings:dateFormat');
       if (Object.keys(rest).length > 0) setTableView((v) => ({ ...v, ...rest }));
     },
     [dispatch],
@@ -244,11 +462,6 @@ export function App() {
     );
   }, [cells]);
 
-  const onExportJson = useCallback(() => {
-    if (!doc) return;
-    downloadText(`${baseName(doc.image.name)}-project.json`, JSON.stringify(toProject(doc), null, 2), 'application/json');
-  }, [doc]);
-
   const addDataset = () => {
     if (!doc) return;
     dispatch({ type: 'add-dataset', dataset: { id: newId(), ...nextDatasetDefaults(doc), points: [] } });
@@ -256,10 +469,10 @@ export function App() {
 
   const deleteDataset = (id: string) => {
     const d = doc?.datasets.find((x) => x.id === id);
-    if (!d) return;
-    if (d.points.length > 0 && !window.confirm(`Delete "${d.name}" and its ${d.points.length} points?`)) return;
+    if (!d || !doc || doc.datasets.length <= 1) return;
     dispatch({ type: 'delete-dataset', datasetId: id });
-    if (selected?.kind === 'point' && selected.datasetId === id) setSelected(null);
+    const n = d.points.length;
+    setNotice({ kind: 'info', text: `Deleted "${d.name}"${n > 0 ? ` and its ${n} point${n === 1 ? '' : 's'}` : ''}.`, undoRev: history.rev + 1 });
   };
 
   const zoomBy = (factor: number) => {
@@ -276,13 +489,24 @@ export function App() {
     setChosenRef(null);
   };
 
+  const loupe = useMemo(() => ({ enabled: prefs.loupe, zoom: prefs.loupeZoom }), [prefs.loupe, prefs.loupeZoom]);
+  const showUndo = notice?.undoRev !== undefined && notice.undoRev === history.rev && canUndo(history);
+
   return (
     <div className="app">
       <header className="toolbar">
         <h1>Graph Digitizer</h1>
-        <button type="button" onClick={() => fileInput.current?.click()}>
-          Open image…
-        </button>
+        <div className="tool-group">
+          <button type="button" onClick={() => fileInput.current?.click()}>
+            Open image…
+          </button>
+          <button type="button" onClick={() => projectInput.current?.click()} title="Open a saved project (Ctrl+O)">
+            Open project…
+          </button>
+          <button type="button" onClick={saveProject} disabled={!doc} title="Save the project with its image as a .json file (Ctrl+S)">
+            Save project
+          </button>
+        </div>
         <input
           ref={fileInput}
           type="file"
@@ -295,7 +519,27 @@ export function App() {
             if (f) void handleFile(f);
           }}
         />
-        <div className="zoom" role="group" aria-label="Zoom">
+        <input
+          ref={projectInput}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          data-testid="project-input"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void openProject(f);
+          }}
+        />
+        <div className="tool-group" role="group" aria-label="History">
+          <button type="button" className="icon-text" onClick={undo} disabled={!canUndo(history)} aria-label="Undo" title="Undo (Ctrl+Z)">
+            ↶
+          </button>
+          <button type="button" className="icon-text" onClick={redo} disabled={!canRedo(history)} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+            ↷
+          </button>
+        </div>
+        <div className="zoom tool-group" role="group" aria-label="Zoom">
           <button type="button" onClick={() => zoomBy(1 / 1.25)} disabled={!doc} aria-label="Zoom out">
             −
           </button>
@@ -309,15 +553,53 @@ export function App() {
             Fit
           </button>
         </div>
-        <span className="spacer" />
-        {notice && (
-          <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice">
-            {notice.text}
-            <button type="button" className="icon" onClick={() => setNotice(null)} aria-label="Dismiss">
-              ✕
-            </button>
-          </div>
-        )}
+        <div className="tool-group" role="group" aria-label="Precision">
+          <button
+            type="button"
+            className="toggle"
+            aria-pressed={prefs.loupe}
+            onClick={() => setPrefs((p) => ({ ...p, loupe: !p.loupe }))}
+            title="Magnifier loupe while placing and dragging (Z)"
+          >
+            Loupe
+          </button>
+          <select
+            value={prefs.loupeZoom}
+            onChange={(e) => setPrefs((p) => ({ ...p, loupeZoom: Number(e.target.value) }))}
+            aria-label="Loupe zoom"
+            title="Loupe magnification, relative to the main view"
+          >
+            {LOUPE_ZOOMS.map((z) => (
+              <option key={z} value={z}>
+                {z}×
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="toggle"
+            aria-pressed={prefs.snap}
+            onClick={() => setPrefs((p) => ({ ...p, snap: !p.snap }))}
+            title="Snap new points to the centre of the nearest small marker (S)"
+          >
+            Snap
+          </button>
+        </div>
+        <div className="notice-slot">
+          {notice && (
+            <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice" title={notice.text}>
+              <span className="notice-text">{notice.text}</span>
+              {showUndo && (
+                <button type="button" className="small" onClick={undo}>
+                  Undo
+                </button>
+              )}
+              <button type="button" className="icon" onClick={() => setNotice(null)} aria-label="Dismiss">
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="main">
@@ -335,9 +617,12 @@ export function App() {
           onPlaceRef={onPlaceRef}
           onAddPoint={onAddPoint}
           onMoveTarget={onMoveTarget}
-          onCursor={setCursor}
+          onCursor={onCursor}
           onFile={(f) => void handleFile(f)}
           onOpenFile={() => fileInput.current?.click()}
+          loupe={loupe}
+          loupeOnSelection={loupeOnSelection}
+          snap={prefs.snap}
         />
 
         <aside className="panel">
@@ -364,12 +649,18 @@ export function App() {
             {step === 'image' && (
               <section className="step-body" aria-label="Image">
                 <p className="prompt">Load the chart you want to digitize.</p>
-                <button type="button" className="primary" onClick={() => fileInput.current?.click()}>
-                  Choose image…
-                </button>
+                <div className="row">
+                  <button type="button" className="primary" onClick={() => fileInput.current?.click()}>
+                    Choose image…
+                  </button>
+                  <button type="button" onClick={() => projectInput.current?.click()}>
+                    Open project…
+                  </button>
+                </div>
                 <p className="muted">
                   Or drop a file onto the workspace, or paste an image with <kbd>Ctrl</kbd>+<kbd>V</kbd>. PNG, JPEG,
-                  GIF, WebP and BMP work. Nothing is uploaded: the image stays in this browser tab.
+                  GIF, WebP and BMP work, and saved project (.json) files. Nothing is uploaded: the image stays in this
+                  browser, and your work is autosaved here.
                 </p>
                 {doc && (
                   <p>
@@ -389,7 +680,7 @@ export function App() {
                 focusRef={focusRef}
                 onFocused={onFocused}
                 onScale={(axis, scale) => dispatch({ type: 'set-scale', axis, scale })}
-                onValue={(ref, value) => dispatch({ type: 'set-ref-value', ref, value })}
+                onValue={(ref, value) => dispatch({ type: 'set-ref-value', ref, value }, `value:${ref}`)}
                 onPlace={setChosenRef}
                 onContinue={() => goStep('data')}
               />
@@ -400,8 +691,8 @@ export function App() {
                 calibrated={!!calibration}
                 selected={selected}
                 onActivate={(id) => dispatch({ type: 'set-active-dataset', datasetId: id })}
-                onRename={(id, name) => dispatch({ type: 'rename-dataset', datasetId: id, name })}
-                onRecolor={(id, color) => dispatch({ type: 'recolor-dataset', datasetId: id, color })}
+                onRename={(id, name) => dispatch({ type: 'rename-dataset', datasetId: id, name }, `rename:${id}`)}
+                onRecolor={(id, color) => dispatch({ type: 'recolor-dataset', datasetId: id, color }, `recolor:${id}`)}
                 onDelete={deleteDataset}
                 onAdd={addDataset}
                 onDeleteSelected={deleteSelected}
@@ -419,7 +710,7 @@ export function App() {
               onOptions={onTableOptions}
               onExportCsv={onExportCsv}
               onCopyTsv={() => void onCopyTsv()}
-              onExportJson={onExportJson}
+              onExportJson={saveProject}
             />
           )}
         </aside>
@@ -442,7 +733,14 @@ export function App() {
           <span className="muted">{doc ? 'Move over the image to read coordinates.' : 'No image loaded.'}</span>
         )}
         <span className="spacer" />
-        <span className="muted">Wheel: zoom · Space+drag or middle-drag: pan · F: fit</span>
+        {autosaved && (
+          <span className={autosaved.ok ? 'muted' : 'bad'} data-testid="autosave">
+            {autosaved.ok ? `Autosaved ${timeOf(autosaved.at)}` : 'Autosave failed (storage full or blocked)'}
+          </span>
+        )}
+        <span className="muted">
+          Wheel: zoom · Space/middle-drag: pan · Arrows: nudge (Shift ×10, Alt ×0.1) · Z: loupe · S: snap · F: fit
+        </span>
       </footer>
     </div>
   );

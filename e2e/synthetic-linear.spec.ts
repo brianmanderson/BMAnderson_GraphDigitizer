@@ -116,8 +116,9 @@ test('datasets: add, rename, switch active, delete', async ({ page }) => {
   // Uncalibrated: values are blank, the table still lists the points.
   expect((await tableRows(page, 'Control'))[0]!.slice(1, 3)).toEqual(['—', '—']);
 
-  page.once('dialog', (d) => void d.accept());
+  // No confirmation prompt: the deletion can be undone instead.
   await page.getByRole('button', { name: 'Delete Control' }).click();
   await expect(page.getByTestId('table-Control')).toHaveCount(0);
+  await expect(page.getByTestId('notice')).toContainText('Deleted "Control" and its 2 points.');
   await expect(page.getByRole('button', { name: 'Delete Dataset 1' })).toBeDisabled();
 });

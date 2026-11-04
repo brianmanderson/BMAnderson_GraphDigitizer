@@ -57,3 +57,25 @@ export function firstFile(data: DataTransfer | null): File | null {
   }
   return null;
 }
+
+const pixelCache = new WeakMap<HTMLImageElement, ImageData>();
+
+/** The decoded image's RGBA pixels (for snapping), read once per image and cached. */
+export function imagePixels(img: HTMLImageElement): ImageData | null {
+  const cached = pixelCache.get(img);
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx || c.width === 0 || c.height === 0) return null;
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, c.width, c.height);
+  pixelCache.set(img, data);
+  return data;
+}
+
+/** True for files that look like a saved project rather than an image. */
+export function isProjectFile(file: File): boolean {
+  return file.type === 'application/json' || /\.json$/i.test(file.name);
+}
