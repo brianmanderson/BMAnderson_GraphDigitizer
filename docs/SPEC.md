@@ -136,8 +136,8 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
 - Tests: Vitest for logic; Playwright for a small set of end-to-end flows (added in Phase 2;
   Phase 3 adds a 2× device-pixel-ratio run for the loupe).
 - Automation (Phases 4–5): hand-rolled image analysis in TS/Web Workers first; Tesseract.js
-  for OCR. Pull in OpenCV.js only if a benchmark shows the simple approach is insufficient
-  (Phase 4: it did not — see below).
+  for OCR (Phase 5: vendored and lazy-loaded, see Auto-calibration). Pull in OpenCV.js only if
+  a benchmark shows the simple approach is insufficient (Phase 4: it did not — see below).
 
 ## Digitizing UI (decided in Phase 2)
 
@@ -240,7 +240,7 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   `src/core`), so Phase 5 can run it in a Web Worker. `detectAxes({ width, height, data })` takes
   RGBA bytes and returns the skew angle, the X/Y axis lines (sub-pixel offset, ends, contrast,
   thickness, confidence), the plot box (four corners; whether top/right are drawn frame lines),
-  per-axis tick sets and the strongest line candidates. Not wired into the UI in Phase 4.
+  per-axis tick sets and the strongest line candidates. Phase 5 consumes it (Auto-calibration).
 - **Pipeline**: adaptive darkness (pixel darker than the local mean over ~1/40 of the short side;
   ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
   clearly better), refined once from the median tilt of the longest fitted lines → per row/column
@@ -294,6 +294,95 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   left frame lines; that is correct, and Phase 5 must calibrate from tick positions + labels,
   never assume the axis line is value 0. Labels encode this the same way (`axisLineRow/Col`).
 
+## Auto-calibration (decided in Phase 5)
+
+- **Pipeline** (`autoCalibrate(rgba, ocr)` in `src/auto/auto.ts`, pure TS, OCR injected):
+  `detectAxes` → `findLabels` (`labels.ts`) → OCR of each label → `suggestAxis` per axis
+  (`suggest.ts`) → `crossCheck` in 2-D. In the app it runs in a module worker
+  (`src/workers/auto.worker.ts`); the worker asks the page for OCR, which a Tesseract.js pool
+  answers (`src/ui/ocr.ts`, dynamically imported on first use, so it is not in the first-paint
+  bundle; nested workers are not available everywhere). The benchmark uses the same pool
+  (`src/ocr/pool.ts`) in Node.
+- **Tesseract is vendored, not fetched**: `vite.config.ts` (plugin `tesseract-assets`) serves its
+  worker script, the three LSTM-only WASM cores and the `@tesseract.js-data/eng` 4.0.0
+  `best_int` data (2.9 MB gzipped) under `/tesseract/` in dev and copies them to
+  `dist/tesseract/` (~15 MB); no CDN at runtime, works offline, no IndexedDB copy
+  (`cacheMethod: 'none'`). The e2e spec aborts every non-localhost request and asserts none.
+- **Finding labels**: the band outside each axis (below X, left of Y), sampled in the
+  skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
+  adaptive threshold (30 % of the band's 98th-percentile darkness, clamped to 24–80); dropped:
+  too big, solid square blobs (markers, ≥ 80 % filled), colourful ones (mean chroma ≥ 80: data,
+  coloured tables — tick labels are black or grey). Rows by vertical overlap, words by gaps under
+  half the text height; Y words grow from the axis side, and a much taller glyph sticking out
+  above and below (an axis-title letter) starts a new word. **Matching**: with ≥ 2 major ticks,
+  X = the row with most words centred on ticks; Y = per tick the axis-nearest word of the level
+  row, within 3 text heights of the axis (the CNS number-at-risk row labels fail both tests).
+  Without tick marks: the X row nearest the axis with ≥ 3 words, or the right-aligned Y words;
+  positions are then label centres (looser tolerance).
+- **OCR**: crops are the word box upscaled bilinearly to a 28 px body height (best of 24/28/32/40
+  on the corpus), dark on white, contrast-normalised. Pass 1 uses a numeric whitelist
+  (`0-9 . , - + e E × x %`), page-segmentation mode 7, falling back to 6 (and 10 for single
+  characters) when a read is empty — Tesseract returns nothing for a lone "0" in 7/10 and misreads
+  lone exponent digits in 6. A raised trailing group is an exponent, read separately and joined
+  as `base^exp`. Pass 2 (free text) runs when pass 1 is not confident or a label did not parse;
+  the better interpretation wins.
+- **Layout beats OCR for small marks**: Tesseract reads a small "1.0" as "10" at 96 % confidence,
+  which would scale an axis by ten with a perfect fit. Decimal points/commas are found from the
+  column profile at half the darkest stroke (a run ≤ 0.4 text heights wide with ink only near the
+  baseline, empty columns on both sides, digits beyond) and re-inserted by position (digits are
+  tabular); a leading minus is restored the same way. A number with a leading zero followed by a
+  digit (`08`, `000`) is never a value: it is a lost point.
+- **Parsing** (`parseLabel.ts`): sign variants, thousands separators (`10,000`, `1 000`; a single
+  comma not followed by exactly three digits is a decimal comma), `1e-3`, `1×10^-3`, `10^3`,
+  superscripts, `%` (the number as printed). Dates: full dates via `parseDateTime`, years, and
+  month names dated from a year label on the same axis (months increase along the axis; a year
+  label means 1 January; walking forward, a month not after the previous one starts a new year).
+  Bare day numbers are never dated (their month and year are printed elsewhere): such an axis is
+  declined rather than read as numbers.
+- **Axis note**: matplotlib's offset/multiplier text (`+1e4` right-aligned under the X labels, or
+  above the Y axis top) is found by position and text height and read both ways (`l I o` → `1 0`
+  repair); a signed term is added, an unsigned power of ten multiplies. A note read below 50 %
+  confidence makes the axis decline — the labels alone are not the values. Text there with two or
+  more real letters (a title, units) is not a note.
+- **Scale inference**: a consensus fit of value vs position (every label pair proposes a line; the
+  one most labels agree with within `max(1.5 px, 3 % of the spacing)` — `max(2.5 px, 8 %)` for
+  label centres — wins, then least squares). Linear vs log10: more agreeing labels wins; log needs
+  the values to span at least a factor of 4 (on a narrow range both fit). Integer years in steps of
+  1–10 → date. A `10^` label whose exponent was not read gets the decade it sits on exactly, else
+  nothing is inferred. A tie (two labels) → "uncertain", decided by `10^k` notation or the tick
+  pattern.
+- **Refs and cross-check**: the two most widely separated agreeing labels with OCR confidence
+  ≥ 0.75 (never inferred ones). The line through them must predict every other agreeing label
+  within 2 × tolerance and at least 60 % of all read labels; then the engine's `calibrate` with all
+  four refs must succeed and reproduce every agreeing label at its tick (2-D residual ≤ 2 ×
+  tolerance). A failure makes that axis "low".
+- **Confidence**: high = ≥ 3 read labels agree, at most one (or 20 %) disagrees, the scale is
+  certain and mean OCR confidence ≥ 0.6; medium = ≥ 3 agree otherwise; low = no usable calibration
+  → status `positions` (refs at the outermost major ticks, values blank) or `none`.
+- **UI**: "Auto-detect axes" at the top of the Axes step. The result is drawn as ghost markers
+  (dashed axis lines, a box per read label — teal agrees, red disagrees — and dashed refs labelled
+  `X1 = 20`) and a panel with the scale, a confidence badge (High/Medium/Low; the score is in its
+  tooltip), the reason and editable values per axis. **Never applied silently**: "Accept
+  suggestion" applies scales and refs as one undo step (`apply-suggestion`), "Discard" drops it;
+  refs it does not mention stay. Partial results are accepted into the manual flow (blank values
+  prompt as usual). A suggestion belongs to the image it was made for.
+- **Benchmark** (`npm run bench:axes`, ~8 s for 62 images with 4 Tesseract workers): per axis the
+  suggested scale and refs predict every labelled true tick that is not a ref; the error is taken
+  in the true scale's linear space as a fraction of the labelled range. *Correct* = scale right and
+  every held-out tick within 1 %; *wrong* = suggested at medium/high but not correct. Gated against
+  the baseline, overall and per category: correct, wrong, wrong-at-high, scale accuracy, images
+  calibrated end to end, known-value error on the real figures. *Calibrated* alone is not gated
+  (declining a doubtful suggestion is the right trade). OCR output is deterministic on a machine;
+  another CPU may pick a different WASM core.
+- **Phase 5 baseline**: 65.3 % of axes correct, **0 wrong**, scale accuracy 97.9 %, median
+  held-out error 0.14 % of range, 48.4 % of images end to end. Real figures: both fully correct,
+  known values within 0.0009 (pericardial plateau 0.162 → 0.1618; CNS 0.548 / 0.437 / 0.294 /
+  0.310 / 0.232 → 0.548 / 0.436 / 0.294 / 0.309 / 0.231). Browser: ~1.3 s per figure on first use
+  (loading Tesseract), ~0.3 s warm. **Known failures** (declined, not wrong): ggplot-style charts
+  (no axis lines), low-DPI and JPEG labels that OCR misreads (dpi:low 44 % correct), log axes
+  whose exponents are 2–4 px tall (x:log10 50 %), date axes labelled with day numbers or without a
+  year, offset notes too small to read, axes whose ticks were not detected.
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):
@@ -303,8 +392,8 @@ npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run t
 ```
 
 `npm run verify` runs all five. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
-dev server on port 5174. `bench:axes` (Phase 4) fails on any regression against
-`bench/axes/baseline.json` (see above).
+dev server on port 5174. `bench:axes` (Phase 4, extended with calibration scoring in Phase 5) fails
+on any regression against `bench/axes/baseline.json` (see above).
 
 ## Non-goals (for now)
 

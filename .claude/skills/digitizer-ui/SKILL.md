@@ -63,6 +63,17 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   effect re-decodes and re-fits whenever `doc.image` changes identity, which covers undo across
   a load.
 
+## Auto-detect (Phase 5)
+
+- App keeps `AutoState` (`src/ui/suggestion.ts`) tagged with the image it was made for — UI state,
+  not in `DocState`, autosave or history. `runAutoDetect` (`src/ui/autoDetect.ts`) starts the
+  worker; the Tesseract pool is created on first use and kept.
+- Ghost markers: `drawWorkspace({ …, ghost })` draws `ghostOf(auto)` in the Axes step only; they
+  are not hit-testable. Editing a suggested value changes only `AutoState`.
+- Accepting = `dispatch(acceptAction(result, values))` → `apply-suggestion` (one undo step,
+  replaces the suggested refs and sets the detected scales, keeps other refs). Never dispatch it
+  without the user pressing "Accept suggestion".
+
 ## e2e hooks — keep them
 
 - Canvas `data-testid="canvas"` with `data-scale`, `data-offset-x`, `data-offset-y` (the view).
@@ -73,9 +84,12 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - Toolbar groups `History` (Undo/Redo; a notice may have its own "Undo" button, so scope to the
   group) and `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select).
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
-  `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`.
+  `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
+  `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,
+  `auto-message-x`/`-y`, `auto-timing`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
-  `Sort by X`, `Significant figures`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`,
+  `Sort by X`, `Significant figures`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
+  `Suggested X1 value`…, `Accept suggestion`, `Discard`,
   `Delete <name>`, the `Steps` navigation and the export button labels.
 
 ## Fixtures

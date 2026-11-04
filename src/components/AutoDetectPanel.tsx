@@ -26,9 +26,16 @@ function AxisBlock({ s, values, onValue }: { s: AxisSuggestion; values: Partial<
           {s.scale && s.status === 'calibrated' ? SCALE_LABELS[s.scale] : 'scale not detected'}
           {s.scale && s.status === 'calibrated' && !s.scaleCertain ? ' (uncertain)' : ''}
         </span>
-        <span className={`badge ${s.level}`} data-testid={`auto-badge-${s.axis}`} title="How sure the suggestion is">
-          {LEVEL_LABEL[s.level]}
-          {s.status === 'calibrated' ? ` ${Math.round(100 * s.confidence)}%` : ''}
+        <span
+          className={`badge ${s.level}`}
+          data-testid={`auto-badge-${s.axis}`}
+          title={
+            s.status === 'calibrated'
+              ? `${LEVEL_LABEL[s.level]} confidence (score ${Math.round(100 * s.confidence)}%: labels agreeing × OCR certainty)`
+              : 'No usable calibration for this axis'
+          }
+        >
+          {LEVEL_LABEL[s.level]} confidence
         </span>
       </div>
       <p className="hint muted" data-testid={`auto-message-${s.axis}`}>

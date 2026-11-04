@@ -16,7 +16,8 @@ description: >
 
 1. **`src/auto` is pure TS and worker-safe**, like `src/core`: `tsconfig.core.json` checks it
    without the DOM lib and ESLint bans browser globals there. Input is plain RGBA
-   (`RgbaImage`), never `ImageData`/canvas. Nothing in the UI calls it yet (Phase 5 does).
+   (`RgbaImage`), never `ImageData`/canvas. Auto-calibration (Phase 5) consumes it in a worker;
+   label finding, OCR and suggestions have their own skill, `auto-calibration`.
 2. **Pixel convention**: integer = pixel centre, origin top-left, y down — in the detector, the
    labels and the generator (`px = xd − 0.5`, `py = H − yd − 0.5` from matplotlib display coords).
 3. **Never tune the corpus to the detector.** Don't edit, drop or regenerate charts because the
@@ -26,8 +27,10 @@ description: >
 4. **No invented ticks.** An axis without tick marks must come back with `ticks: []`,
    `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern.
 5. **Gate**: `npm run bench:axes` is part of `npm run verify` and exits 1 if any gated metric
-   (axes found, box found, tick recall, minor recall, tick precision; or more ticks on bare axes)
-   gets worse than `bench/axes/baseline.json`, overall or in any category. It is deterministic.
+   (axes found, box found, tick recall, minor recall, tick precision; or more ticks on bare axes —
+   and since Phase 5 the calibration metrics, see `auto-calibration`) gets worse than
+   `bench/axes/baseline.json`, overall or in any category. Detection is deterministic; OCR is on
+   one machine. A detection change also moves the calibration numbers: check both tables.
    Update the baseline (`npm run bench:axes -- --update`) only when every change is an
    improvement or a deliberate, explained trade-off, and commit it with the reason.
 

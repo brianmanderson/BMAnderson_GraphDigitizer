@@ -26,10 +26,12 @@ test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the co
 - `lint` runs with `--max-warnings 0`; warnings fail the gate too.
 - `test` is `vitest run` over `src/**/*.test.ts` (engine, detector, reducer, UI helpers). Focus
   with `npx vitest run src/core/dates.test.ts` or `-t "<name>"`.
-- `bench:axes` (~5 s) runs `src/auto` over `bench/axes/` and exits 1 when any gated metric, overall
-  or in any category, is worse than `bench/axes/baseline.json`; it lists per-image changes. Use
-  `-- --verbose` for per-image lines, `-- --only c12,km` to focus. Regressions and baseline
-  updates: load the `axis-detection` skill.
+- `bench:axes` (~8 s) runs `src/auto` — detection and auto-calibration with Tesseract.js OCR (4
+  Node workers, language data from node_modules, no network) — over `bench/axes/` and exits 1 when
+  any gated metric, overall or in any category, is worse than `bench/axes/baseline.json`; it lists
+  per-image changes. Use `-- --verbose` for per-image lines, `-- --only c12,km` to focus.
+  Regressions and baseline updates: load `axis-detection` (detection table) or
+  `auto-calibration` (calibration table).
 - `test:e2e` is `playwright test` (Chromium, 1366×768) over `e2e/*.spec.ts`. First time on a
   machine: `npx playwright install chromium`. It starts `npm run dev` on port **5174** (reusing
   one already there), so a dev server on 5173 doesn't interfere. Focus with
@@ -54,6 +56,9 @@ test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the co
   convention — not flakiness.
 - The Windows clipboard reads back CRLF; compare clipboard text with `split(/\r?\n/)`.
 - Drop and paste are simulated with a `DataTransfer` in the page (`dropFile`, `pasteFile`).
+- `auto-detect.spec.ts` runs real OCR in the browser (first run loads Tesseract, so it waits up to
+  60 s), aborts every non-localhost request and asserts none happened. Two inputs share a name
+  prefix there (`X1 value` and `Suggested X1 value`): use `getByLabel(…, { exact: true })`.
 - `precision.spec.ts` runs one test at `deviceScaleFactor: 2` and compares loupe pixels with the
   source image exactly (any smoothing or off-by-one mapping fails it). Undo specs scope the
   toolbar Undo to the `History` group because a notice can carry its own "Undo" button.
