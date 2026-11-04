@@ -58,6 +58,11 @@ export type DocAction =
   | { type: 'place-ref'; ref: RefName; px: number; py: number }
   | { type: 'set-ref-value'; ref: RefName; value: string }
   | { type: 'clear-ref'; ref: RefName }
+  /**
+   * Accept an auto-detect suggestion (Phase 5) as one edit: the scales it is sure of and the refs
+   * it suggests (a value may be '' when only the position is known). Refs it does not mention stay.
+   */
+  | { type: 'apply-suggestion'; xScale?: ScaleType; yScale?: ScaleType; refs: Partial<Record<RefName, DraftRef>> }
   | { type: 'add-point'; datasetId: string; point: DataPoint }
   | { type: 'move-point'; datasetId: string; pointId: string; px: number; py: number }
   | { type: 'delete-point'; datasetId: string; pointId: string }
@@ -112,6 +117,14 @@ export function docReducer(state: DocState, action: DocAction): DocState {
       const refs = { ...state.refs };
       delete refs[action.ref];
       return { ...state, refs };
+    }
+    case 'apply-suggestion': {
+      const refs = { ...state.refs };
+      for (const name of REF_NAMES) {
+        const r = action.refs[name];
+        if (r && Number.isFinite(r.px) && Number.isFinite(r.py)) refs[name] = { px: r.px, py: r.py, value: r.value };
+      }
+      return { ...state, xScale: action.xScale ?? state.xScale, yScale: action.yScale ?? state.yScale, refs };
     }
     case 'add-point':
       if (!Number.isFinite(action.point.px) || !Number.isFinite(action.point.py)) return state;

@@ -14,6 +14,7 @@ import { REF_COLORS, drawWorkspace, findTargetPos, hitTest, type Target } from '
 import { firstFile, imagePixels } from '../ui/loadImage.ts';
 import { drawLoupe, loupeCell, loupeCorner, loupeOrigin, LOUPE_SIZE, type LoupeMarker } from '../ui/loupe.ts';
 import { findSnapTarget, snapOptions, type SnapTarget } from '../ui/snap.ts';
+import type { Ghost } from '../ui/suggestion.ts';
 import { clampToImage, imageToScreen, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
 
 export type Step = 'image' | 'axes' | 'data';
@@ -40,6 +41,8 @@ interface Props {
   /** Show the loupe on the selected marker (it was just nudged with the keyboard). */
   loupeOnSelection: boolean;
   snap: boolean;
+  /** A pending auto-detect suggestion to draw (Axes step only). */
+  ghost?: Ghost | null;
   onFile: (file: File) => void;
   onOpenFile: () => void;
 }
@@ -208,6 +211,7 @@ export function Workspace(props: Props) {
       hovered,
       step,
       snap: snapTarget && { ...snapTarget, color: activeColor },
+      ghost: props.ghost ?? null,
     });
   });
 

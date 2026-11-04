@@ -11,6 +11,8 @@ import {
   type ScaleType,
 } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
+import type { AutoState } from '../ui/suggestion.ts';
+import { AutoDetectPanel } from './AutoDetectPanel.tsx';
 import { REF_COLORS } from '../ui/draw.ts';
 import { formatPixel } from '../ui/table.ts';
 
@@ -25,6 +27,13 @@ interface Props {
   onValue: (ref: RefName, value: string) => void;
   onPlace: (ref: RefName | null) => void;
   onContinue: () => void;
+  auto: AutoState;
+  /** Whether the image is decoded and auto-detect can run. */
+  canAutoDetect: boolean;
+  onAutoDetect: () => void;
+  onAutoValue: (ref: RefName, value: string) => void;
+  onAutoAccept: () => void;
+  onAutoDiscard: () => void;
 }
 
 const PROMPTS: Record<RefName, string> = {
@@ -46,7 +55,8 @@ function DateHint({ text }: { text: string }) {
   );
 }
 
-export function AxesStep({ doc, result, placingRef, focusRef, onFocused, onScale, onValue, onPlace, onContinue }: Props) {
+export function AxesStep(props: Props) {
+  const { doc, result, placingRef, focusRef, onFocused, onScale, onValue, onPlace, onContinue } = props;
   const inputs = useRef<Partial<Record<RefName, HTMLInputElement | null>>>({});
 
   useEffect(() => {
@@ -79,6 +89,14 @@ export function AxesStep({ doc, result, placingRef, focusRef, onFocused, onScale
 
   return (
     <section className="step-body" aria-label="Axes">
+      <AutoDetectPanel
+        auto={props.auto}
+        disabled={!props.canAutoDetect}
+        onDetect={props.onAutoDetect}
+        onValue={props.onAutoValue}
+        onAccept={props.onAutoAccept}
+        onDiscard={props.onAutoDiscard}
+      />
       <div className="row two">
         {scaleSelect('x')}
         {scaleSelect('y')}

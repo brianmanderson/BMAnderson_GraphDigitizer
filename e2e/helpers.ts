@@ -55,7 +55,7 @@ export async function calibrate(page: Page, refs: Record<RefName, { px: number; 
   for (const name of ['X1', 'X2', 'Y1', 'Y2'] as const) {
     await expect(page.getByTestId('axes-prompt')).toContainText(`(${name})`);
     await clickImage(page, refs[name].px, refs[name].py);
-    const input = page.getByLabel(`${name} value`);
+    const input = page.getByLabel(`${name} value`, { exact: true });
     await expect(input).toBeFocused();
     await input.fill(refs[name].value);
   }

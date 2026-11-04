@@ -94,6 +94,19 @@ describe('docReducer', () => {
     expect(s.activeDatasetId).toBe('d1');
   });
 
+  it('applies an auto-detect suggestion in one edit, keeping refs it does not mention', () => {
+    let s = docReducer(newDoc(image, 'd1'), { type: 'place-ref', ref: 'Y1', px: 5, py: 6 });
+    s = docReducer(s, { type: 'set-ref-value', ref: 'Y1', value: '7' });
+    s = docReducer(s, {
+      type: 'apply-suggestion',
+      xScale: 'log10',
+      refs: { X1: { px: 10, py: 90, value: '1' }, X2: { px: 90, py: 90, value: '' }, Y2: { px: NaN, py: 1, value: '3' } },
+    });
+    expect(s.xScale).toBe('log10');
+    expect(s.yScale).toBe('linear');
+    expect(s.refs).toEqual({ X1: { px: 10, py: 90, value: '1' }, X2: { px: 90, py: 90, value: '' }, Y1: { px: 5, py: 6, value: '7' } });
+  });
+
   it('suggests unused line names (Line 2, …) and colours', () => {
     const s = newDoc(image, 'd1');
     const next = nextDatasetDefaults(s);

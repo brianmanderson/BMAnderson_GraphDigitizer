@@ -19,9 +19,11 @@ import { EMPTY_HISTORY, canRedo, canUndo, historyReducer } from './state/history
 import { readAutosave, writeAutosave } from './ui/autosave.ts';
 import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
-import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, isProjectFile, loadImageFile } from './ui/loadImage.ts';
+import { runAutoDetect, type AutoRun } from './ui/autoDetect.ts';
+import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, imagePixels, isProjectFile, loadImageFile } from './ui/loadImage.ts';
 import { DEFAULT_LOUPE_ZOOM, LOUPE_ZOOMS } from './ui/loupe.ts';
 import { nudgeDirection, nudgeStep, nudged } from './ui/nudge.ts';
+import { acceptAction, ghostOf, initialValues, type AutoState } from './ui/suggestion.ts';
 import { exportCells, formatValue, toCsv, toTsv, type TableOptions } from './ui/table.ts';
 import { IDENTITY_VIEW, fitView, zoomAt, type View } from './ui/view.ts';
 
@@ -90,6 +92,9 @@ export function App() {
   /** The selection was just nudged with the keyboard: the loupe shows it until the mouse moves. */
   const [loupeOnSelection, setLoupeOnSelection] = useState(false);
   const [autosaved, setAutosaved] = useState<{ ok: boolean; at: number } | null>(null);
+  /** Auto-detect for the current image: never applied until the user accepts it. */
+  const [autoRaw, setAuto] = useState<{ of: DocState['image']; state: AutoState } | null>(null);
+  const autoRun = useRef<AutoRun | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
@@ -103,6 +108,12 @@ export function App() {
   // A selection whose marker an undo removed is no selection.
   const selected = selectedRaw && doc && findTargetPos(doc, selectedRaw) ? selectedRaw : null;
   const image = decoded && doc && decoded.of === doc.image ? decoded.el : null;
+  // A suggestion belongs to the image it was made for (a load or an undo across one drops it).
+  const auto: AutoState = useMemo(
+    () => (autoRaw && doc && autoRaw.of === doc.image ? autoRaw.state : { status: 'idle' }),
+    [autoRaw, doc],
+  );
+  const ghost = useMemo(() => ghostOf(auto), [auto]);
 
   const spec = useMemo(() => (doc ? calibrationSpec(doc) : null), [doc]);
   const result = useMemo(() => (spec ? calibrateSpec(spec) : null), [spec]);
@@ -480,6 +491,39 @@ export function App() {
     setView((v) => zoomAt(v, width / 2, height / 2, factor));
   };
 
+  const onAutoDetect = useCallback(() => {
+    const pixels = image && imagePixels(image);
+    if (!doc || !pixels) return;
+    const of = doc.image;
+    autoRun.current?.cancel();
+    const run = runAutoDetect(pixels, (stage) =>
+      setAuto((a) => (a?.of === of && a.state.status === 'running' ? { of, state: { status: 'running', stage } } : a)),
+    );
+    autoRun.current = run;
+    setAuto({ of, state: { status: 'running', stage: 'Starting…' } });
+    run.result.then(
+      (result) => autoRun.current === run && setAuto({ of, state: { status: 'done', result, values: initialValues(result) } }),
+      (err: unknown) =>
+        autoRun.current === run && setAuto({ of, state: { status: 'error', message: err instanceof Error ? err.message : String(err) } }),
+    );
+  }, [doc, image]);
+
+  const onAutoValue = useCallback((ref: RefName, value: string) => {
+    setAuto((a) => (a?.state.status === 'done' ? { of: a.of, state: { ...a.state, values: { ...a.state.values, [ref]: value } } } : a));
+  }, []);
+
+  const onAutoAccept = () => {
+    if (auto.status !== 'done') return;
+    dispatch(acceptAction(auto.result, auto.values));
+    setAuto(null);
+    setChosenRef(null);
+    setNotice({
+      kind: 'info',
+      text: 'Applied the suggested calibration. Check the overlay gridlines against the chart.',
+      undoRev: history.rev + 1,
+    });
+  };
+
   const cursorValue = cursor && calibration ? calibration.pixelToValue(cursor.px, cursor.py) : null;
   const totalPoints = doc?.datasets.reduce((n, d) => n + d.points.length, 0) ?? 0;
 
@@ -623,6 +667,7 @@ export function App() {
           loupe={loupe}
           loupeOnSelection={loupeOnSelection}
           snap={prefs.snap}
+          ghost={ghost}
         />
 
         <aside className="panel">
@@ -683,6 +728,12 @@ export function App() {
                 onValue={(ref, value) => dispatch({ type: 'set-ref-value', ref, value }, `value:${ref}`)}
                 onPlace={setChosenRef}
                 onContinue={() => goStep('data')}
+                auto={auto}
+                canAutoDetect={!!image}
+                onAutoDetect={onAutoDetect}
+                onAutoValue={onAutoValue}
+                onAutoAccept={onAutoAccept}
+                onAutoDiscard={() => setAuto(null)}
               />
             )}
             {step === 'data' && doc && (

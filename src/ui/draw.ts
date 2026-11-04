@@ -5,6 +5,7 @@
 
 import { REF_NAMES, forward, type Calibration, type RefName } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
+import type { Ghost } from './suggestion.ts';
 import { formatValue } from './table.ts';
 import { axisTicks } from './ticks.ts';
 import { imageToScreen, type View } from './view.ts';
@@ -37,6 +38,8 @@ export interface DrawInput {
   step: 'image' | 'axes' | 'data';
   /** Where a click would place the next point when snapping is on (image px, blob size). */
   snap: { px: number; py: number; width: number; height: number; color: string } | null;
+  /** A pending auto-detect suggestion, drawn as dashed "ghost" markers in the Axes step. */
+  ghost?: Ghost | null;
 }
 
 const sameTarget = (a: Target | null, b: Target): boolean =>
@@ -87,7 +90,63 @@ export function drawWorkspace(input: DrawInput): void {
     drawRef(ctx, imageToScreen(view, r.px, r.py), name, input.step === 'axes', sameTarget(input.hovered, target) || sameTarget(input.selected, target));
   }
 
+  if (input.ghost && input.step === 'axes') drawGhost(ctx, view, input.ghost);
   if (input.snap) drawSnap(ctx, view, input.snap);
+}
+
+const GHOST_LINE = 'rgba(12, 133, 153, 0.9)';
+
+/**
+ * A suggestion: the detected axis lines (dashed), a thin box round each tick label that was read
+ * (teal when it agrees with the suggested scale, red when not) and dashed ref markers labelled
+ * with their suggested values ("X1 = 20").
+ */
+function drawGhost(ctx: CanvasRenderingContext2D, view: View, ghost: Ghost) {
+  ctx.save();
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = GHOST_LINE;
+  for (const l of ghost.lines) line(ctx, imageToScreen(view, l.p1.x, l.p1.y), imageToScreen(view, l.p2.x, l.p2.y));
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1;
+  for (const b of ghost.labels) {
+    const c = imageToScreen(view, b.center.x, b.center.y);
+    const w = b.width * view.scale + 4;
+    const h = b.height * view.scale + 4;
+    ctx.strokeStyle = b.inlier ? 'rgba(12, 133, 153, 0.7)' : 'rgba(201, 42, 42, 0.8)';
+    ctx.strokeRect(c.x - w / 2, c.y - h / 2, w, h);
+  }
+  ctx.font = 'bold 11px system-ui, sans-serif';
+  for (const r of ghost.refs) {
+    const p = imageToScreen(view, r.px, r.py);
+    const color = REF_COLORS[r.name[0] as 'X' | 'Y'];
+    ctx.setLineDash([3, 2]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    line(ctx, { x: p.x - 11, y: p.y }, { x: p.x + 11, y: p.y });
+    line(ctx, { x: p.x, y: p.y - 11 }, { x: p.x, y: p.y + 11 });
+    ctx.setLineDash([]);
+    const text = `${r.name} = ${r.value === '' ? '?' : r.value}`;
+    const tw = ctx.measureText(text).width;
+    const lx = p.x + 9;
+    const ly = r.name[0] === 'X' ? p.y + 8 : p.y - 24;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(lx, ly, tw + 8, 16, 3);
+    ctx.fill();
+    ctx.setLineDash([3, 2]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, lx + 4, ly + 8.5);
+  }
+  ctx.restore();
 }
 
 /** Dashed ring around the blob a click would snap to, with a dot at its centroid. */

@@ -371,6 +371,62 @@ kbd {
   font-size: 13px;
 }
 
+/* ---------- Auto-detect (Phase 5) ---------- */
+.auto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auto-result {
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+}
+.auto-result .prompt {
+  margin: 0;
+}
+.auto-axis {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.auto-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auto-head .badge {
+  margin-left: auto;
+}
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.badge.high {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.badge.medium {
+  background: #fff4e0;
+  color: #9a5b00;
+}
+.badge.low {
+  background: var(--error-soft);
+  color: var(--error);
+}
+.auto-axis .hint {
+  margin: 0;
+}
+.ref-badge.ghost {
+  color: var(--text);
+  background: var(--surface);
+  border: 1.5px dashed;
+}
+
 .datasets {
   list-style: none;
   margin: 0;
