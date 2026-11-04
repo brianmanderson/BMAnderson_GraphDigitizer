@@ -270,9 +270,11 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   (timings excluded). `bench:axes` exits 1 when axes-found, box-found, tick recall, minor recall
   or precision drops — or `bare` rises — overall or in any category; it is part of `npm run verify`.
   `-- --update` rewrites the baseline, only for an explained improvement or trade-off.
-- **Phase 4 baseline** (61 images): axes found 95.1 % (all but the three ggplot-style charts),
-  median line error 0.02 px, plot box 95 %, major-tick recall 84.9 %, minor 67.7 %, precision
-  99.3 %, no ticks on bare axes. The KM figure: both axes exact, 13/13 ticks. Known failures:
+- **Phase 4 baseline** (62 images: 60 synthetic, 2 real): axes found 95.2 % (all but the three
+  ggplot-style charts), median line error 0.02 px, plot box 95.1 %, major-tick recall 85.2 %,
+  minor 67.7 %, precision 99.3 %, no ticks on bare axes. Real figures: `km-pericardial-effusion`
+  both axes exact, 13/13 ticks; `km-cns-lymphoma` (SAS, closed frame, number-at-risk table inside
+  it) lines within 0.02 px, 12/12 ticks, no false ticks, box within 0.4 px. Known failures:
   no drawn axis lines (ggplot), ticks hidden by bars or shorter than a thick axis line (bar
   charts 62.5 % recall), the tick at a corner (inside the other axis), log axes with two decades
   and invisible minors (no ticks), box corners at free axis ends off by half the line width when
@@ -281,6 +283,10 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   ~170–200) at every label of `fixtures/real/km-pericardial-effusion.jpg`, which had been labelled
   "no x tick marks"; the label now says `tickMarks: true` (positions unchanged, within 1 px).
   The labels-only case is covered by five synthetic charts (`x-no-tickmarks`).
+- **"Axis line" means the line the tick marks hang on**, not where the value 0 is. In a closed
+  frame whose zero sits inside it (`km-cns-lymphoma`), the detected X/Y axes are the bottom and
+  left frame lines; that is correct, and Phase 5 must calibrate from tick positions + labels,
+  never assume the axis line is value 0. Labels encode this the same way (`axisLineRow/Col`).
 
 ## Verification gate
 

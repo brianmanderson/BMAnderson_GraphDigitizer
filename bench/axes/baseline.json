@@ -1,14 +1,14 @@
 {
  "overall": {
-  "images": 61,
-  "axesFound": 0.9508196721311475,
-  "xFound": 0.9508196721311475,
-  "yFound": 0.9508196721311475,
-  "medianAxisError": 0.018,
-  "boxFound": 0.95,
-  "tickRecall": 0.8489984591679507,
+  "images": 62,
+  "axesFound": 0.9516129032258065,
+  "xFound": 0.9516129032258065,
+  "yFound": 0.9516129032258065,
+  "medianAxisError": 0.017,
+  "boxFound": 0.9508196721311475,
+  "tickRecall": 0.8517397881996974,
   "minorRecall": 0.6768707482993197,
-  "tickPrecision": 0.9933628318584071,
+  "tickPrecision": 0.993421052631579,
   "falseTicksOnBareAxes": 0,
   "meanMs": 0
  },
@@ -85,6 +85,19 @@
    "yFound": 1,
    "medianAxisError": 0.001,
    "boxFound": null,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "frame-not-at-zero": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.017,
+   "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
    "tickPrecision": 1,
@@ -235,12 +248,12 @@
    "meanMs": 0
   },
   "km": {
-   "images": 1,
+   "images": 2,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.001,
-   "boxFound": null,
+   "medianAxisError": 0.009,
+   "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
    "tickPrecision": 1,
@@ -287,25 +300,25 @@
    "meanMs": 0
   },
   "png": {
-   "images": 40,
-   "axesFound": 0.925,
-   "xFound": 0.925,
-   "yFound": 0.925,
+   "images": 41,
+   "axesFound": 0.926829268292683,
+   "xFound": 0.926829268292683,
+   "yFound": 0.926829268292683,
    "medianAxisError": 0.008,
-   "boxFound": 0.925,
-   "tickRecall": 0.7963386727688787,
+   "boxFound": 0.926829268292683,
+   "tickRecall": 0.8017817371937639,
    "minorRecall": 0.7710487444608567,
-   "tickPrecision": 0.9931506849315068,
+   "tickPrecision": 0.9932432432432432,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
   "real": {
-   "images": 1,
+   "images": 2,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.001,
-   "boxFound": null,
+   "medianAxisError": 0.009,
+   "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
    "tickPrecision": 1,
@@ -325,6 +338,19 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
+  "sas": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.017,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
   "synthetic": {
    "images": 60,
    "axesFound": 0.95,
@@ -335,6 +361,19 @@
    "tickRecall": 0.8459119496855346,
    "minorRecall": 0.6768707482993197,
    "tickPrecision": 0.9932985852568875,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "table-in-plot": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.017,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -1710,6 +1749,21 @@
    "yError": 0,
    "boxError": null,
    "xTicks": "7/7M 0/0m 7/7det",
+   "yTicks": "6/6M 0/0m 6/6det"
+  },
+  "km-cns-lymphoma": {
+   "tags": [
+    "real",
+    "sas",
+    "km",
+    "frame-not-at-zero",
+    "table-in-plot",
+    "png"
+   ],
+   "xError": 0.017,
+   "yError": 0.016,
+   "boxError": 0.366,
+   "xTicks": "6/6M 0/0m 6/6det",
    "yTicks": "6/6M 0/0m 6/6det"
   }
  }

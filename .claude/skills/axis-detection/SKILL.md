@@ -65,6 +65,8 @@ family — the inputs Phase 5's OCR and scale inference need.
   and `xAxis` / `yAxis` each with `scale`, `tickMarks` (false = labels only), `ticks`
   `[{ value, px, py?, label?, minor? }]` and either `line: [[x1,y1],[x2,y2]]` or the unrotated
   shorthand `axisLineRow` (x) / `axisLineCol` (y). `lineDrawn: false` = no visible line.
+  The axis line is the line the ticks hang on — in a closed frame with zero inside it, the
+  bottom/left frame lines (see `fixtures/real/km-cns-lymphoma.json`), not the value-0 line.
 
 ### Adding a real figure
 

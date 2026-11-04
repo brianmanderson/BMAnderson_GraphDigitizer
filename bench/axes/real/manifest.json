@@ -4,6 +4,10 @@
     {
       "truth": "../../../fixtures/real/km-pericardial-effusion.json",
       "tags": ["journal", "km", "faint-ticks", "jpeg"]
+    },
+    {
+      "truth": "../../../fixtures/real/km-cns-lymphoma.json",
+      "tags": ["sas", "km", "frame-not-at-zero", "table-in-plot", "png"]
     }
   ]
 }

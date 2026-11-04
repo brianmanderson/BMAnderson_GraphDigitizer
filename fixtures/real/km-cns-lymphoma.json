@@ -1,0 +1,47 @@
+{
+  "image": "km-cns-lymphoma.png",
+  "description": "Kaplan-Meier survival, two series (SAS-style figure, 850x666 PNG). Hand-labelled by pixel analysis; positions are image pixels, origin top-left, +/- ~1 px.",
+  "plotFrame": { "left": 90.5, "right": 833.5, "top": 67.5, "bottom": 455 },
+  "plotBox": [[90.5, 67.5], [833.5, 67.5], [833.5, 455], [90.5, 455]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 455,
+    "tickMarks": true,
+    "notes": "axisLineRow is the bottom frame line, which carries the tick marks (bench/axes label format); the value 0 is not at it. Tick marks point outward below the frame (rows ~457-462). x = 0 is NOT at the left frame edge.",
+    "ticks": [
+      { "value": 0, "px": 128 },
+      { "value": 20, "px": 265 },
+      { "value": 40, "px": 403 },
+      { "value": 60, "px": 539.5 },
+      { "value": 80, "px": 677 },
+      { "value": 100, "px": 815 }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 90.5,
+    "tickMarks": true,
+    "notes": "axisLineCol is the left frame line, which carries the tick marks (bench/axes label format); the value 0 is not at it. Tick marks point outward left of the frame (cols ~82-89). y = 0 is NOT at the bottom frame edge; labels formatted 0.0-1.0.",
+    "ticks": [
+      { "value": 0.0, "py": 401 },
+      { "value": 0.2, "py": 337 },
+      { "value": 0.4, "py": 272 },
+      { "value": 0.6, "py": 207 },
+      { "value": 0.8, "py": 143 },
+      { "value": 1.0, "py": 78 }
+    ]
+  },
+  "knownValues": [
+    { "series": "0 (blue)", "description": "Plateau between ~20 and ~61 months", "x": [20, 61], "y": 0.548, "py": 224 },
+    { "series": "0 (blue)", "description": "Step between ~61 and ~76 months", "x": [62, 75], "y": 0.437, "py": 260 },
+    { "series": "0 (blue)", "description": "Final plateau", "x": [77, 96], "y": 0.294, "py": 306 },
+    { "series": "1 (red)", "description": "Plateau between ~26 and ~58 months", "x": [27, 57], "y": 0.310, "py": 301 },
+    { "series": "1 (red)", "description": "Final plateau", "x": [59, 76], "y": 0.232, "py": 326 }
+  ],
+  "pitfalls": [
+    "The plot is a closed box frame; the frame lines are NOT the axes (x = 0 and y = 0 are inside the frame).",
+    "A number-at-risk table (44 16 10 5 2 0 / 59 13 7 3 0) sits INSIDE the frame below y = 0, and its row labels '0' and '1' sit left of the frame next to the '0.0' y label — easy to misread as tick labels.",
+    "Title, subtitle, a legend box inside the plot (top right), a series legend and a summary table below the axis can all be mistaken for labels.",
+    "Two coloured series (blue, red) with '+' censoring markers on the lines."
+  ]
+}
