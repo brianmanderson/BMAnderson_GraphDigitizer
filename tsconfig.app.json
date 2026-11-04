@@ -23,5 +23,5 @@
     "erasableSyntaxOnly": true
   },
   "include": ["src"],
-  "exclude": ["src/core"]
+  "exclude": ["src/core", "src/auto"]
 }

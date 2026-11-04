@@ -17,8 +17,8 @@ export default tseslint.config(
     },
   },
   {
-    // The calibration engine is pure TS: no DOM, no browser globals.
-    files: ['src/core/**/*.ts'],
+    // The calibration engine and axis detection are pure TS: no DOM, no browser globals.
+    files: ['src/core/**/*.ts', 'src/auto/**/*.ts'],
     languageOptions: { globals: {} },
     rules: {
       'no-restricted-globals': ['error', 'window', 'document', 'navigator', 'HTMLElement'],

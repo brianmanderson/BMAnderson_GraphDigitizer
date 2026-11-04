@@ -1,5 +1,6 @@
 {
-  // src/core must stay DOM-free: it is type-checked without the DOM lib.
+  // src/core (calibration engine) and src/auto (axis detection) must stay DOM-free so Web Workers
+  // can import them: they are type-checked without the DOM lib.
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.core.tsbuildinfo",
     "noEmit": true,
@@ -22,6 +23,6 @@
     "noFallthroughCasesInSwitch": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src/core"],
-  "exclude": ["src/core/**/*.test.ts"]
+  "include": ["src/core", "src/auto"],
+  "exclude": ["src/core/**/*.test.ts", "src/auto/**/*.test.ts"]
 }
