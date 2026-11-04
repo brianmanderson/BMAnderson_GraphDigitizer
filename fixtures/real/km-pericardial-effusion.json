@@ -4,8 +4,8 @@
   "xAxis": {
     "scale": "linear",
     "axisLineRow": 344.5,
-    "tickMarks": false,
-    "notes": "No x tick marks; positions are label centres.",
+    "tickMarks": true,
+    "notes": "Very faint 3-px tick marks below the axis line (grey ~170-200 on white, rows 346-348) at every label; positions are label centres, within 1 px of the marks.",
     "ticks": [
       { "value": 0, "px": 134 },
       { "value": 20, "px": 211 },
@@ -37,6 +37,7 @@
   "pitfalls": [
     "Rotated y-axis title text at columns ~95-99 is darker than the axis line and fools naive column-darkness detection.",
     "Caption text rows ~401-406 are darker than the x-axis line and fool naive row-darkness detection.",
-    "The '+' censoring markers along the curve are not data steps."
+    "The '+' censoring markers along the curve are not data steps.",
+    "The x tick marks are so faint they were first labelled as absent (Phase 4 measured them at every label: columns 134, 211, 288, 365, 442, 519, 596)."
   ]
 }

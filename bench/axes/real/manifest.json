@@ -1,0 +1,9 @@
+{
+  "$comment": "Real-world figures for npm run bench:axes. Each entry points at a label JSON (format: bench/axes/truth.ts and .claude/skills/axis-detection/SKILL.md), relative to this file. Labels can live here or be shared with the e2e fixtures in fixtures/real/. Tags become benchmark categories.",
+  "figures": [
+    {
+      "truth": "../../../fixtures/real/km-pericardial-effusion.json",
+      "tags": ["journal", "km", "faint-ticks", "jpeg"]
+    }
+  ]
+}
