@@ -1,5 +1,7 @@
+import type { ComponentProps } from 'react';
 import type { DocState } from '../state/doc.ts';
 import type { Target } from '../ui/draw.ts';
+import { TracePanel } from './TracePanel.tsx';
 
 interface Props {
   doc: DocState;
@@ -11,9 +13,11 @@ interface Props {
   onDelete: (datasetId: string) => void;
   onAdd: () => void;
   onDeleteSelected: () => void;
+  /** The Auto-trace panel's props (it is shown under the lines, beside the active one's controls). */
+  trace: Omit<ComponentProps<typeof TracePanel>, 'activeName' | 'activeHasPoints'>;
 }
 
-export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected }: Props) {
+export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, trace }: Props) {
   const active = doc.datasets.find((d) => d.id === doc.activeDatasetId);
   return (
     <section className="step-body" aria-label="Data">
@@ -71,6 +75,7 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
           Delete selected point
         </button>
       </div>
+      <TracePanel {...trace} activeName={active?.name ?? ''} activeHasPoints={(active?.points.length ?? 0) > 0} />
     </section>
   );
 }

@@ -80,6 +80,36 @@ describe('docReducer', () => {
     expect(s.datasets[0]!.points).toHaveLength(1);
   });
 
+  it('adds several points to one dataset in one edit, dropping non-finite ones', () => {
+    const s = newDoc(image, 'd1');
+    expect(docReducer(s, { type: 'add-points', datasetId: 'd1', points: [] })).toBe(s);
+    expect(docReducer(s, { type: 'add-points', datasetId: 'd1', points: [{ id: 'p', px: NaN, py: 1 }] })).toBe(s);
+    const t = apply(
+      s,
+      { type: 'add-point', datasetId: 'd1', point: { id: 'p0', px: 1, py: 1 } },
+      {
+        type: 'add-points',
+        datasetId: 'd1',
+        points: [
+          { id: 'p1', px: 2.5, py: 3 },
+          { id: 'p2', px: Infinity, py: 3 },
+          { id: 'p3', px: 4, py: 5.25 },
+        ],
+      },
+    );
+    expect(t.datasets[0]!.points.map((p) => p.id)).toEqual(['p0', 'p1', 'p3']);
+    expect(docReducer(t, { type: 'add-points', datasetId: 'nope', points: [{ id: 'p4', px: 1, py: 1 }] })).toBe(t);
+  });
+
+  it('adds a dataset with points, dropping non-finite ones', () => {
+    const s = docReducer(newDoc(image, 'd1'), {
+      type: 'add-dataset',
+      dataset: { id: 'd2', name: 'B', color: '#000000', points: [{ id: 'p1', px: 1, py: 2 }, { id: 'p2', px: 1, py: NaN }] },
+    });
+    expect(s.datasets[1]!.points).toEqual([{ id: 'p1', px: 1, py: 2 }]);
+    expect(s.activeDatasetId).toBe('d2');
+  });
+
   it('keeps at least one dataset and re-targets the active one on delete', () => {
     let s = newDoc(image, 'd1');
     expect(docReducer(s, { type: 'delete-dataset', datasetId: 'd1' })).toBe(s);

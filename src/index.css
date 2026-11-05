@@ -427,6 +427,37 @@ kbd {
   border: 1.5px dashed;
 }
 
+/* ---------- Auto-trace ---------- */
+.trace .prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trace p {
+  margin: 0;
+}
+.swatch.ghost {
+  width: 12px;
+  height: 12px;
+  border: 2px dashed;
+  box-sizing: border-box;
+}
+.trace-settings input[type='range'] {
+  width: 110px;
+}
+.trace-prompt {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  /* --on-fill (text on accent fills) arrives with the theme tokens; white until then. */
+  color: var(--on-fill, #fff);
+  border-radius: 6px;
+  padding: 4px 12px;
+  pointer-events: none;
+}
+
 .datasets {
   list-style: none;
   margin: 0;

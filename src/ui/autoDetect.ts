@@ -49,7 +49,7 @@ export function runAutoDetect(pixels: ImageData, onProgress: (stage: string) => 
       } else if (m.type === 'error') {
         finish();
         reject(new Error(m.message));
-      } else {
+      } else if (m.type === 'ocr') {
         onProgress('Reading the tick labels…');
         ocrPool()
           .then((p) => p.recognize(m.image, m.request))

@@ -20,10 +20,23 @@ import { readAutosave, writeAutosave } from './ui/autosave.ts';
 import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
 import { runAutoDetect, type AutoRun } from './ui/autoDetect.ts';
+import { runTrace, type TraceRun } from './ui/autoTrace.ts';
 import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, imagePixels, isProjectFile, loadImageFile } from './ui/loadImage.ts';
 import { DEFAULT_LOUPE_ZOOM, LOUPE_ZOOMS } from './ui/loupe.ts';
 import { nudgeDirection, nudgeStep, nudged } from './ui/nudge.ts';
 import { acceptAction, ghostOf, initialValues, type AutoState } from './ui/suggestion.ts';
+import {
+  DEFAULT_TRACE_SETTINGS,
+  TRACE_PROMPT,
+  acceptTraceAction,
+  clampMaxPoints,
+  traceColor,
+  traceGhostOf,
+  tracedPoints,
+  type TraceSettings,
+  type TraceState,
+  type TraceTarget,
+} from './ui/trace.ts';
 import { exportCells, formatValue, toCsv, toTsv, type TableOptions } from './ui/table.ts';
 import { IDENTITY_VIEW, fitView, zoomAt, type View } from './ui/view.ts';
 
@@ -71,6 +84,9 @@ function loadPrefs(): Prefs {
   }
 }
 
+/** Settings changes (dragging the Points slider) settle this long before the trace re-runs. */
+const TRACE_DEBOUNCE_MS = 120;
+
 const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 export function App() {
@@ -95,6 +111,9 @@ export function App() {
   /** Auto-detect for the current image: never applied until the user accepts it. */
   const [autoRaw, setAuto] = useState<{ of: DocState['image']; state: AutoState } | null>(null);
   const autoRun = useRef<AutoRun | null>(null);
+  /** Auto-trace for the current image, Data step only: never applied until the user accepts it. */
+  const [traceRaw, setTrace] = useState<{ of: DocState['image']; state: TraceState } | null>(null);
+  const [traceSettings, setTraceSettings] = useState<TraceSettings>(DEFAULT_TRACE_SETTINGS);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
@@ -114,6 +133,8 @@ export function App() {
     [autoRaw, doc],
   );
   const ghost = useMemo(() => ghostOf(auto), [auto]);
+  const trace = traceRaw && doc && traceRaw.of === doc.image && step === 'data' ? traceRaw.state : null;
+  const traceGhost = useMemo(() => (doc ? traceGhostOf(doc, trace) : null), [doc, trace]);
 
   const spec = useMemo(() => (doc ? calibrationSpec(doc) : null), [doc]);
   const result = useMemo(() => (spec ? calibrateSpec(spec) : null), [spec]);
@@ -167,6 +188,33 @@ export function App() {
       live = false;
     };
   }, [docImage, fitImage]);
+
+  // Run the trace in the worker whenever it is (re)started: a new seed, or new settings.
+  const runningSeed = trace?.status === 'running' ? trace.seed : null;
+  useEffect(() => {
+    const pixels = image && imagePixels(image);
+    if (!runningSeed || !pixels || !docImage) return;
+    let live = true;
+    let run: TraceRun | null = null;
+    const settle = (state: (target: TraceTarget) => TraceState) =>
+      live &&
+      setTrace((t) =>
+        t?.of === docImage && t.state.status === 'running' && t.state.seed === runningSeed ? { of: docImage, state: state(t.state.target) } : t,
+      );
+    const timer = setTimeout(() => {
+      run = runTrace(pixels, runningSeed, traceSettings.mode, traceSettings.maxPoints);
+      run.result.then(
+        (result) => settle((target) => ({ status: 'done', target, seed: runningSeed, result })),
+        (err: unknown) =>
+          settle((target) => ({ status: 'error', target, seed: runningSeed, message: err instanceof Error ? err.message : String(err) })),
+      );
+    }, TRACE_DEBOUNCE_MS);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      run?.cancel();
+    };
+  }, [runningSeed, traceSettings, image, docImage]);
 
   /** Replace the document with an undoable step, and say so with an Undo button when work was replaced. */
   const replaceDoc = useCallback(
@@ -373,6 +421,7 @@ export function App() {
           deleteSelected();
         }
       } else if (e.key === 'Escape') {
+        setTrace(null);
         setSelected(null);
         setChosenRef(null);
         setLoupeOnSelection(false);
@@ -524,11 +573,42 @@ export function App() {
     });
   };
 
+  const onTraceStart = (target: TraceTarget) => {
+    if (!doc) return;
+    setTrace({ of: doc.image, state: { status: 'picking', target } });
+    setSelected(null);
+  };
+
+  const onTraceSeed = useCallback(
+    (px: number, py: number) =>
+      setTrace((t) => (t ? { of: t.of, state: { status: 'running', target: t.state.target, seed: { px, py } } } : t)),
+    [],
+  );
+
+  const onTraceSettings = (patch: Partial<TraceSettings>) => {
+    setTraceSettings((s) => ({ ...s, ...patch, maxPoints: clampMaxPoints(patch.maxPoints ?? s.maxPoints) }));
+    // A trace under review re-runs from the same click with the new settings.
+    setTrace((t) => (t && t.state.status !== 'picking' ? { of: t.of, state: { status: 'running', target: t.state.target, seed: t.state.seed } } : t));
+  };
+
+  const traceCount = trace?.status === 'done' && trace.result.ok && doc ? tracedPoints(doc, trace.result).length : 0;
+
+  const onTraceAccept = () => {
+    if (!doc || trace?.status !== 'done') return;
+    const action = acceptTraceAction(doc, trace.target, trace.result, newId);
+    if (!action) return;
+    dispatch(action);
+    setTrace(null);
+    const into = action.type === 'add-dataset' ? `a new line, "${action.dataset.name}"` : `"${doc.datasets.find((d) => d.id === doc.activeDatasetId)?.name}"`;
+    setNotice({ kind: 'info', text: `Added ${traceCount} traced point${traceCount === 1 ? '' : 's'} to ${into}.`, undoRev: history.rev + 1 });
+  };
+
   const cursorValue = cursor && calibration ? calibration.pixelToValue(cursor.px, cursor.py) : null;
   const totalPoints = doc?.datasets.reduce((n, d) => n + d.points.length, 0) ?? 0;
 
   const goStep = (s: Step) => {
     setStep(s);
+    setTrace(null);
     setSelected(null);
     setChosenRef(null);
   };
@@ -668,6 +748,10 @@ export function App() {
           loupeOnSelection={loupeOnSelection}
           snap={prefs.snap}
           ghost={ghost}
+          tracing={trace !== null}
+          tracePrompt={trace?.status === 'picking' ? TRACE_PROMPT : null}
+          onTraceSeed={onTraceSeed}
+          traceGhost={traceGhost}
         />
 
         <aside className="panel">
@@ -747,6 +831,17 @@ export function App() {
                 onDelete={deleteDataset}
                 onAdd={addDataset}
                 onDeleteSelected={deleteSelected}
+                trace={{
+                  trace,
+                  settings: traceSettings,
+                  canTrace: !!calibration && !!image,
+                  color: traceColor(doc, trace?.target ?? 'active', trace?.status === 'done' ? trace.result : null),
+                  count: traceCount,
+                  onStart: onTraceStart,
+                  onSettings: onTraceSettings,
+                  onAccept: onTraceAccept,
+                  onDiscard: () => setTrace(null),
+                }}
               />
             )}
           </div>

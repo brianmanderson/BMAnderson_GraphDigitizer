@@ -15,6 +15,7 @@ import { firstFile, imagePixels } from '../ui/loadImage.ts';
 import { drawLoupe, loupeCell, loupeCorner, loupeOrigin, LOUPE_SIZE, type LoupeMarker } from '../ui/loupe.ts';
 import { findSnapTarget, snapOptions, type SnapTarget } from '../ui/snap.ts';
 import type { Ghost } from '../ui/suggestion.ts';
+import type { TraceGhost } from '../ui/trace.ts';
 import { clampToImage, imageToScreen, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
 
 export type Step = 'image' | 'axes' | 'data';
@@ -43,6 +44,14 @@ interface Props {
   snap: boolean;
   /** A pending auto-detect suggestion to draw (Axes step only). */
   ghost?: Ghost | null;
+  /**
+   * Auto-trace is open (Data step): a click on the image starts a trace there instead of adding a
+   * point, and markers are not grabbed. `tracePrompt` is shown over the canvas while picking.
+   */
+  tracing?: boolean;
+  tracePrompt?: string | null;
+  onTraceSeed?: (px: number, py: number) => void;
+  traceGhost?: TraceGhost | null;
   onFile: (file: File) => void;
   onOpenFile: () => void;
 }
@@ -80,12 +89,13 @@ export function Workspace(props: Props) {
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const loupeRef = useRef<HTMLCanvasElement>(null);
 
+  const tracing = step === 'data' && !!props.tracing;
   const pixels = useMemo(() => (props.snap && image ? imagePixels(image) : null), [props.snap, image]);
   const pointerAt = pointer ? screenToImage(view, pointer.x, pointer.y) : null;
   const pointerOnImage = !!(doc && pointerAt && isOnImage(pointerAt.px, pointerAt.py, doc.image.width, doc.image.height));
   // Snapping applies to new points: preview it while hovering in the Data step.
   const snapTarget: SnapTarget | null =
-    pixels && step === 'data' && pointerAt && pointerOnImage && gestureKind === null && !props.loupeOnSelection
+    pixels && step === 'data' && !tracing && pointerAt && pointerOnImage && gestureKind === null && !props.loupeOnSelection
       ? findSnapTarget(pixels, pointerAt.px, pointerAt.py, snapOptions(view.scale))
       : null;
   const activeColor = doc?.datasets.find((d) => d.id === doc.activeDatasetId)?.color ?? '#d6336c';
@@ -212,6 +222,7 @@ export function Workspace(props: Props) {
       step,
       snap: snapTarget && { ...snapTarget, color: activeColor },
       ghost: props.ghost ?? null,
+      trace: props.traceGhost ?? null,
     });
   });
 
@@ -227,7 +238,7 @@ export function Workspace(props: Props) {
       e.preventDefault();
       gesture.current = { kind: 'pan', lastX: x, lastY: y };
     } else if (e.button === 0) {
-      const hit = hitTest(doc, view, x, y, step);
+      const hit = tracing ? null : hitTest(doc, view, x, y, step);
       if (hit) {
         props.onSelect(hit);
         setDragTarget(hit);
@@ -266,7 +277,7 @@ export function Workspace(props: Props) {
     props.onCursor(isOnImage(at.px, at.py, doc.image.width, doc.image.height) ? at : null);
     const g = gesture.current;
     if (!g) {
-      setHovered(hitTest(doc, view, x, y, step));
+      setHovered(tracing ? null : hitTest(doc, view, x, y, step));
       return;
     }
     if (g.kind === 'pan') {
@@ -307,6 +318,8 @@ export function Workspace(props: Props) {
     }
     if (step === 'axes' && props.placingRef) {
       props.onPlaceRef(props.placingRef, at.px, at.py);
+    } else if (tracing) {
+      props.onTraceSeed?.(at.px, at.py);
     } else if (step === 'data') {
       const snapped = pixels ? findSnapTarget(pixels, at.px, at.py, snapOptions(view.scale)) : null;
       props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py);
@@ -395,6 +408,11 @@ export function Workspace(props: Props) {
             </span>
             <span>{snapTarget ? 'snap ◎' : `${props.loupe.zoom}×`}</span>
           </div>
+        </div>
+      )}
+      {tracing && props.tracePrompt && (
+        <div className="trace-prompt" data-testid="trace-prompt" role="status">
+          {props.tracePrompt}
         </div>
       )}
       {!doc && (
