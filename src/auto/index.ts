@@ -3,11 +3,13 @@
  * safe to run in a Web Worker. `detectAxes(rgba)` finds the X/Y axis lines, the plot box and the
  * tick marks, each with a confidence (measured by `npm run bench:axes`, bench/axes/).
  * `autoCalibrate(rgba, ocr)` adds tick-label OCR (injected engine), scale inference and a
- * cross-checked suggested calibration.
+ * cross-checked suggested calibration. `traceLine(request)` follows a plotted series from one click
+ * and proposes its points (measured by `npm run bench:lines`, bench/lines/).
  */
 
 export { detectAxes, detectAxesInMap } from './detect.ts';
 export { darknessMap, INK_THRESHOLD } from './darkness.ts';
+export { traceLine, type TraceMode, type TracedPoint, type TraceRequest, type TraceResult } from './trace/index.ts';
 export { autoCalibrate, type AutoOptions, type OcrCharset, type OcrEngine, type OcrRequest } from './auto.ts';
 export { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
 export { monthOf, parseDateToken, parseNumberLabel, resolveDateLabels, type LabelToken } from './parseLabel.ts';

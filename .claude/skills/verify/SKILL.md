@@ -2,7 +2,7 @@
 name: verify
 description: >
   How to run and interpret this repo's verification gate (npm run verify: typecheck, lint,
-  unit tests, the bench:axes detection benchmark, e2e) and the dev server. Load it BEFORE declaring any change done, when the gate fails,
+  unit tests, the bench:axes detection and bench:lines tracing benchmarks, e2e) and the dev server. Load it BEFORE declaring any change done, when the gate fails,
   when a date test behaves differently on another machine, or when starting the app to check a
   change by eye. Skipping it means declaring work done without the gate, or "fixing" a failure
   by easing a test, which the owner forbids.
@@ -13,10 +13,10 @@ description: >
 ## The gate
 
 ```
-npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run test:e2e
+npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run bench:lines && npm run test:e2e
 ```
 
-`npm run verify` runs exactly this. All five must pass before a change is done. Never ease a
+`npm run verify` runs exactly this. All six must pass before a change is done. Never ease a
 test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the code.
 
 - `typecheck` is `tsc -b` over three projects: `tsconfig.core.json` (src/core, no DOM lib),
@@ -32,6 +32,10 @@ test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the co
   per-image changes. Use `-- --verbose` for per-image lines, `-- --only c12,km` to focus.
   Regressions and baseline updates: load `axis-detection` (detection table) or
   `auto-calibration` (calibration table).
+- `bench:lines` (~15 s) runs `traceLine` from the truth seed of every series in `bench/lines/`
+  and exits 1 when any gated metric (kind, coverage, centreline error, wrong series, corners,
+  markers), overall or per category, is worse than `bench/lines/baseline.json`. Same flags as
+  bench:axes (`--verbose`, `--only l31,km`, `--update`). Load `line-tracing` for regressions.
 - `test:e2e` is `playwright test` (Chromium, 1366×768) over `e2e/*.spec.ts`. First time on a
   machine: `npx playwright install chromium`. It starts `npm run dev` on port **5174** (reusing
   one already there), so a dev server on 5173 doesn't interfere. Focus with

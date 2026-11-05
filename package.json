@@ -12,10 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run test:e2e",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run bench:lines && npm run test:e2e",
     "fixtures:synthetic": "node scripts/make-synthetic-charts.ts",
     "bench:axes": "node bench/axes/run.ts",
-    "bench:axes:corpus": "python bench/axes/generate.py"
+    "bench:axes:corpus": "python bench/axes/generate.py",
+    "bench:lines": "node bench/lines/run.ts",
+    "bench:lines:corpus": "python bench/lines/generate.py"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",

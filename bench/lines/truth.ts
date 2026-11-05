@@ -1,0 +1,140 @@
+/**
+ * Ground truth for the line-tracing benchmark, and its loaders.
+ *
+ * Synthetic charts (bench/lines/synthetic/lNN.json, written by generate.py): one JSON per image
+ * with `series: [{ id, kind: 'line'|'step'|'scatter', tags, color, seed: [x,y], path?: [[x,y]…],
+ * markers?: [[x,y]…], corners?: [[x,y]…], lineWidthPx, markerSizePx, data, pixels }]` — `path` is
+ * the drawn polyline (lines, steps), `markers` the marker centres (scatter, lines with markers),
+ * `corners` the step corners.
+ *
+ * Real figures (bench/lines/real/manifest.json → label JSON shared with fixtures/real/): only
+ * hand-labelled plateaus exist, as `knownValues: [{ series?, x: [x0, x1], y, py? }]` with x in data
+ * units. They become horizontal truth segments (x converted with a least-squares fit of the
+ * labelled x ticks; py from the label, else from the y ticks), so real-figure truth is *partial*:
+ * scored only where it exists. The seed of a series is the middle of its first segment.
+ *
+ * Pixels follow the app's convention (integer = pixel centre).
+ */
+
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+export interface P {
+  x: number;
+  y: number;
+}
+
+export interface SeriesTruth {
+  id: string;
+  kind: 'line' | 'step' | 'scatter';
+  tags: string[];
+  seed: P;
+  /** Truth polylines (one for synthetic series; one per labelled segment for real figures). */
+  pieces: P[][];
+  markers: P[];
+  corners: P[];
+  markerSizePx: number;
+  /** Real figures: truth exists only on the labelled segments. */
+  partial: boolean;
+}
+
+export interface ChartTruth {
+  id: string;
+  imagePath: string;
+  tags: string[];
+  series: SeriesTruth[];
+}
+
+type Json = Record<string, unknown>;
+const pts = (v: unknown): P[] => (Array.isArray(v) ? (v as [number, number][]).map(([x, y]) => ({ x, y })) : []);
+
+function synthetic(path: string): ChartTruth {
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
+  const series = (raw.series as Json[]).map((s): SeriesTruth => {
+    const kind = s.kind as SeriesTruth['kind'];
+    const markers = pts(s.markers);
+    const seed = s.seed as [number, number];
+    return {
+      id: String(s.id),
+      kind,
+      tags: s.tags as string[],
+      seed: { x: seed[0], y: seed[1] },
+      pieces: kind === 'scatter' ? [] : [pts(s.path)],
+      markers,
+      corners: pts(s.corners),
+      markerSizePx: Number(s.markerSizePx),
+      partial: false,
+    };
+  });
+  return {
+    id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
+    imagePath: resolve(dirname(path), String(raw.image)),
+    tags: ['synthetic', ...(raw.tags as string[])],
+    series,
+  };
+}
+
+/** Least-squares line through (value, pixel) tick pairs. */
+function fit(pairs: [number, number][]): (v: number) => number {
+  const n = pairs.length;
+  const mx = pairs.reduce((s, p) => s + p[0], 0) / n;
+  const my = pairs.reduce((s, p) => s + p[1], 0) / n;
+  const sxy = pairs.reduce((s, p) => s + (p[0] - mx) * (p[1] - my), 0);
+  const sxx = pairs.reduce((s, p) => s + (p[0] - mx) ** 2, 0);
+  const b = sxy / sxx;
+  return (v) => my + b * (v - mx);
+}
+
+function real(path: string, extraTags: string[]): ChartTruth {
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
+  const xa = raw.xAxis as Json;
+  const ya = raw.yAxis as Json;
+  const xTicks = (xa.ticks as Json[]).map((t) => [Number(t.value), Number(t.px)] as [number, number]);
+  const yTicks = (ya.ticks as Json[]).map((t) => [Number(t.value), Number(t.py)] as [number, number]);
+  const xpx = fit(xTicks);
+  const ypx = fit(yTicks);
+  const bySeries = new Map<string, P[][]>();
+  for (const k of raw.knownValues as Json[]) {
+    const [x0, x1] = k.x as [number, number];
+    const py = typeof k.py === 'number' ? k.py : ypx(Number(k.y));
+    const name = typeof k.series === 'string' ? k.series : 'series';
+    const list = bySeries.get(name) ?? [];
+    list.push([
+      { x: xpx(x0), y: py },
+      { x: xpx(x1), y: py },
+    ]);
+    bySeries.set(name, list);
+  }
+  const series = [...bySeries.entries()].map(([name, pieces], i): SeriesTruth => {
+    const [a, b] = pieces[0]!;
+    return {
+      id: `${i}:${name}`,
+      kind: 'step',
+      tags: ['series:step', 'color:colour'],
+      seed: { x: Math.round((a!.x + b!.x) / 2), y: Math.round(a!.y) },
+      pieces,
+      markers: [],
+      corners: [],
+      markerSizePx: 0,
+      partial: true,
+    };
+  });
+  return {
+    id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
+    imagePath: resolve(dirname(path), String(raw.image)),
+    tags: ['real', ...extraTags],
+    series,
+  };
+}
+
+export function loadCorpus(here: string): ChartTruth[] {
+  const synth = join(here, 'synthetic');
+  const out = readdirSync(synth)
+    .filter((f) => f.endsWith('.json'))
+    .sort()
+    .map((f) => synthetic(join(synth, f)));
+  const manifestPath = join(here, 'real', 'manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { figures: { truth: string; tags?: string[] }[] };
+  for (const fig of manifest.figures) out.push(real(resolve(dirname(manifestPath), fig.truth), fig.tags ?? []));
+  return out;
+}

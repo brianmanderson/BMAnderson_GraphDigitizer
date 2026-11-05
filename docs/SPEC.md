@@ -383,27 +383,121 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   whose exponents are 2–4 px tall (x:log10 50 %), date axes labelled with day numbers or without a
   year, offset notes too small to read, axes whose ticks were not detected.
 
+## Auto-trace (line tracing engine)
+
+One click on a plotted series proposes its points; the Data-step UI (sibling work) shows them and
+applies them only on "Accept" — the same rule as axis suggestions. The engine is pure TS in
+`src/auto/trace/` (no DOM; it runs in the auto worker and in Node for the benchmark).
+
+- **Contract** (`src/auto/trace/types.ts`, fixed — the UI codes against it; changing a shape means
+  updating this section): `traceLine(req: TraceRequest): TraceResult`, re-exported from
+  `src/auto/index.ts`. Request: `rgba`, `width`, `height`, `plotBox` (4 corners TL, TR, BR, BL in
+  image px, or `null`), `seed` (the clicked pixel, pixel-centre convention), `mode`
+  (`'auto' | 'curve' | 'markers'`), `maxPoints` (UI default 25). Result: `ok`, `kind`
+  (`'curve' | 'markers' | 'none'`), `color` (series colour at the seed, sRGB), `path` (dense
+  centreline or every marker centroid, ordered by px), `points` (the suggestion), optional
+  `message` (user-facing, set when `ok` is false), `timings.totalMs`. Each point has a 0–1
+  `confidence`. `plotBox: null` makes the engine run `detectAxes` and use its box when the seed is
+  inside it, else the whole image; a box that does not contain the seed is ignored too. Failures
+  never throw: `ok: false, kind: 'none'` with a message (click on background, on the frame, outside
+  the image, colour too close to the background, a line clicked in markers mode).
+- **Colour model** (`color.ts`): pixel = background + α·(ink − background) + residual.
+  Background = median colour of the region; seed = nearest ink pixel within 4 px of the click,
+  moved onto the strongest shade of its own colour; ink = mean of the near-full-strength pixels
+  around it, scaled to the typical peak coverage of the line near the seed (a thin or faint line
+  never shows its full colour). A pixel is "on" at α ≥ ½ with a residual ≤ max(20, f·|pixel −
+  background|) where f = 0.12 + 0.3 × the series' saturation: tight for black, grey and dull
+  colours (a dark-grey gridline is ~10° from a brown series), looser for saturated colours that
+  JPEG chroma subsampling washes out. Pixels of another colour are marked as possible occluders.
+- **Region** (`region.ts`): the plot box (or image). An axis/frame line along a box edge is
+  removed only when it has the series' colour (a black curve on black axes); a coloured curve may
+  run along a black axis (the pericardial KM curve sits on y = 0) and keeps those pixels.
+- **Curves** (`curve.ts`): column-by-column walk from the seed's run (vertical stretch of "on"
+  pixels), right, then left primed with the right walk's columns (slope known from the start),
+  then right again primed with the left. Next run = touching (8-connected) or within a window of
+  the prediction (previous centre + median recent slope); after a long run, straight through first
+  (marker, crossing line, same-colour crossing curve), else from the run's far end (a step's
+  vertical). Long runs continue through small holes (a line of another colour across a vertical).
+  A run whose peak coverage is < 0.65 × the trace's typical peak is not the series (a related
+  colour in a JPEG). Gaps: up to ~3.5 % of the plot width over background (dashes, markers of
+  other series), up to 30 % where the prediction is covered by another colour (curves drawn over
+  each other); a very long run sticking out on both sides is a same-colour crossing gridline.
+  Retry: when a walk dies within 25 columns of the last fork, the alternatives are walked (up to
+  depth 3; a retry branch that left a long run does not go straight back through it) and the
+  farthest wins (the tip of a diamond marker vs the line leaving it). Columns → centreline:
+  α-weighted centroids (sub-pixel); a thin stroke entered at one end and left at the other is a
+  step's vertical, kept as two **corner** points at the stroke's centre x; a group sticking out on
+  both sides of the curve (marker, censoring '+') is dropped and bridged.
+- **Dotted / dash-dot lines**: when the seed's blob is one link of an evenly gapped chain of
+  small blobs (gaps ≥ 1.5 px within max(1.5 px, 35 %) of each other; smaller gaps join JPEG
+  fragments of one stroke), the path follows the chain blob to blob (dot centroids, per-column
+  centres along dashes).
+- **Markers** (`markers.ts`): 8-connected blobs of "on" pixels; the seed's blob is the template;
+  a blob matches when its area is 0.45–2× the template's, its size ≤ 1.6× + 2 px and its fill
+  ratio within 0.25 (lines, text and legend boxes differ in one of these); merged blobs of 2–8×
+  the area are split by k-means. Centroids are coverage-weighted over the blob and its touching
+  pixels (as snap, SPEC → Precision tools). `points` = every marker (`maxPoints` does not apply).
+- **Auto mode**: markers when the seed's blob is at most max(30 px, 6 % of the plot's short
+  side), roughly round (second-moment elongation < 2.5) and not part of a regular chain; else
+  curve.
+- **Suggested points** (`resample.ts`): always both ends, every step corner, every y extremum
+  with prominence ≥ max(3 px, 2 line widths) and every sharp kink (Douglas–Peucker vertex at
+  max(0.75 px, ½ line width) turning ≥ 30°, e.g. the data points of a polyline chart) — kept even
+  beyond `maxPoints`; the rest of the budget evenly in x over the non-vertical stretches, snapped
+  to traced points.
+- **Benchmark** (`npm run bench:lines`, ~15 s, part of `npm run verify`): `bench/lines/generate.py`
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 60 seeded charts, 142 series:
+  smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
+  at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
+  dark gridlines; gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
+  Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
+  and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
+  Real figures (`bench/lines/real/manifest.json`): the two KM fixtures' `knownValues` plateaus as
+  partial truth. The plot box passed is `detectAxes`'s (once per image), mode `auto`, 25 points.
+  **Metrics**: kind accuracy; coverage (% of the true x-range traced within 3 px); median / p95
+  centreline error of traced points; wrong-series rate (> 20 % of a trace's points nearer another
+  series); corner recall (true step corners within 2 px of a suggested point); marker recall /
+  precision (one-to-one within max(2 px, 0.4 × marker size)); ms per trace (not gated). Gated
+  against `bench/lines/baseline.json`, overall and per category (series kind, style, colour,
+  crossing, line width, scenario, grid, JPEG, DPI, legend, frame…); `-- --update` only for an
+  explained improvement or trade-off.
+- **Baseline** (145 traces): kind 100 %, coverage 93.3 %, centreline error median 0.03 px / p95
+  1.06 px, wrong series 2.4 %, corner recall 69.2 %, markers recall 91.1 % / precision 95.9 %,
+  ~50 ms per trace in Node. PNG coverage 96.5 %, JPEG 87.0 %; steps 93.4 % (0 wrong); black on
+  black 91.9 % (0 wrong); dotted 94.7 %, dash-dot 89.0 %; lines with markers 84.6 %. Real KM
+  figures: 3/3 series, coverage 100 % (including the pericardial curve on the y = 0 axis), median
+  error 0.28 px (labels are ±1 px).
+- **Known failures**: steps shorter than about two line widths (dense staircases in thick lines)
+  lose corners (corner recall 69 %); two series drawn over each other along a step (only the one on
+  top is visible) end the trace; thin, faint lines in low-DPI JPEGs fragment (`lw:thin` coverage
+  81 %); four-series charts on dark gridlines in JPEG still switch series sometimes (dense: 10.7 %
+  wrong); legend samples and same-colour legend text count as markers (precision 96 %); markers
+  hidden behind another series below 45 % of their area are missed.
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):
 
 ```
-npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run test:e2e
+npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run bench:lines && npm run test:e2e
 ```
 
-`npm run verify` runs all five. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
+`npm run verify` runs all six. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
 dev server on port 5174. `bench:axes` (Phase 4, extended with calibration scoring in Phase 5) fails
-on any regression against `bench/axes/baseline.json` (see above).
+on any regression against `bench/axes/baseline.json`, `bench:lines` (Auto-trace) against
+`bench/lines/baseline.json` (see above).
 
 ## Non-goals (for now)
 
-PDF/vector import, automatic curve tracing, polar/ternary/map axes, accounts or cloud storage.
+PDF/vector import, polar/ternary/map axes, accounts or cloud storage. (Automatic curve tracing
+was listed here until the Auto-trace work above.)
 
 ## Test fixtures
 
 `fixtures/real/` holds real-world figures with hand-labelled ground truth (`<name>.json`
-beside each image). Use them in e2e tests (Phase 2+) and the axis benchmark (Phase 4+, listed in
-`bench/axes/real/manifest.json`). Label from measured pixels, including whether tick marks exist.
+beside each image). Use them in e2e tests (Phase 2+), the axis benchmark (Phase 4+, listed in
+`bench/axes/real/manifest.json`) and the line-tracing benchmark (their `knownValues` plateaus,
+listed in `bench/lines/real/manifest.json`). Label from measured pixels, including whether tick marks exist.
 
 `fixtures/synthetic/` holds generated charts with exact geometry (linear scatter; date × log10)
 and their ground truth, written by `npm run fixtures:synthetic`

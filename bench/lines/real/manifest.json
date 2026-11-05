@@ -1,0 +1,7 @@
+{
+  "$comment": "Real-world figures for npm run bench:lines. Each entry points at a label JSON whose knownValues (hand-labelled plateaus: series, x range in data units, y, py) become partial truth segments (bench/lines/truth.ts). Labels are shared with the e2e fixtures and bench:axes. Tags become benchmark categories.",
+  "figures": [
+    { "truth": "../../../fixtures/real/km-pericardial-effusion.json", "tags": ["km", "jpeg", "curve-on-axis"] },
+    { "truth": "../../../fixtures/real/km-cns-lymphoma.json", "tags": ["km", "png", "two-series"] }
+  ]
+}

@@ -33,6 +33,7 @@ description: >
    one machine. A detection change also moves the calibration numbers: check both tables.
    Update the baseline (`npm run bench:axes -- --update`) only when every change is an
    improvement or a deliberate, explained trade-off, and commit it with the reason.
+   `bench:lines` takes its plot box from `detectAxes`, so a detection change can move it too.
 
 ## Pipeline (`detectAxes(rgba)` in `src/auto/detect.ts`)
 

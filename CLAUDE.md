@@ -18,8 +18,10 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
 - `src/auto/` — pure-TS, **no DOM**: axis/tick detection (`detectAxes`) and auto-calibration
   (`autoCalibrate`: labels → OCR → scale → cross-checked refs; OCR injected). `src/ocr/pool.ts` —
   Tesseract.js worker pool (app + benchmark); `src/workers/auto.worker.ts` runs the pipeline.
+  `src/auto/trace/` — `traceLine`: one click on a series → its centreline/markers → points.
 - `bench/axes/` — 60 generated charts + `real/manifest.json`, scored for detection and end-to-end
-  calibration against `baseline.json`.
+  calibration against `baseline.json`. `bench/lines/` — 60 charts (142 series) + real KM plateaus,
+  scored for line tracing against its own `baseline.json`.
 - `src/state/` — `doc.ts` (`DocState` + pure reducer), `history.ts` (undo/redo); `src/ui/` —
   helpers (view, drawing, loupe, snap, table/CSV, autosave, OCR, suggestions); `src/components/`.
 - `e2e/` — Playwright specs; `fixtures/real/` (hand-labelled) and `fixtures/synthetic/`.
@@ -32,8 +34,9 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
   serves the build on :4173).
 - `npm run build` — type-check + bundle in `dist/` (Tesseract's files go to `dist/tesseract/`).
 - **Verification gate** — a change is done only when `npm run verify` passes: `typecheck`,
-  `lint`, `test`, `bench:axes` (~8 s; exits 1 on any regression vs `bench/axes/baseline.json`)
-  and `test:e2e`. Never ease a test, tolerance, fixture, corpus or baseline to make it pass.
+  `lint`, `test`, `bench:axes` (~8 s; exits 1 on any regression vs `bench/axes/baseline.json`),
+  `bench:lines` (~15 s; same vs `bench/lines/baseline.json`) and `test:e2e`. Never ease a test,
+  tolerance, fixture, corpus or baseline to make it pass.
 - `test:e2e` needs `npx playwright install chromium` once and runs its own server on :5174.
 
 ## The skills are the operational manual
@@ -46,6 +49,7 @@ Tracked in `.claude/skills/`; their descriptions say when to load them:
 - `axis-detection` — BEFORE changing detection in `src/auto/` or `bench/axes/`.
 - `auto-calibration` — BEFORE changing label finding, OCR, parsing or suggestions (`src/auto/`
   labels/parse/suggest/auto, `src/ocr`, the worker, the Auto-detect UI) or calibration scoring.
+- `line-tracing` — BEFORE changing `src/auto/trace/` (`traceLine`, its fixed contract) or `bench/lines/`.
 
 ## Pitfalls
 
