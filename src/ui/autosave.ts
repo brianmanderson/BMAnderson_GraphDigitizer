@@ -14,6 +14,8 @@ export interface AutosaveRecord {
   project: Project;
   /** Editor state the Project does not hold. */
   activeDatasetId: string;
+  /** Lines whose point lists are collapsed in the table. */
+  collapsed: string[];
   savedAt: number;
 }
 

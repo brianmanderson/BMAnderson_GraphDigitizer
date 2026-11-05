@@ -153,7 +153,9 @@ export interface SavedProject {
 }
 
 /** The autosaved project in IndexedDB, or null. */
-export async function readAutosave(page: Page): Promise<{ project: SavedProject; activeDatasetId: string } | null> {
+export async function readAutosave(
+  page: Page,
+): Promise<{ project: SavedProject; activeDatasetId: string; collapsed?: string[] } | null> {
   return page.evaluate(
     () =>
       new Promise((resolve, reject) => {

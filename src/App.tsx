@@ -105,6 +105,8 @@ export function App() {
   const [cursor, setCursor] = useState<{ px: number; py: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [tableView, setTableView] = useState({ showPixels: false, sortByX: false });
+  /** Lines whose point lists are collapsed in the table (UI state; autosaved, not in the Project). */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   /** The selection was just nudged with the keyboard: the loupe shows it until the mouse moves. */
   const [loupeOnSelection, setLoupeOnSelection] = useState(false);
@@ -280,8 +282,10 @@ export function App() {
 
   // Autosave: restore the last session once on start, then save after every change (debounced).
   const docRef = useRef(doc);
+  const collapsedRef = useRef(collapsed);
   useLayoutEffect(() => {
     docRef.current = doc;
+    collapsedRef.current = collapsed;
   });
   const restoreDone = useRef(false);
   useEffect(() => {
@@ -298,6 +302,7 @@ export function App() {
         const restored = fromProject(parsed.project, active);
         historyDispatch({ type: 'reset', doc: restored });
         setStep(stepFor(restored));
+        if (Array.isArray(rec?.collapsed)) setCollapsed(new Set(rec.collapsed.filter((id): id is string => typeof id === 'string')));
         const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
         setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
       })
@@ -316,7 +321,8 @@ export function App() {
     pendingSave.current = null;
     const project: Project = toProject(d);
     const savedAt = Date.now();
-    writeAutosave({ project, activeDatasetId: d.activeDatasetId, savedAt }).then(
+    const collapsedIds = d.datasets.filter((ds) => collapsedRef.current.has(ds.id)).map((ds) => ds.id);
+    writeAutosave({ project, activeDatasetId: d.activeDatasetId, collapsed: collapsedIds, savedAt }).then(
       () => setAutosaved({ ok: true, at: savedAt }),
       () => setAutosaved({ ok: false, at: savedAt }),
     );
@@ -326,7 +332,7 @@ export function App() {
     pendingSave.current = doc;
     const t = setTimeout(saveNow, 400);
     return () => clearTimeout(t);
-  }, [doc, saveNow]);
+  }, [doc, collapsed, saveNow]);
   useEffect(() => {
     const flush = () => {
       if (document.visibilityState === 'hidden') saveNow();
@@ -454,14 +460,20 @@ export function App() {
     [doc, dispatch],
   );
 
+  const expandLine = useCallback(
+    (datasetId: string) => setCollapsed((c) => (c.has(datasetId) ? new Set([...c].filter((id) => id !== datasetId)) : c)),
+    [],
+  );
+
   const onAddPoint = useCallback(
     (px: number, py: number) => {
       if (!doc) return;
       const point = { id: newId(), px, py };
       dispatch({ type: 'add-point', datasetId: doc.activeDatasetId, point });
       setSelected({ kind: 'point', datasetId: doc.activeDatasetId, pointId: point.id });
+      expandLine(doc.activeDatasetId);
     },
-    [doc, dispatch],
+    [doc, dispatch, expandLine],
   );
 
   const onMoveTarget = useCallback(
@@ -480,8 +492,25 @@ export function App() {
       if (t?.kind === 'point' && doc && t.datasetId !== doc.activeDatasetId) {
         dispatch({ type: 'set-active-dataset', datasetId: t.datasetId });
       }
+      // A point selected on the canvas shows its row, so its line's list opens.
+      if (t?.kind === 'point') expandLine(t.datasetId);
     },
-    [doc, dispatch],
+    [doc, dispatch, expandLine],
+  );
+
+  const onToggleLine = useCallback(
+    (datasetId: string) =>
+      setCollapsed((c) => {
+        const next = new Set(c);
+        if (!next.delete(datasetId)) next.add(datasetId);
+        return next;
+      }),
+    [],
+  );
+
+  const onCollapseAll = useCallback(
+    (collapse: boolean) => setCollapsed(collapse && doc ? new Set(doc.datasets.map((d) => d.id)) : new Set()),
+    [doc],
   );
 
   const tableOptions: TableOptions = useMemo(
@@ -854,6 +883,9 @@ export function App() {
               calibration={calibration}
               options={tableOptions}
               selected={selected}
+              collapsed={collapsed}
+              onToggle={onToggleLine}
+              onCollapseAll={onCollapseAll}
               onSelect={onSelect}
               onOptions={onTableOptions}
               onExportCsv={onExportCsv}

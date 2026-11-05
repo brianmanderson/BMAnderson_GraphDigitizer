@@ -88,6 +88,17 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - Accepting = `dispatch(acceptTraceAction(…))` → `add-points` or `add-dataset` (one undo step).
   Never without the user pressing "Accept".
 
+## Side panel and table
+
+- `.panel` is a flex column: step tabs · `.step-scroll` (the step's controls, `flex: 0 1 auto`) ·
+  `.table-panel` (`flex: 1 1 0`, `min-height` 136 px). The step never shrinks while the table is
+  above its minimum; don't give the step area a `max-height` or the table a content-sized basis,
+  or long lines squeeze the controls again. `e2e/data-panel.spec.ts` checks the button boxes.
+- Collapsed lines (`collapsed: ReadonlySet<string>` in App) are UI state: autosaved beside
+  `activeDatasetId`, never in `DocState`/Project, never filtering exports. A collapsed line's
+  table is not rendered (`tableRows` returns `[]`). `onSelect`/`onAddPoint` call `expandLine`;
+  DataTable scrolls the selected row (`tr[data-point-id]`) into view on a new selection.
+
 ## e2e hooks — keep them
 
 - Canvas `data-testid="canvas"` with `data-scale`, `data-offset-x`, `data-offset-y` (the view).
@@ -103,7 +114,7 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `auto-message-x`/`-y`, `auto-timing`, `trace-prompt`, `trace-panel`, `trace-running`,
   `trace-error`, `trace-kind`, `trace-count`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
-  `Sort by X`, `Significant figures`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
+  `Sort by X`, `Significant figures`, `Collapse all`, `Expand all`, line headers `Line 1 (n)`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
   `Suggested X1 value`…, `Accept suggestion`, `Discard`,
   `Delete <name>`, `Auto-trace line`, `Trace into a new line`, `Points`, `Number of points`,
   `Trace mode`, `Accept`, `Colour of <name>`, the `Steps` navigation and the export button labels.

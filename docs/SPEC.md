@@ -191,6 +191,20 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   when sorting by X (rows without an x value sort last). Unrepresentable values (`null`) show as
   "—". Significant figures (default 4) and the date format are Project settings; "Sort by X"
   and "Pixel columns" are session view options.
+- **Collapsible point lists (decided after Auto-trace)**: each line's section header is a
+  disclosure button (colour dot, "Line 1 (66)", chevron; `aria-expanded`/`aria-controls`) that
+  collapses or expands its rows; "Collapse all" / "Expand all" sit with the table options. Lines
+  start expanded. Collapsing is UI state only — not in the Project (no format bump) — kept in the
+  autosave record beside `activeDatasetId`, and it never changes exports: CSV, TSV and JSON hold
+  every point. Selecting a point on the canvas (or adding one) expands its line and scrolls its
+  row into view; collapsing a line whose point is selected keeps it collapsed.
+- **Panel layout — step controls first (decided after Auto-trace)**: the step's controls (in Data:
+  prompt, every line row, "+ Add line", "Delete selected point", the Auto-trace buttons and the
+  open Auto-trace panel) take their full height and never shrink; the points table gets the rest
+  of the panel and scrolls on its own. Fallback for windows too short for both (or the tall Axes
+  help panel): the table keeps a minimum of 136 px — its options, the first line's header row and
+  the export bar — and only then does the step area scroll. Checked with 6 lines × 200 points
+  and the Auto-trace panel open at 1366×768 and 1024×768 (where the toolbar wraps to two rows).
 - **Exports follow the table view** (sort, pixel columns, significant figures, date format):
   one CSV for all lines with a `line` column (RFC 4180, CRLF, `<image>-data.csv`); the same
   cells as TSV on the clipboard (LF; tabs/newlines in cells become spaces); the full Project as
@@ -241,7 +255,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   action is still the newest step. Caveat: the autosave then holds the new state, so after a
   reload the replaced work is gone unless it was saved as a project file.
 - **Autosave** (`src/ui/autosave.ts`): IndexedDB database `graph-digitizer`, store `autosave`,
-  key `current`: `{ project: toProject(doc), activeDatasetId, savedAt }`, written 400 ms after
+  key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, savedAt }` (`collapsed`:
+  ids of lines whose point lists are collapsed), written 400 ms after
   the last change and on `pagehide`/tab hidden. On start it is read through `parseProject` and
   restored unless the user already loaded something; the step becomes Data when the restored
   calibration fits, else Axes; the view is re-fitted. One autosave per browser profile (the last
