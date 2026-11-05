@@ -6,6 +6,7 @@
 import { REF_NAMES, forward, type Calibration, type RefName } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
 import type { Ghost } from './suggestion.ts';
+import type { TraceGhost } from './trace.ts';
 import { formatValue } from './table.ts';
 import { axisTicks } from './ticks.ts';
 import { imageToScreen, type View } from './view.ts';
@@ -40,6 +41,8 @@ export interface DrawInput {
   snap: { px: number; py: number; width: number; height: number; color: string } | null;
   /** A pending auto-detect suggestion, drawn as dashed "ghost" markers in the Axes step. */
   ghost?: Ghost | null;
+  /** An auto-trace under review, drawn as hollow dashed points in the Data step. */
+  trace?: TraceGhost | null;
 }
 
 const sameTarget = (a: Target | null, b: Target): boolean =>
@@ -91,6 +94,7 @@ export function drawWorkspace(input: DrawInput): void {
   }
 
   if (input.ghost && input.step === 'axes') drawGhost(ctx, view, input.ghost);
+  if (input.trace && input.step === 'data') drawTraceGhost(ctx, view, input.trace);
   if (input.snap) drawSnap(ctx, view, input.snap);
 }
 
@@ -145,6 +149,50 @@ function drawGhost(ctx: CanvasRenderingContext2D, view: View, ghost: Ghost) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, lx + 4, ly + 8.5);
+  }
+  ctx.restore();
+}
+
+/**
+ * A trace under review: the followed path as a faint dashed line, the proposed points as hollow
+ * dashed rings in the colour they will get, and a small cross at the click it started from.
+ */
+function drawTraceGhost(ctx: CanvasRenderingContext2D, view: View, g: TraceGhost) {
+  ctx.save();
+  if (g.path.length > 1) {
+    ctx.beginPath();
+    g.path.forEach((q, i) => {
+      const p = imageToScreen(view, q.px, q.py);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = g.color;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (const q of g.points) {
+    const p = imageToScreen(view, q.px, q.py);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, POINT_RADIUS + 1, 0, Math.PI * 2);
+    ctx.setLineDash([]);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.stroke();
+    ctx.setLineDash([3, 2]);
+    ctx.lineWidth = 1.75;
+    ctx.strokeStyle = g.color;
+    ctx.stroke();
+  }
+  if (g.seed) {
+    const p = imageToScreen(view, g.seed.px, g.seed.py);
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = g.color;
+    line(ctx, { x: p.x - 6, y: p.y - 6 }, { x: p.x + 6, y: p.y + 6 });
+    line(ctx, { x: p.x - 6, y: p.y + 6 }, { x: p.x + 6, y: p.y - 6 });
   }
   ctx.restore();
 }

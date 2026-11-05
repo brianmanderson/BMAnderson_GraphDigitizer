@@ -74,6 +74,20 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   replaces the suggested refs and sets the detected scales, keeps other refs). Never dispatch it
   without the user pressing "Accept suggestion".
 
+## Auto-trace
+
+- `TraceState` (`src/ui/trace.ts`) lives in App, tagged with its image and shown in the Data step
+  only; `traceSettings` (mode, `maxPoints`) persist for the session. App's trace effect starts a
+  run (`runTrace`, `src/ui/autoTrace.ts`) whenever the state is `running` — a new seed object or
+  new settings — and cancels it on cleanup; never trace on the main thread.
+- The worker reaches the tracer only through `src/workers/traceImpl.ts` (the swap point from the
+  stub to `src/auto/trace/index.ts`). `src/auto/trace/types.ts` is a contract shared with the
+  engine: change it only together with the engine.
+- While a trace is open Workspace gets `tracing`: clicks call `onTraceSeed`, `hitTest` is
+  skipped, snap is off. The ghost is `traceGhostOf(doc, trace)` → `drawWorkspace({ …, trace })`.
+- Accepting = `dispatch(acceptTraceAction(…))` → `add-points` or `add-dataset` (one undo step).
+  Never without the user pressing "Accept".
+
 ## e2e hooks — keep them
 
 - Canvas `data-testid="canvas"` with `data-scale`, `data-offset-x`, `data-offset-y` (the view).
@@ -86,11 +100,13 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,
-  `auto-message-x`/`-y`, `auto-timing`.
+  `auto-message-x`/`-y`, `auto-timing`, `trace-prompt`, `trace-panel`, `trace-running`,
+  `trace-error`, `trace-kind`, `trace-count`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
   `Sort by X`, `Significant figures`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
   `Suggested X1 value`…, `Accept suggestion`, `Discard`,
-  `Delete <name>`, the `Steps` navigation and the export button labels.
+  `Delete <name>`, `Auto-trace line`, `Trace into a new line`, `Points`, `Number of points`,
+  `Trace mode`, `Accept`, `Colour of <name>`, the `Steps` navigation and the export button labels.
 
 ## Fixtures
 

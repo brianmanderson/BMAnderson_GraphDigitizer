@@ -130,6 +130,22 @@ describe('historyReducer', () => {
     expect(canRedo(h)).toBe(false);
   });
 
+  it('adding several points at once is one undo step', () => {
+    const h = run(
+      loaded(),
+      addPoint('p0', 1, 1),
+      edit({
+        type: 'add-points',
+        datasetId: 'd1',
+        points: [1, 2, 3, 4].map((i) => ({ id: `t${i}`, px: 10 * i, py: 5 * i })),
+      }),
+    );
+    expect(points(h)).toHaveLength(5);
+    const u = run(h, { type: 'undo' });
+    expect(points(u)).toEqual([[1, 1]]);
+    expect(run(u, { type: 'redo' }).present).toBe(h.present);
+  });
+
   it(`keeps at most ${HISTORY_LIMIT} undo steps`, () => {
     let h = loaded();
     for (let i = 0; i < HISTORY_LIMIT + 25; i++) h = run(h, addPoint(`p${i}`, i, i));

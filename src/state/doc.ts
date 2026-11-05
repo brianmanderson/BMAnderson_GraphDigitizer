@@ -64,6 +64,8 @@ export type DocAction =
    */
   | { type: 'apply-suggestion'; xScale?: ScaleType; yScale?: ScaleType; refs: Partial<Record<RefName, DraftRef>> }
   | { type: 'add-point'; datasetId: string; point: DataPoint }
+  /** Several points at once, as one edit (accepting an auto-trace). Non-finite ones are dropped. */
+  | { type: 'add-points'; datasetId: string; points: DataPoint[] }
   | { type: 'move-point'; datasetId: string; pointId: string; px: number; py: number }
   | { type: 'delete-point'; datasetId: string; pointId: string }
   | { type: 'add-dataset'; dataset: Dataset }
@@ -85,6 +87,8 @@ export function newDoc(image: ProjectImage, firstDatasetId: string, settings?: P
     settings: { ...(settings ?? DEFAULT_SETTINGS) },
   };
 }
+
+const isFinitePoint = (p: DataPoint) => Number.isFinite(p.px) && Number.isFinite(p.py);
 
 function mapDataset(state: DocState, datasetId: string, f: (d: Dataset) => Dataset): DocState {
   let changed = false;
@@ -129,6 +133,11 @@ export function docReducer(state: DocState, action: DocAction): DocState {
     case 'add-point':
       if (!Number.isFinite(action.point.px) || !Number.isFinite(action.point.py)) return state;
       return mapDataset(state, action.datasetId, (d) => ({ ...d, points: [...d.points, action.point] }));
+    case 'add-points': {
+      const points = action.points.filter(isFinitePoint);
+      if (points.length === 0) return state;
+      return mapDataset(state, action.datasetId, (d) => ({ ...d, points: [...d.points, ...points] }));
+    }
     case 'move-point':
       if (!Number.isFinite(action.px) || !Number.isFinite(action.py)) return state;
       return mapDataset(state, action.datasetId, (d) => ({
@@ -143,7 +152,7 @@ export function docReducer(state: DocState, action: DocAction): DocState {
     case 'add-dataset':
       return {
         ...state,
-        datasets: [...state.datasets, action.dataset],
+        datasets: [...state.datasets, { ...action.dataset, points: action.dataset.points.filter(isFinitePoint) }],
         activeDatasetId: action.dataset.id,
       };
     case 'rename-dataset':

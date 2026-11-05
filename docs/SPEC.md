@@ -383,6 +383,33 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   whose exponents are 2–4 px tall (x:log10 50 %), date axes labelled with day numbers or without a
   year, offset notes too small to read, axes whose ticks were not detected.
 
+## Auto-trace — UI
+
+The tracing engine (`traceLine` in `src/auto/trace/`) and its benchmark are specified separately;
+this is the UI half. The contract between them is `src/auto/trace/types.ts` (`TraceRequest` →
+`TraceResult`).
+
+- **Where**: Data step, under the lines: "Auto-trace line" (disabled until the axes calibrate),
+  plus "Trace into a new line" once the active line has points. Starting shows "Click on the curve
+  or markers to trace" over the canvas; the next click on the image is the seed (the loupe works
+  as when placing points; snap does not apply). While a trace is open, clicks re-seed it and
+  markers are not grabbed; Escape, Discard or leaving the step closes it.
+- **Off the main thread**: the auto worker (`src/workers/auto.worker.ts`, message `trace`) runs
+  `detectAxes` for the plot box (its four corners, or null) and then the tracer, one worker per
+  run; a new seed or setting terminates the previous run. The tracer is imported only through
+  `src/workers/traceImpl.ts` (a stub until the engine lands).
+- **Review**: the result is drawn as ghosts in the colour the points will get — the followed path
+  dashed, each proposed point a hollow dashed ring, a cross at the seed — and a panel shows the
+  kind detected (Curve / Markers / Nothing found), the point count and the time. "Points"
+  (slider + number, `maxPoints`, 2–200, default 25) and the mode (Auto / Curve / Markers) are
+  session settings; changing either re-runs the trace from the same seed (debounced 120 ms).
+- **Never applied silently**: "Accept" adds the proposed points (finite, on the image) as one
+  undo step — `add-points` to the active line, or `add-dataset` for a new line named like
+  "+ Add line" and coloured with the traced series' colour when it is colourful (max − min channel
+  ≥ 60; black/grey series keep the palette colour). "Discard" changes nothing. Accepted points
+  are ordinary points (drag, nudge, delete, table, exports). A trace belongs to the image it was
+  made for and is UI state, not part of the document or autosave.
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):
@@ -397,7 +424,7 @@ on any regression against `bench/axes/baseline.json` (see above).
 
 ## Non-goals (for now)
 
-PDF/vector import, automatic curve tracing, polar/ternary/map axes, accounts or cloud storage.
+PDF/vector import, polar/ternary/map axes, accounts or cloud storage.
 
 ## Test fixtures
 
