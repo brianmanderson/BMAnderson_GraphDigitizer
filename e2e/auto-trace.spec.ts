@@ -2,7 +2,7 @@
  * Auto-trace in the Data step on the synthetic linear chart (a blue polyline through pink
  * markers): one click proposes ghost points, nothing is applied before Accept, Accept adds them
  * as one undo step and they then behave like ordinary points. Counts are read from the panel, not
- * hard-coded, so the spec holds for the stub and the real tracer alike.
+ * hard-coded, so the spec does not depend on the tracer's exact output.
  */
 
 import { expect, test, type Page } from '@playwright/test';

@@ -1,7 +1,6 @@
 /**
- * The one place the app gets its line tracer from. The real engine (`traceLine` in
- * src/auto/trace/index.ts) is built separately; until it is merged this re-exports the stub.
- * Swapping is this one line:  export { traceLine } from '../auto/trace/index.ts';
+ * The one place the app gets its line tracer from: the engine in src/auto/trace/index.ts.
+ * Keeping it behind this seam lets the worker swap tracers without touching its message code.
  */
 
-export { traceLineStub as traceLine } from '../auto/trace/stub.ts';
+export { traceLine } from '../auto/trace/index.ts';

@@ -506,7 +506,7 @@ this is the UI half. The contract between them is `src/auto/trace/types.ts` (`Tr
 - **Off the main thread**: the auto worker (`src/workers/auto.worker.ts`, message `trace`) runs
   `detectAxes` for the plot box (its four corners, or null) and then the tracer, one worker per
   run; a new seed or setting terminates the previous run. The tracer is imported only through
-  `src/workers/traceImpl.ts` (a stub until the engine lands).
+  `src/workers/traceImpl.ts`, which re-exports `traceLine`.
 - **Review**: the result is drawn as ghosts in the colour the points will get — the followed path
   dashed, each proposed point a hollow dashed ring, a cross at the seed — and a panel shows the
   kind detected (Curve / Markers / Nothing found), the point count and the time. "Points"

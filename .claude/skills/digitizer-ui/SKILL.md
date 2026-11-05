@@ -80,8 +80,8 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   only; `traceSettings` (mode, `maxPoints`) persist for the session. App's trace effect starts a
   run (`runTrace`, `src/ui/autoTrace.ts`) whenever the state is `running` — a new seed object or
   new settings — and cancels it on cleanup; never trace on the main thread.
-- The worker reaches the tracer only through `src/workers/traceImpl.ts` (the swap point from the
-  stub to `src/auto/trace/index.ts`). `src/auto/trace/types.ts` is a contract shared with the
+- The worker reaches the tracer only through `src/workers/traceImpl.ts` (the single seam to
+  `src/auto/trace/index.ts`). `src/auto/trace/types.ts` is a contract shared with the
   engine: change it only together with the engine.
 - While a trace is open Workspace gets `tracing`: clicks call `onTraceSeed`, `hitTest` is
   skipped, snap is off. The ghost is `traceGhostOf(doc, trace)` → `drawWorkspace({ …, trace })`.
