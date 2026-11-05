@@ -155,7 +155,8 @@ function drawGhost(ctx: CanvasRenderingContext2D, view: View, ghost: Ghost) {
 
 /**
  * A trace under review: the followed path as a faint dashed line, the proposed points as hollow
- * dashed rings in the colour they will get, and a small cross at the click it started from.
+ * dashed rings in the colour they will get, and a small cross at the click it started from. Every
+ * mark has a white halo like the placed points, so it reads on light and dark charts alike.
  */
 function drawTraceGhost(ctx: CanvasRenderingContext2D, view: View, g: TraceGhost) {
   ctx.save();
@@ -166,7 +167,10 @@ function drawTraceGhost(ctx: CanvasRenderingContext2D, view: View, g: TraceGhost
       if (i === 0) ctx.moveTo(p.x, p.y);
       else ctx.lineTo(p.x, p.y);
     });
-    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.stroke();
+    ctx.globalAlpha = 0.8;
     ctx.setLineDash([5, 4]);
     ctx.lineWidth = 1.25;
     ctx.strokeStyle = g.color;
@@ -189,10 +193,15 @@ function drawTraceGhost(ctx: CanvasRenderingContext2D, view: View, g: TraceGhost
   if (g.seed) {
     const p = imageToScreen(view, g.seed.px, g.seed.py);
     ctx.setLineDash([]);
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = g.color;
-    line(ctx, { x: p.x - 6, y: p.y - 6 }, { x: p.x + 6, y: p.y + 6 });
-    line(ctx, { x: p.x - 6, y: p.y + 6 }, { x: p.x + 6, y: p.y - 6 });
+    for (const [width, style] of [
+      [3.5, 'rgba(255,255,255,0.9)'],
+      [1.5, g.color],
+    ] as const) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = style;
+      line(ctx, { x: p.x - 6, y: p.y - 6 }, { x: p.x + 6, y: p.y + 6 });
+      line(ctx, { x: p.x - 6, y: p.y + 6 }, { x: p.x + 6, y: p.y - 6 });
+    }
   }
   ctx.restore();
 }

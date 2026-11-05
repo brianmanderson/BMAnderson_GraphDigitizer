@@ -451,7 +451,8 @@ kbd {
   left: 50%;
   transform: translateX(-50%);
   background: var(--accent);
-  color: #fff;
+  /* --on-fill (text on accent fills) arrives with the theme tokens; white until then. */
+  color: var(--on-fill, #fff);
   border-radius: 6px;
   padding: 4px 12px;
   pointer-events: none;
