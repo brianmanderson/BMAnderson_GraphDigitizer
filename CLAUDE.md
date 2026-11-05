@@ -63,3 +63,5 @@ Tracked in `.claude/skills/`; their descriptions say when to load them:
 - Integer pixel coordinates are pixel *centres* (SPEC → Pixel convention); keep it in fixtures.
 - Windows: stop a running `npm run dev` before deleting `node_modules` or `dist`.
 - Reloading the app restores its IndexedDB autosave; clear site data for a clean start.
+- Colours are tokens in `src/index.css` with a `:root[data-theme='dark']` value; no hard-coded UI
+  colours (the canvas is not themed — SPEC → Theme).
