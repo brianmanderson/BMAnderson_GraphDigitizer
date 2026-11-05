@@ -1,14 +1,14 @@
 {
  "overall": {
-  "traces": 145,
+  "traces": 165,
   "kindAccuracy": 1,
-  "coverage": 0.9333,
-  "medianError": 0.0295,
-  "p95Error": 1.0626,
-  "wrongRate": 0.0236,
-  "cornerRecall": 0.6918,
-  "markerRecall": 0.9108,
-  "markerPrecision": 0.959,
+  "coverage": 0.926,
+  "medianError": 0.0271,
+  "p95Error": 0.9894,
+  "wrongRate": 0.0205,
+  "cornerRecall": 0.6842,
+  "markerRecall": 0.9118,
+  "markerPrecision": 0.9595,
   "meanMs": 0
  },
  "categories": {
@@ -16,7 +16,7 @@
    "traces": 11,
    "kindAccuracy": 1,
    "coverage": 0.8708,
-   "medianError": 0.0229,
+   "medianError": 0.023,
    "p95Error": 0.6862,
    "wrongRate": 0,
    "cornerRecall": 0.6516,
@@ -24,38 +24,50 @@
    "markerPrecision": null,
    "meanMs": 0
   },
+  "chromium": {
+   "traces": 2,
+   "kindAccuracy": 1,
+   "coverage": 1,
+   "medianError": 0.0163,
+   "p95Error": 0.0595,
+   "wrongRate": 0,
+   "cornerRecall": 1,
+   "markerRecall": 1,
+   "markerPrecision": 1,
+   "meanMs": 0
+  },
   "color:black": {
    "traces": 8,
    "kindAccuracy": 1,
-   "coverage": 0.8988,
+   "coverage": 0.9091,
    "medianError": 0.0161,
-   "p95Error": 0.0753,
+   "p95Error": 0.0827,
    "wrongRate": 0,
-   "cornerRecall": 0.6667,
+   "cornerRecall": 0.7167,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "color:colour": {
-   "traces": 137,
+   "traces": 157,
    "kindAccuracy": 1,
-   "coverage": 0.9357,
-   "medianError": 0.0321,
-   "p95Error": 1.1507,
-   "wrongRate": 0.0252,
-   "cornerRecall": 0.6962,
-   "markerRecall": 0.9108,
-   "markerPrecision": 0.959,
+   "coverage": 0.927,
+   "medianError": 0.0288,
+   "p95Error": 1.0617,
+   "wrongRate": 0.0217,
+   "cornerRecall": 0.6794,
+   "markerRecall": 0.9118,
+   "markerPrecision": 0.9595,
    "meanMs": 0
   },
   "crossing": {
-   "traces": 104,
+   "traces": 116,
    "kindAccuracy": 1,
-   "coverage": 0.9353,
-   "medianError": 0.0297,
-   "p95Error": 1.2138,
-   "wrongRate": 0.0288,
-   "cornerRecall": 0.7226,
+   "coverage": 0.9343,
+   "medianError": 0.0269,
+   "p95Error": 1.0937,
+   "wrongRate": 0.0259,
+   "cornerRecall": 0.7115,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
@@ -73,87 +85,111 @@
    "meanMs": 0
   },
   "dpi:high": {
-   "traces": 20,
+   "traces": 22,
    "kindAccuracy": 1,
-   "coverage": 0.9299,
-   "medianError": 0.0163,
-   "p95Error": 1.1499,
+   "coverage": 0.9417,
+   "medianError": 0.0152,
+   "p95Error": 1.0247,
    "wrongRate": 0,
-   "cornerRecall": 0.6511,
+   "cornerRecall": 0.6701,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "dpi:low": {
-   "traces": 43,
+   "traces": 51,
    "kindAccuracy": 1,
-   "coverage": 0.8996,
-   "medianError": 0.0755,
-   "p95Error": 2.1507,
-   "wrongRate": 0.0541,
-   "cornerRecall": 0.7191,
+   "coverage": 0.8905,
+   "medianError": 0.0527,
+   "p95Error": 1.6784,
+   "wrongRate": 0.0444,
+   "cornerRecall": 0.7,
    "markerRecall": 0.9367,
    "markerPrecision": 0.9487,
    "meanMs": 0
   },
   "dpi:mid": {
-   "traces": 79,
+   "traces": 87,
    "kindAccuracy": 1,
-   "coverage": 0.95,
-   "medianError": 0.0311,
-   "p95Error": 0.8842,
-   "wrongRate": 0.0149,
-   "cornerRecall": 0.7102,
+   "coverage": 0.9387,
+   "medianError": 0.03,
+   "p95Error": 0.8909,
+   "wrongRate": 0.0133,
+   "cornerRecall": 0.6814,
    "markerRecall": 0.8961,
    "markerPrecision": 0.9653,
    "meanMs": 0
   },
-  "frame:L": {
-   "traces": 51,
+  "fixture": {
+   "traces": 2,
    "kindAccuracy": 1,
-   "coverage": 0.9221,
-   "medianError": 0.0289,
-   "p95Error": 1.1057,
-   "wrongRate": 0.0488,
-   "cornerRecall": 0.6895,
+   "coverage": 1,
+   "medianError": 0.0163,
+   "p95Error": 0.0595,
+   "wrongRate": 0,
+   "cornerRecall": 1,
+   "markerRecall": 1,
+   "markerPrecision": 1,
+   "meanMs": 0
+  },
+  "frame:L": {
+   "traces": 57,
+   "kindAccuracy": 1,
+   "coverage": 0.9284,
+   "medianError": 0.026,
+   "p95Error": 0.9969,
+   "wrongRate": 0.0426,
+   "cornerRecall": 0.6667,
    "markerRecall": 0.9272,
    "markerPrecision": 0.9603,
    "meanMs": 0
   },
   "frame:box": {
-   "traces": 91,
+   "traces": 103,
    "kindAccuracy": 1,
-   "coverage": 0.9365,
-   "medianError": 0.0286,
-   "p95Error": 1.077,
-   "wrongRate": 0.012,
-   "cornerRecall": 0.6932,
+   "coverage": 0.9217,
+   "medianError": 0.0269,
+   "p95Error": 1.0306,
+   "wrongRate": 0.0105,
+   "cornerRecall": 0.6919,
    "markerRecall": 0.8864,
    "markerPrecision": 0.9571,
    "meanMs": 0
   },
   "grid": {
-   "traces": 74,
+   "traces": 84,
    "kindAccuracy": 1,
-   "coverage": 0.9356,
-   "medianError": 0.0324,
+   "coverage": 0.9289,
+   "medianError": 0.0295,
    "p95Error": 1.472,
-   "wrongRate": 0.0429,
-   "cornerRecall": 0.6707,
+   "wrongRate": 0.0375,
+   "cornerRecall": 0.6392,
    "markerRecall": 0.9508,
    "markerPrecision": 0.9667,
    "meanMs": 0
   },
   "jpeg": {
-   "traces": 47,
+   "traces": 52,
    "kindAccuracy": 1,
-   "coverage": 0.8702,
-   "medianError": 0.1139,
-   "p95Error": 1.6534,
-   "wrongRate": 0.0476,
-   "cornerRecall": 0.7554,
+   "coverage": 0.8417,
+   "medianError": 0.1101,
+   "p95Error": 1.7569,
+   "wrongRate": 0.0426,
+   "cornerRecall": 0.6901,
    "markerRecall": 0.9587,
    "markerPrecision": 0.9587,
+   "meanMs": 0
+  },
+  "kinks": {
+   "traces": 19,
+   "kindAccuracy": 1,
+   "coverage": 0.8668,
+   "medianError": 0.004,
+   "p95Error": 1.0118,
+   "wrongRate": 0,
+   "cornerRecall": 0.5794,
+   "markerRecall": null,
+   "markerPrecision": null,
    "meanMs": 0
   },
   "km": {
@@ -169,63 +205,99 @@
    "meanMs": 0
   },
   "legend": {
-   "traces": 61,
+   "traces": 68,
    "kindAccuracy": 1,
-   "coverage": 0.9388,
-   "medianError": 0.0239,
-   "p95Error": 0.8554,
-   "wrongRate": 0.0208,
-   "cornerRecall": 0.6831,
+   "coverage": 0.9422,
+   "medianError": 0.0223,
+   "p95Error": 0.8726,
+   "wrongRate": 0.0182,
+   "cornerRecall": 0.6883,
    "markerRecall": 0.9093,
    "markerPrecision": 0.9497,
    "meanMs": 0
   },
   "lw:thick": {
-   "traces": 109,
+   "traces": 122,
    "kindAccuracy": 1,
-   "coverage": 0.9481,
-   "medianError": 0.0278,
-   "p95Error": 1.0329,
-   "wrongRate": 0.0183,
-   "cornerRecall": 0.6904,
+   "coverage": 0.9436,
+   "medianError": 0.0265,
+   "p95Error": 0.9997,
+   "wrongRate": 0.0164,
+   "cornerRecall": 0.6762,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "lw:thin": {
+   "traces": 20,
+   "kindAccuracy": 1,
+   "coverage": 0.804,
+   "medianError": 0.028,
+   "p95Error": 1.5538,
+   "wrongRate": 0.05,
+   "cornerRecall": 0.7818,
+   "markerRecall": null,
+   "markerPrecision": null,
+   "meanMs": 0
+  },
+  "markers:other-colour": {
    "traces": 15,
    "kindAccuracy": 1,
-   "coverage": 0.8128,
-   "medianError": 0.0424,
-   "p95Error": 3.6586,
-   "wrongRate": 0.0667,
-   "cornerRecall": 0.75,
+   "coverage": 0.8764,
+   "medianError": 0.0041,
+   "p95Error": 0.7985,
+   "wrongRate": 0,
+   "cornerRecall": 0.5699,
+   "markerRecall": null,
+   "markerPrecision": null,
+   "meanMs": 0
+  },
+  "markers:same-colour": {
+   "traces": 4,
+   "kindAccuracy": 1,
+   "coverage": 0.8309,
+   "medianError": 0.0036,
+   "p95Error": 2.145,
+   "wrongRate": 0,
+   "cornerRecall": 0.6061,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "no-grid": {
-   "traces": 68,
+   "traces": 76,
    "kindAccuracy": 1,
-   "coverage": 0.9266,
-   "medianError": 0.0258,
-   "p95Error": 0.7229,
+   "coverage": 0.9175,
+   "medianError": 0.0238,
+   "p95Error": 0.6715,
    "wrongRate": 0,
-   "cornerRecall": 0.7011,
+   "cornerRecall": 0.7047,
    "markerRecall": 0.9043,
    "markerPrecision": 0.9577,
    "meanMs": 0
   },
   "png": {
-   "traces": 98,
+   "traces": 113,
    "kindAccuracy": 1,
-   "coverage": 0.9645,
-   "medianError": 0.0206,
-   "p95Error": 0.8747,
-   "wrongRate": 0.0118,
-   "cornerRecall": 0.6731,
-   "markerRecall": 0.8924,
-   "markerPrecision": 0.9592,
+   "coverage": 0.966,
+   "medianError": 0.0185,
+   "p95Error": 0.8356,
+   "wrongRate": 0.0101,
+   "cornerRecall": 0.6824,
+   "markerRecall": 0.8941,
+   "markerPrecision": 0.9599,
+   "meanMs": 0
+  },
+  "polyline-markers": {
+   "traces": 2,
+   "kindAccuracy": 1,
+   "coverage": 1,
+   "medianError": 0.0163,
+   "p95Error": 0.0595,
+   "wrongRate": 0,
+   "cornerRecall": 1,
+   "markerRecall": 1,
+   "markerPrecision": 1,
    "meanMs": 0
   },
   "real": {
@@ -243,11 +315,11 @@
   "scenario:black": {
    "traces": 10,
    "kindAccuracy": 1,
-   "coverage": 0.919,
-   "medianError": 0.0195,
-   "p95Error": 0.4244,
+   "coverage": 0.9273,
+   "medianError": 0.0193,
+   "p95Error": 0.452,
    "wrongRate": 0,
-   "cornerRecall": 0.6667,
+   "cornerRecall": 0.7167,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
@@ -257,7 +329,7 @@
    "kindAccuracy": 1,
    "coverage": 1,
    "medianError": 0.029,
-   "p95Error": 0.3492,
+   "p95Error": 0.3493,
    "wrongRate": 0,
    "cornerRecall": null,
    "markerRecall": null,
@@ -268,8 +340,8 @@
    "traces": 21,
    "kindAccuracy": 1,
    "coverage": 0.9395,
-   "medianError": 0.0549,
-   "p95Error": 0.9384,
+   "medianError": 0.055,
+   "p95Error": 0.9351,
    "wrongRate": 0,
    "cornerRecall": null,
    "markerRecall": null,
@@ -279,11 +351,23 @@
   "scenario:dense": {
    "traces": 28,
    "kindAccuracy": 1,
-   "coverage": 0.921,
+   "coverage": 0.9206,
    "medianError": 0.0426,
-   "p95Error": 12.0746,
+   "p95Error": 12.8598,
    "wrongRate": 0.1071,
    "cornerRecall": null,
+   "markerRecall": null,
+   "markerPrecision": null,
+   "meanMs": 0
+  },
+  "scenario:kinks": {
+   "traces": 18,
+   "kindAccuracy": 1,
+   "coverage": 0.8594,
+   "medianError": 0.0038,
+   "p95Error": 1.0873,
+   "wrongRate": 0,
+   "cornerRecall": 0.562,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
@@ -291,9 +375,9 @@
   "scenario:line-markers": {
    "traces": 16,
    "kindAccuracy": 1,
-   "coverage": 0.8459,
-   "medianError": 0.0125,
-   "p95Error": 2.2942,
+   "coverage": 0.8498,
+   "medianError": 0.011,
+   "p95Error": 1.9486,
    "wrongRate": 0,
    "cornerRecall": null,
    "markerRecall": null,
@@ -305,7 +389,7 @@
    "kindAccuracy": 1,
    "coverage": 1,
    "medianError": 0.0278,
-   "p95Error": 0.3714,
+   "p95Error": 0.372,
    "wrongRate": 0,
    "cornerRecall": 0.7881,
    "markerRecall": 0.9651,
@@ -327,11 +411,11 @@
   "scenario:step": {
    "traces": 17,
    "kindAccuracy": 1,
-   "coverage": 0.8996,
+   "coverage": 0.9031,
    "medianError": 0.0206,
    "p95Error": 0.987,
    "wrongRate": 0,
-   "cornerRecall": 0.6772,
+   "cornerRecall": 0.6789,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
@@ -339,9 +423,9 @@
   "series:line": {
    "traces": 84,
    "kindAccuracy": 1,
-   "coverage": 0.9499,
+   "coverage": 0.9497,
    "medianError": 0.0335,
-   "p95Error": 0.9532,
+   "p95Error": 0.9561,
    "wrongRate": 0.0357,
    "cornerRecall": null,
    "markerRecall": null,
@@ -349,37 +433,37 @@
    "meanMs": 0
   },
   "series:line+markers": {
-   "traces": 16,
+   "traces": 35,
    "kindAccuracy": 1,
-   "coverage": 0.8459,
-   "medianError": 0.0125,
-   "p95Error": 2.2942,
+   "coverage": 0.859,
+   "medianError": 0.0057,
+   "p95Error": 1.5047,
    "wrongRate": 0,
-   "cornerRecall": null,
+   "cornerRecall": 0.5794,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "series:scatter": {
-   "traces": 18,
+   "traces": 19,
    "kindAccuracy": 1,
    "coverage": null,
    "medianError": null,
    "p95Error": null,
    "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": 0.9108,
-   "markerPrecision": 0.959,
+   "markerRecall": 0.9118,
+   "markerPrecision": 0.9595,
    "meanMs": 0
   },
   "series:step": {
    "traces": 27,
    "kindAccuracy": 1,
-   "coverage": 0.9337,
+   "coverage": 0.939,
    "medianError": 0.0206,
-   "p95Error": 0.5798,
+   "p95Error": 0.594,
    "wrongRate": 0,
-   "cornerRecall": 0.6918,
+   "cornerRecall": 0.7005,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
@@ -421,37 +505,37 @@
    "meanMs": 0
   },
   "style:solid": {
-   "traces": 94,
+   "traces": 112,
    "kindAccuracy": 1,
-   "coverage": 0.9411,
-   "medianError": 0.0265,
-   "p95Error": 0.9554,
-   "wrongRate": 0.0213,
-   "cornerRecall": 0.6918,
+   "coverage": 0.9297,
+   "medianError": 0.0244,
+   "p95Error": 0.9153,
+   "wrongRate": 0.0179,
+   "cornerRecall": 0.6825,
    "markerRecall": null,
    "markerPrecision": null,
    "meanMs": 0
   },
   "synthetic": {
-   "traces": 142,
+   "traces": 160,
    "kindAccuracy": 1,
-   "coverage": 0.9317,
-   "medianError": 0.0287,
-   "p95Error": 1.0816,
-   "wrongRate": 0.0242,
-   "cornerRecall": 0.6918,
+   "coverage": 0.9239,
+   "medianError": 0.0266,
+   "p95Error": 1.0183,
+   "wrongRate": 0.0211,
+   "cornerRecall": 0.6825,
    "markerRecall": 0.9108,
    "markerPrecision": 0.959,
    "meanMs": 0
   },
   "ticks:in": {
-   "traces": 27,
+   "traces": 33,
    "kindAccuracy": 1,
-   "coverage": 0.9867,
-   "medianError": 0.0162,
-   "p95Error": 1.076,
+   "coverage": 0.9586,
+   "medianError": 0.0173,
+   "p95Error": 0.9667,
    "wrongRate": 0,
-   "cornerRecall": 0.6235,
+   "cornerRecall": 0.6106,
    "markerRecall": 0.9286,
    "markerPrecision": 0.9811,
    "meanMs": 0
@@ -499,12 +583,12 @@
   },
   "l01/s0": {
    "kind": "curve",
-   "coverage": 0.7849,
-   "medianError": 0.1963,
+   "coverage": 0.7791,
+   "medianError": 0.1647,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 57
+   "points": 47
   },
   "l01/s1": {
    "kind": "curve",
@@ -518,7 +602,7 @@
   "l02/s0": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.0285,
+   "medianError": 0.0286,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -531,7 +615,7 @@
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 25
+   "points": 26
   },
   "l02/s2": {
    "kind": "curve",
@@ -571,12 +655,12 @@
   },
   "l05/s0": {
    "kind": "curve",
-   "coverage": 0.9177,
+   "coverage": 1,
    "medianError": 0.0116,
    "wrong": false,
-   "corners": "22/36",
+   "corners": "28/36",
    "markers": "",
-   "points": 25
+   "points": 32
   },
   "l05/s1": {
    "kind": "curve",
@@ -625,12 +709,12 @@
   },
   "l07/s1": {
    "kind": "curve",
-   "coverage": 1,
-   "medianError": 0.1248,
+   "coverage": 0.9897,
+   "medianError": 0.1279,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 32
+   "points": 30
   },
   "l07/s2": {
    "kind": "curve",
@@ -679,8 +763,8 @@
   },
   "l09/s0": {
    "kind": "curve",
-   "coverage": 0.9751,
-   "medianError": 0.0056,
+   "coverage": 0.972,
+   "medianError": 0.0055,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -698,11 +782,11 @@
   "l09/s2": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.0029,
+   "medianError": 0.0028,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 28
+   "points": 26
   },
   "l10/s0": {
    "kind": "curve",
@@ -716,7 +800,7 @@
   "l10/s1": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.1499,
+   "medianError": 0.1501,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -873,21 +957,21 @@
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 48
+   "points": 49
   },
   "l17/s0": {
    "kind": "curve",
-   "coverage": 0.9499,
-   "medianError": 0.0209,
+   "coverage": 0.9687,
+   "medianError": 0.0193,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 127
+   "points": 128
   },
   "l17/s1": {
    "kind": "curve",
-   "coverage": 0.9239,
-   "medianError": 0.0028,
+   "coverage": 0.9406,
+   "medianError": 0.0026,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -936,7 +1020,7 @@
    "wrong": false,
    "corners": "23/26",
    "markers": "",
-   "points": 51
+   "points": 52
   },
   "l19/s2": {
    "kind": "curve",
@@ -1013,7 +1097,7 @@
   "l23/s3": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.1324,
+   "medianError": 0.1345,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1058,7 +1142,7 @@
   "l25/s1": {
    "kind": "curve",
    "coverage": 0.4384,
-   "medianError": 0.1909,
+   "medianError": 0.1896,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1157,11 +1241,11 @@
   "l31/s1": {
    "kind": "curve",
    "coverage": 0.5785,
-   "medianError": 0.2,
+   "medianError": 0.2019,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 72
+   "points": 73
   },
   "l31/s2": {
    "kind": "curve",
@@ -1170,16 +1254,16 @@
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 39
+   "points": 41
   },
   "l31/s3": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.2779,
+   "medianError": 0.2794,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 47
+   "points": 41
   },
   "l32/s0": {
    "kind": "curve",
@@ -1211,7 +1295,7 @@
   "l33/s0": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.0156,
+   "medianError": 0.0136,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1220,11 +1304,11 @@
   "l34/s0": {
    "kind": "curve",
    "coverage": 0.9522,
-   "medianError": 0.2711,
+   "medianError": 0.2648,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 28
+   "points": 32
   },
   "l34/s1": {
    "kind": "curve",
@@ -1237,12 +1321,12 @@
   },
   "l35/s0": {
    "kind": "curve",
-   "coverage": 0.8084,
-   "medianError": 0.0311,
+   "coverage": 0.8676,
+   "medianError": 0.0323,
    "wrong": false,
-   "corners": "37/54",
+   "corners": "38/54",
    "markers": "",
-   "points": 51
+   "points": 54
   },
   "l35/s1": {
    "kind": "curve",
@@ -1363,17 +1447,17 @@
   },
   "l41/s0": {
    "kind": "curve",
-   "coverage": 0.9157,
-   "medianError": 0.0072,
+   "coverage": 0.9323,
+   "medianError": 0.0062,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 40
+   "points": 36
   },
   "l41/s1": {
    "kind": "curve",
-   "coverage": 0.9706,
-   "medianError": 0.0072,
+   "coverage": 0.9936,
+   "medianError": 0.0073,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1391,11 +1475,11 @@
   "l42/s1": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.1356,
+   "medianError": 0.1418,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 42
+   "points": 40
   },
   "l43/s0": {
    "kind": "curve",
@@ -1526,16 +1610,16 @@
   "l49/s0": {
    "kind": "curve",
    "coverage": 0.9913,
-   "medianError": 0.1306,
+   "medianError": 0.1221,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 41
+   "points": 39
   },
   "l49/s1": {
    "kind": "curve",
-   "coverage": 0.9246,
-   "medianError": 0.1421,
+   "coverage": 0.9217,
+   "medianError": 0.1404,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1634,7 +1718,7 @@
   "l55/s0": {
    "kind": "curve",
    "coverage": 0.6986,
-   "medianError": 0.2923,
+   "medianError": 0.2939,
    "wrong": true,
    "corners": "",
    "markers": "",
@@ -1652,7 +1736,7 @@
   "l55/s2": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.201,
+   "medianError": 0.2148,
    "wrong": false,
    "corners": "",
    "markers": "",
@@ -1688,11 +1772,11 @@
   "l57/s0": {
    "kind": "curve",
    "coverage": 0.9979,
-   "medianError": 0.0231,
+   "medianError": 0.0197,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 71
+   "points": 63
   },
   "l57/s1": {
    "kind": "curve",
@@ -1748,6 +1832,168 @@
    "markers": "",
    "points": 35
   },
+  "l60/s0": {
+   "kind": "curve",
+   "coverage": 0.8717,
+   "medianError": 0.0048,
+   "wrong": false,
+   "corners": "5/6",
+   "markers": "",
+   "points": 25
+  },
+  "l60/s1": {
+   "kind": "curve",
+   "coverage": 0.9967,
+   "medianError": 0.0033,
+   "wrong": false,
+   "corners": "2/9",
+   "markers": "",
+   "points": 25
+  },
+  "l61/s0": {
+   "kind": "curve",
+   "coverage": 0.1618,
+   "medianError": 0.0512,
+   "wrong": false,
+   "corners": "2/7",
+   "markers": "",
+   "points": 25
+  },
+  "l62/s0": {
+   "kind": "curve",
+   "coverage": 0.9649,
+   "medianError": 0.0029,
+   "wrong": false,
+   "corners": "1/6",
+   "markers": "",
+   "points": 25
+  },
+  "l62/s1": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.0028,
+   "wrong": false,
+   "corners": "5/9",
+   "markers": "",
+   "points": 25
+  },
+  "l63/s0": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.0024,
+   "wrong": false,
+   "corners": "7/7",
+   "markers": "",
+   "points": 25
+  },
+  "l63/s1": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.0022,
+   "wrong": false,
+   "corners": "6/6",
+   "markers": "",
+   "points": 25
+  },
+  "l64/s0": {
+   "kind": "curve",
+   "coverage": 0.7685,
+   "medianError": 0.0702,
+   "wrong": false,
+   "corners": "3/5",
+   "markers": "",
+   "points": 25
+  },
+  "l65/s0": {
+   "kind": "curve",
+   "coverage": 0.8509,
+   "medianError": 0.0027,
+   "wrong": false,
+   "corners": "6/9",
+   "markers": "",
+   "points": 25
+  },
+  "l66/s0": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.0016,
+   "wrong": false,
+   "corners": "4/5",
+   "markers": "",
+   "points": 25
+  },
+  "l66/s1": {
+   "kind": "curve",
+   "coverage": 0.9972,
+   "medianError": 0.0033,
+   "wrong": false,
+   "corners": "4/7",
+   "markers": "",
+   "points": 25
+  },
+  "l67/s0": {
+   "kind": "curve",
+   "coverage": 0.6418,
+   "medianError": 0.1106,
+   "wrong": false,
+   "corners": "0/5",
+   "markers": "",
+   "points": 25
+  },
+  "l67/s1": {
+   "kind": "curve",
+   "coverage": 0.5372,
+   "medianError": 0.0912,
+   "wrong": false,
+   "corners": "3/7",
+   "markers": "",
+   "points": 25
+  },
+  "l68/s0": {
+   "kind": "curve",
+   "coverage": 0.8609,
+   "medianError": 0.0043,
+   "wrong": false,
+   "corners": "8/9",
+   "markers": "",
+   "points": 25
+  },
+  "l69/s0": {
+   "kind": "curve",
+   "coverage": 0.9954,
+   "medianError": 0.0027,
+   "wrong": false,
+   "corners": "5/6",
+   "markers": "",
+   "points": 25
+  },
+  "l70/s0": {
+   "kind": "curve",
+   "coverage": 0.9192,
+   "medianError": 0.0863,
+   "wrong": false,
+   "corners": "0/5",
+   "markers": "",
+   "points": 61
+  },
+  "l71/s0": {
+   "kind": "curve",
+   "coverage": 0.9255,
+   "medianError": 0.0022,
+   "wrong": false,
+   "corners": "4/8",
+   "markers": "",
+   "points": 25
+  },
+  "l71/s1": {
+   "kind": "curve",
+   "coverage": 0.9775,
+   "medianError": 0.0026,
+   "wrong": false,
+   "corners": "3/5",
+   "markers": "",
+   "points": 25
+  },
   "km-pericardial-effusion/0:series": {
    "kind": "curve",
    "coverage": 1,
@@ -1774,6 +2020,24 @@
    "corners": "",
    "markers": "",
    "points": 36
+  },
+  "synthetic-linear/line": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.0163,
+   "wrong": false,
+   "corners": "5/5",
+   "markers": "",
+   "points": 25
+  },
+  "synthetic-linear/markers": {
+   "kind": "markers",
+   "coverage": null,
+   "medianError": null,
+   "wrong": false,
+   "corners": "",
+   "markers": "5/5 of 5",
+   "points": 5
   }
  }
 }

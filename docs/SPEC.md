@@ -441,12 +441,26 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   colour in a JPEG). Gaps: up to ~3.5 % of the plot width over background (dashes, markers of
   other series), up to 30 % where the prediction is covered by another colour (curves drawn over
   each other); a very long run sticking out on both sides is a same-colour crossing gridline.
-  Retry: when a walk dies within 25 columns of the last fork, the alternatives are walked (up to
-  depth 3; a retry branch that left a long run does not go straight back through it) and the
-  farthest wins (the tip of a diamond marker vs the line leaving it). Columns → centreline:
+  **Hidden kinks**: while the prediction is mostly under a marker-sized blob of another colour
+  (3–40 px both ways at that spot), the window also allows a slope change of up to 3 px/column
+  (a V or Λ reversal under a marker); a run only that allowance reaches must emerge from the hiding
+  ink, and is taken only if the gap then runs out with nothing in the plain window and no fork to
+  retry. Retry: when a walk dies within 25 accepted columns of the last fork, the alternatives
+  are walked (up to depth 3; a retry branch that left a long run does not go straight back
+  through it) and the branch that followed the most columns of ink wins (the tip of a diamond
+  marker vs the line leaving it). Columns → centreline:
   α-weighted centroids (sub-pixel); a thin stroke entered at one end and left at the other is a
-  step's vertical, kept as two **corner** points at the stroke's centre x; a group sticking out on
-  both sides of the curve (marker, censoring '+') is dropped and bridged.
+  step's vertical, kept as two **corner** points at the stroke's centre x; a roughly square group
+  wider than a stroke that sticks out past the curve is a marker of the series' colour, kept as
+  one corner point at its centroid (the data point); a thin group sticking out on both sides
+  (censoring '+') is dropped and bridged.
+- **Vertices hidden under markers** (`kinks.ts`): a polyline chart's data points sit under its
+  markers. Where the path bridges a gap over a compact blob of another colour that the straight
+  stretches on both sides point at, the blob's centroid becomes a corner point (also on nearly
+  straight runs); otherwise, where the stretches meet at ≥ 12°, their intersection does, if it lies
+  near the gap. Either needs the reconstructed stretch (gap end → vertex → gap end) to run over
+  ink, so a dash gap gets none. A line ending under a small round blob of another colour that it
+  points at is extended to the blob's centroid.
 - **Dotted / dash-dot lines**: when the seed's blob is one link of an evenly gapped chain of
   small blobs (gaps ≥ 1.5 px within max(1.5 px, 35 %) of each other; smaller gaps join JPEG
   fragments of one stroke), the path follows the chain blob to blob (dot centroids, per-column
@@ -465,14 +479,19 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~15 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 60 seeded charts, 142 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 72 seeded charts, 160 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
-  dark gridlines; gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
+  dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
+  marker on every vertex — sharp V/Λ reversals under markers of the line's own colour or of
+  another colour, 4–11 pt; gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every
+  third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
   Real figures (`bench/lines/real/manifest.json`): the two KM fixtures' `knownValues` plateaus as
-  partial truth. The plot box passed is `detectAxes`'s (once per image), mode `auto`, 25 points.
+  partial truth, and `fixtures/synthetic/synthetic-linear.png` (Chromium-rendered polyline with
+  pink markers on its five data points; full truth from its `points`, category `fixture`).
+  Corner recall also counts the data points of kink polylines (every vertex is a marker). The plot box passed is `detectAxes`'s (once per image), mode `auto`, 25 points.
   **Metrics**: kind accuracy; coverage (% of the true x-range traced within 3 px); median / p95
   centreline error of traced points; wrong-series rate (> 20 % of a trace's points nearer another
   series); corner recall (true step corners within 2 px of a suggested point); marker recall /
@@ -480,14 +499,18 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   against `bench/lines/baseline.json`, overall and per category (series kind, style, colour,
   crossing, line width, scenario, grid, JPEG, DPI, legend, frame…); `-- --update` only for an
   explained improvement or trade-off.
-- **Baseline** (145 traces): kind 100 %, coverage 93.3 %, centreline error median 0.03 px / p95
-  1.06 px, wrong series 2.4 %, corner recall 69.2 %, markers recall 91.1 % / precision 95.9 %,
-  ~50 ms per trace in Node. PNG coverage 96.5 %, JPEG 87.0 %; steps 93.4 % (0 wrong); black on
-  black 91.9 % (0 wrong); dotted 94.7 %, dash-dot 89.0 %; lines with markers 84.6 %. Real KM
-  figures: 3/3 series, coverage 100 % (including the pericardial curve on the y = 0 axis), median
-  error 0.28 px (labels are ±1 px).
+- **Baseline** (165 traces, after the hidden-kink fix): kind 100 %, coverage 92.6 %, centreline
+  error median 0.03 px / p95 0.99 px, wrong series 2.1 %, corner recall 68.4 %, markers recall
+  91.2 % / precision 96.0 %, ~45 ms per trace in Node. PNG coverage 96.6 %, JPEG 84.2 %; steps
+  93.9 % (0 wrong); kink polylines 86.7 % with 57.9 % of their vertices as points (other-colour
+  markers 87.6 %); `synthetic-linear` fixture traced end to end from any segment with all five data
+  points. Real KM figures: 3/3 series, coverage 100 % (including the pericardial curve on the
+  y = 0 axis), median error 0.28 px (labels are ±1 px). On the first 145 traces alone: coverage
+  93.3 → 93.5 %, p95 1.06 → 0.99 px, corners 69.2 → 70.1 %, wrong unchanged.
 - **Known failures**: steps shorter than about two line widths (dense staircases in thick lines)
-  lose corners (corner recall 69 %); two series drawn over each other along a step (only the one on
+  lose corners (corner recall 68 %); kink vertices under small markers in low-DPI JPEGs, and
+  polyline vertices where a same-colour marker merges with a steep stretch, are not always found
+  (42 % of kink vertices missed); two series drawn over each other along a step (only the one on
   top is visible) end the trace; thin, faint lines in low-DPI JPEGs fragment (`lw:thin` coverage
   81 %); four-series charts on dark gridlines in JPEG still switch series sometimes (dense: 10.7 %
   wrong); legend samples and same-colour legend text count as markers (precision 96 %); markers

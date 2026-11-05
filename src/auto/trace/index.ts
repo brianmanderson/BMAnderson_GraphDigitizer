@@ -14,6 +14,8 @@
  *    link of an evenly gapped chain of small blobs (a dotted or dash-dot line), the chain itself;
  *    'markers' collects every blob that matches the one under the seed (markers.ts). 'auto' takes
  *    markers when the seed's blob is small, roughly round and not part of such a chain.
+ *    Vertices hidden under markers are restored (kinks.ts): the intersection of the straight
+ *    stretches either side of a bridged marker, and a line's end under a marker at its centre.
  * 4. Suggested points (resample.ts): corners and extrema always, then evenly spread to maxPoints;
  *    for markers, every marker.
  */
@@ -21,6 +23,7 @@
 import { detectAxes } from '../detect.ts';
 import { backgroundColor, colorModel, coverage, dist, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
+import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, matchMarkers, type Blob, type Blobs } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
@@ -243,8 +246,10 @@ export function traceLine(req: TraceRequest): TraceResult {
   } else {
     const e = traceColumns(alpha, region, s, { maxGap: defaultMaxGap(region), maxHiddenGap: defaultMaxHiddenGap(region), other });
     if (!e || e.length < 2) return fail('Could not follow a line from the clicked point.', color);
-    traced = columnsToPath(e, alpha, w);
     thickness = thicknessOf(e);
+    // Vertices hidden under markers: kinks between straight stretches, and ends under a marker.
+    const maps = { width: w, height: h, alpha, other };
+    traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w), thickness, maps), thickness, maps);
   }
   if (traced.length < 2) return fail('Could not follow a line from the clicked point.', color);
   const points = resample(traced, req.maxPoints, thickness);

@@ -20,7 +20,7 @@
  *    the prediction is a crossing gridline of the same colour, treated as a gap.
  * 3. Limited backtracking: when the walk dies within RETRY_COLUMNS of the last column that had
  *    several acceptable runs (the tip of a marker, a censoring mark at a step corner), the
- *    alternatives are walked too and the one that gets farthest wins.
+ *    alternatives are walked too and the one that follows the most columns of ink wins.
  * 4. Columns become centreline points (`columnsToPath`): a short run's centre is the α-weighted
  *    centroid (sub-pixel). Consecutive long runs that overlap form a group: when the group is a
  *    thin stroke that the curve enters at one end and leaves at the other it is a step's vertical
@@ -139,6 +139,12 @@ export interface TraceOptions {
 /** A branch that dies within this many columns of a fork is retried with the alternatives. */
 const RETRY_COLUMNS = 25;
 const MAX_RETRY_DEPTH = 3;
+/**
+ * Slope change (px per column) a hidden gap may hide, over at most KINK_COLUMNS columns: enough for
+ * a line turning from 45° down to 60° up under a marker, not enough to jump to a curve far away.
+ */
+const KINK_SLOPE = 3;
+const KINK_COLUMNS = 16;
 
 export function defaultMaxGap(region: Region): number {
   return Math.min(40, Math.max(10, Math.round(0.035 * (region.x1 - region.x0 + 1))));
@@ -190,13 +196,35 @@ export function traceColumns(
     afterGap: 0,
     peak: runPeak(alpha, w, seed.x, start),
   };
-  const occludedAt = (x: number, y: number, t: number) => {
-    if (!opts.other) return false;
+  /**
+   * Whether the ink of another colour at (x, row) is marker-sized there: its vertical and its
+   * horizontal extent through that pixel are both between 3 and 40 px. A line of another colour
+   * is long in at least one direction (or thin in both); a gridline is long horizontally or
+   * vertically even where a marker sits on it, but not where it does not.
+   */
+  const markerSizedAt = (x: number, row: number): boolean => {
+    const other = opts.other!;
+    let up = row;
+    while (up > y0 && other[(up - 1) * w + x] && row - up < 41) up--;
+    let down = row;
+    while (down < y1 && other[(down + 1) * w + x] && down - row < 41) down++;
+    let left = x;
+    while (left > x0 && other[row * w + left - 1] && x - left < 41) left--;
+    let right = x;
+    while (right < x1 && other[row * w + right + 1] && right - x < 41) right++;
+    const v = down - up + 1;
+    const hz = right - left + 1;
+    return v >= 3 && v <= 40 && hz >= 3 && hz <= 40;
+  };
+
+  /** Row of a pixel of another colour within half a line width of (x, y), or −1. */
+  const occludedAt = (x: number, y: number, t: number): number => {
+    if (!opts.other) return -1;
     const r = Math.max(1, Math.ceil(t / 2));
     for (let yy = Math.max(y0, Math.round(y) - r); yy <= Math.min(y1, Math.round(y) + r); yy++) {
-      if (opts.other[yy * w + x]) return true;
+      if (opts.other[yy * w + x]) return yy;
     }
-    return false;
+    return -1;
   };
 
   interface WalkState {
@@ -206,6 +234,10 @@ export function traceColumns(
     entryY: number;
     gap: number;
     openGap: number;
+    /** Gap columns whose predicted position was under ink of another colour. */
+    hiddenCols: number;
+    /** Whether that ink is a compact blob (a marker), under which the curve may turn. */
+    underMarker: boolean;
     /** Next column to look at. */
     x: number;
     /** Set on a retry branch until the walk is back on a short run: no straight-through. */
@@ -215,6 +247,8 @@ export function traceColumns(
     run: Run;
     index: number;
     score: number;
+    /** Reached only through the kink allowance of a hidden gap. */
+    kinkOnly: boolean;
   }
 
   /** Take run `index` of column `st.x` into the walk. */
@@ -248,6 +282,8 @@ export function traceColumns(
     st.minLen = Math.min(st.minLen, runLength(best));
     st.gap = 0;
     st.openGap = 0;
+    st.hiddenCols = 0;
+    st.underMarker = false;
   };
 
   /** Acceptable runs in column `st.x`, best first. */
@@ -260,7 +296,20 @@ export function traceColumns(
     const crossOut = Math.max(6, 3 * t);
     const peakRef = st.hist.length >= 5 ? median(st.hist.slice(-15).map((e) => e.peak)) : 0;
     const rank = (pred: number, slope: number): Candidate[] => {
-      const win = t / 2 + 1.5 + (gap + 1) * (0.3 + 0.3 * Math.abs(slope));
+      // Hidden under another colour (a marker drawn over the curve), the curve may turn: a
+      // V or Λ kink at a data point reverses the slope out of sight. Allow for it.
+      const hidden = gap > 0 && st.underMarker && 2 * st.hiddenCols >= gap;
+      const kink = hidden ? (Math.min(gap, KINK_COLUMNS) * KINK_SLOPE) / 2 : 0;
+      const plainWin = t / 2 + 1.5 + (gap + 1) * (0.3 + 0.3 * Math.abs(slope));
+      const win = plainWin + kink;
+      // A run only the kink allowance reaches must come out from under the hiding ink: ink of
+      // another colour right next to it in the previous column, as where a line leaves a marker.
+      const back = st.x - Math.sign(st.x - prev.x);
+      const emerges = (r: Run) => {
+        if (!opts.other) return false;
+        for (let y = Math.max(y0, r.top - 2); y <= Math.min(y1, r.bottom + 2); y++) if (opts.other[y * w + back]) return true;
+        return false;
+      };
       const out: Candidate[] = [];
       runs.forEach((r, index) => {
         const lo = r.top + half;
@@ -268,10 +317,16 @@ export function traceColumns(
         const dPred = pred < lo ? lo - pred : pred > hi ? pred - hi : 0;
         const touches = gap === 0 && r.top <= prev.bottom + 1 && r.bottom >= prev.top - 1;
         if (!touches && dPred > win) return;
+        if (!touches && dPred > plainWin && !emerges(r)) return;
         if (runLength(r) >= crossLen && r.top < pred - crossOut && r.bottom > pred + crossOut) return;
         if (runPeak(alpha, w, st.x, r) < PEAK_RATIO * peakRef) return;
         // Touching runs far from the prediction are kept last, as alternatives for the retry.
-        out.push({ run: r, index, score: dPred > win ? 1000 + dPred : dPred + 0.01 * runLength(r) });
+        out.push({
+          run: r,
+          index,
+          score: dPred > win ? 1000 + dPred : dPred + 0.01 * runLength(r),
+          kinkOnly: !touches && dPred > plainWin,
+        });
       });
       return out.sort((a, b) => a.score - b.score);
     };
@@ -300,32 +355,58 @@ export function traceColumns(
   /**
    * Walk until the curve is lost. At the last column where more than one run was acceptable, the
    * alternatives are tried too when the chosen branch dies within RETRY_COLUMNS (the tip of a
-   * marker, a censoring mark at a step corner): the branch that gets farthest wins.
+   * marker, a censoring mark at a step corner): the branch that follows the most ink wins.
    */
   const walkFrom = (st: WalkState, dir: 1 | -1, depth: number): WalkState => {
     let branch: { state: WalkState; runs: Run[]; alts: Candidate[]; at: number } | null = null;
+    /**
+     * A run reached only by the kink allowance is not taken at once: the gap goes on, and only if
+     * it runs out without a run in the plain window, and there is no recent fork to retry, does the
+     * walk resume from this one. (Another series' censoring marks are marker-sized too; at a step
+     * the plain window, or the fork's other branch, finds the curve.)
+     */
+    let kinkFallback: { state: WalkState; runs: Run[]; index: number } | null = null;
     for (; st.x >= x0 && st.x <= x1; st.x += dir) {
       const runs = columnRuns(alpha, w, st.x, y0, y1);
       const { list, pred, t } = candidates(st, runs);
-      if (!list.length) {
+      const kinkOnly = list.length > 0 && list.every((c) => c.kinkOnly);
+      if (kinkOnly && !kinkFallback) kinkFallback = { state: clone(st), runs, index: list[0]!.index };
+      if (!list.length || kinkOnly) {
         st.gap++;
-        if (!occludedAt(st.x, pred, t)) st.openGap++;
+        const row = occludedAt(st.x, pred, t);
+        if (row >= 0) {
+          st.hiddenCols++;
+          if (!st.underMarker && markerSizedAt(st.x, row)) st.underMarker = true;
+        } else st.openGap++;
         if (st.openGap > opts.maxGap || st.gap > (opts.maxHiddenGap ?? opts.maxGap)) break;
         continue;
       }
-      if (list.length > 1 && depth < MAX_RETRY_DEPTH) branch = { state: clone(st), runs, alts: list.slice(1), at: st.hist.length };
+      // A fork: other acceptable runs (runs only the kink allowance reaches don't make one).
+      const alts = list.slice(1).filter((c) => !c.kinkOnly);
+      if (alts.length && depth < MAX_RETRY_DEPTH) branch = { state: clone(st), runs, alts, at: st.hist.length };
       accept(st, runs, list[0]!.index);
+      kinkFallback = null;
     }
-    if (!branch || st.hist.length - branch.at > RETRY_COLUMNS) return st;
-    const reach = (s: WalkState) => Math.abs(s.hist[s.hist.length - 1]!.x - seed.x);
+    // The branch that followed the most columns of ink wins (then the farthest): a wrong branch
+    // kept alive across hidden gaps gets far without following much.
+    const followed = (s: WalkState) => s.hist.length + Math.abs(s.hist[s.hist.length - 1]!.x - seed.x) / 1e6;
     let best = st;
+    if (!branch || st.hist.length - branch.at > RETRY_COLUMNS) {
+      // No recent fork to retry: resume from a run beyond a hidden kink, if one was seen.
+      if (!kinkFallback || depth >= MAX_RETRY_DEPTH) return st;
+      const s = kinkFallback.state;
+      accept(s, kinkFallback.runs, kinkFallback.index);
+      s.x += dir;
+      const res = walkFrom(s, dir, depth + 1);
+      return followed(res) > followed(st) ? res : st;
+    }
     for (const alt of branch.alts) {
       const s = clone(branch.state);
       accept(s, branch.runs, alt.index);
       if (runLength(s.hist[s.hist.length - 1]!) - s.minLen >= 2.5) s.farOnly = true;
       s.x += dir;
       const res = walkFrom(s, dir, depth + 1);
-      if (reach(res) > reach(best)) best = res;
+      if (followed(res) > followed(best)) best = res;
     }
     return best;
   };
@@ -337,7 +418,7 @@ export function traceColumns(
   const walk = (dir: 1 | -1, prime: ColumnEntry[]): ColumnEntry[] => {
     const lead = prime.slice(0, 8).reverse();
     const hist = [...lead, first];
-    const st = walkFrom({ hist, minLen: runLength(first), entryY: seed.y, gap: 0, openGap: 0, x: seed.x + dir, farOnly: false }, dir, 0);
+    const st = walkFrom({ hist, minLen: runLength(first), entryY: seed.y, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false }, dir, 0);
     return st.hist.slice(lead.length + 1);
   };
 
@@ -395,6 +476,14 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
     yin ??= far(yout!);
     yout ??= far(yin);
     const within = (y: number) => y >= T - 0.75 && y <= B + 0.75;
+    const heightFull = Math.max(...group.map((g) => g.bottom)) - Math.min(...group.map((g) => g.top)) + 1;
+    // A marker of the series' colour: wider than a stroke, roughly square, and sticking out past
+    // the curve on at least one side (a step's vertical runs exactly from one level to the other).
+    const markerLike =
+      group.length > t + 2 &&
+      heightFull <= 1.6 * group.length &&
+      group.length <= 1.6 * heightFull &&
+      (T < Math.min(yin, yout) - 1.5 || B > Math.max(yin, yout) + 1.5);
     const thin = group.length <= t + 2;
     if (thin && D >= 2.5 && within(yin) && within(yout) && Math.abs(yout - yin) >= Math.max(2.5, 0.6 * D)) {
       // A step's vertical segment: its x is the α-weighted centre of the stroke between the ends.
@@ -412,6 +501,22 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
       const xv = sw > 0 ? sx / sw : group.reduce((s, g) => s + g.x, 0) / group.length;
       out.push({ px: xv, py: yin, confidence: 0.9, corner: true });
       out.push({ px: xv, py: yout, confidence: 0.9, corner: true });
+    } else if (markerLike) {
+      // A roughly square blob wider than a stroke: a marker of the series' colour on the curve.
+      // Its centre is the data point (a polyline vertex, possibly a kink), whatever the curve
+      // does around it.
+      let sw = 0;
+      let sx = 0;
+      let sy = 0;
+      for (const g of group) {
+        for (let y = g.top; y <= g.bottom; y++) {
+          const a = Math.min(1, Math.max(0, alpha[y * width + g.x] ?? 0));
+          sw += a;
+          sx += a * g.x;
+          sy += a * y;
+        }
+      }
+      if (sw > 0) out.push({ px: sx / sw, py: sy / sw, confidence: 0.8, corner: true });
     } else if (T < Math.min(yin, yout) - 1.5 && B > Math.max(yin, yout) + 1.5) {
       // Sticks out on both sides: a marker or a mark of the same colour on the curve. Bridged.
     } else {

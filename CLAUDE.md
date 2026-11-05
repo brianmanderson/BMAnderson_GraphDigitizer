@@ -20,7 +20,7 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
   Tesseract.js worker pool (app + benchmark); `src/workers/auto.worker.ts` runs the pipeline.
   `src/auto/trace/` — `traceLine`: one click on a series → its centreline/markers → points.
 - `bench/axes/` — 60 generated charts + `real/manifest.json`, scored for detection and end-to-end
-  calibration against `baseline.json`. `bench/lines/` — 60 charts (142 series) + real KM plateaus,
+  calibration against `baseline.json`. `bench/lines/` — 72 charts (160 series) + real KM plateaus,
   scored for line tracing against its own `baseline.json`.
 - `src/state/` — `doc.ts` (`DocState` + pure reducer), `history.ts` (undo/redo); `src/ui/` —
   helpers (view, drawing, loupe, snap, table/CSV, autosave, OCR, suggestions); `src/components/`.

@@ -45,11 +45,15 @@ from matplotlib.colors import to_rgb  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 60
+COUNT = 72
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
 SCENARIOS = ["curves", "line-markers", "dashed", "step", "scatter", "black", "mixed", "dense"]
+# Charts from KINKS_FROM on (appended later, so the first 60 stay byte-identical): zigzag polylines
+# with a marker on every vertex - sharp V/Lambda reversals hidden under markers of the line's own
+# colour or of another colour drawn on top, in varying sizes.
+KINKS_FROM = 60
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -168,7 +172,7 @@ def coverage_at(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
 
 def build(i: int):
     rng = np.random.default_rng(5000 + i)
-    scenario = SCENARIOS[i % len(SCENARIOS)]
+    scenario = "kinks" if i >= KINKS_FROM else SCENARIOS[i % len(SCENARIOS)]
     dpi = int(DPIS[i % len(DPIS)] if rng.random() < 0.7 else rng.choice(DPIS))
     w_in = float(rng.uniform(4.5, 7.5))
     h_in = float(w_in * rng.uniform(0.55, 0.8))
@@ -211,6 +215,9 @@ def build(i: int):
         specs.append(("scatter", "none", str(rng.choice(MARKERS)), colors[1]))
         if rng.random() < 0.5:
             specs.append(("step", "solid", None, colors[2]))
+    elif scenario == "kinks":
+        for k in range(int(rng.integers(1, 3))):
+            specs.append(("kink", "solid", str(rng.choice(["o", "s", "D", "^"])), colors[k]))
     else:  # dense
         for k in range(4):
             specs.append(("line", "solid" if k < 3 else "dashed", None, colors[k]))
@@ -237,7 +244,23 @@ def build(i: int):
             ms = float(rng.uniform(4, 8))
             ls = "-" if style == "solid" else STYLES.get(style, "-")
             cens = []
-            if kind == "line" and marker is None:
+            marker_color = None
+            if kind == "kink":
+                # Vertices alternate above and below a trend: every interior vertex reverses the
+                # slope. Markers of the line's colour, or of another colour drawn over the line.
+                n = int(rng.integers(5, 10))
+                xs = np.linspace(xlo + 0.04 * (xhi - xlo), xhi - 0.04 * (xhi - xlo), n)
+                xs[1:-1] += rng.uniform(-0.3, 0.3, n - 2) * (xs[1] - xs[0])
+                mid = ylo + (yhi - ylo) * float(rng.uniform(0.35, 0.65))
+                amp = rng.uniform(0.08, 0.45, n) * (yhi - ylo)
+                ys = mid + amp * np.where(np.arange(n) % 2 == 0, -1.0, 1.0) * float(rng.choice([-1, 1]))
+                ms = float(rng.uniform(4, 11))
+                marker_color = color if rng.random() < 0.5 else colors[k + 4]
+                ax.plot(xs, ys, color=color, lw=lw, zorder=2 + k)
+                ax.plot(xs, ys, ls="none", marker=marker, color=marker_color, ms=ms, zorder=2.5 + k)
+                verts = np.column_stack([xs, ys])
+                kind = "line"
+            elif kind == "line" and marker is None:
                 xs = np.linspace(xlo, xhi, 300)
                 ys = smooth_curve(rng, xs, ylo, yhi)
                 ax.plot(xs, ys, color=color, lw=lw, ls=ls, zorder=2 + k)
@@ -265,7 +288,8 @@ def build(i: int):
                 ax.plot(xs, ys, ls="none", marker=marker, color=color, ms=ms, mew=max(1.0, lw * 0.6), zorder=2 + k)
                 verts = np.column_stack([xs, ys])
             series.append(dict(kind=kind, style=style, marker=marker, color=color, lw=lw, ms=ms, verts=verts,
-                               xs=np.asarray(xs), ys=np.asarray(ys), cens=cens, seed_at=float(rng.uniform(0.25, 0.75))))
+                               xs=np.asarray(xs), ys=np.asarray(ys), cens=cens, seed_at=float(rng.uniform(0.25, 0.75)),
+                               marker_color=marker_color))
         allv = np.vstack([s["verts"] for s in series])
         pad_y = 0.06 * (allv[:, 1].max() - allv[:, 1].min() + 1e-9)
         ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
@@ -322,6 +346,9 @@ def build(i: int):
             stags.append("crossing")
         if s["kind"] == "step" and s["marker"]:
             stags.append("censor-marks")
+        if s["marker_color"] is not None:
+            stags.append("kinks")
+            stags.append("markers:same-colour" if s["marker_color"] == s["color"] else "markers:other-colour")
         entry = {
             "id": f"s{k}",
             "kind": s["kind"],
@@ -341,8 +368,8 @@ def build(i: int):
             entry["path"] = [[round(float(x), 3), round(float(y), 3)] for x, y in s["path"]]
             if s["kind"] == "line" and s["marker"]:
                 entry["markers"] = entry["pixels"]
-            if s["kind"] == "step":
-                entry["corners"] = entry["path"][1:-1]
+            if s["kind"] == "step" or s["marker_color"] is not None:
+                entry["corners"] = entry["path"][1:-1] if s["kind"] == "step" else entry["path"]
         out_series.append(entry)
     name = f"l{i:02d}"
     doc = {

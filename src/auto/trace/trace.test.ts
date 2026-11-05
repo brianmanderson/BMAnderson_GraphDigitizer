@@ -63,6 +63,11 @@ class Canvas {
     });
   }
 
+  disc(c: P, diameter: number, rgb: RGB): void {
+    const r = diameter / 2;
+    this.paint(rgb, c.x - r - 1, c.y - r - 1, c.x + r + 1, c.y + r + 1, (x, y) => Math.hypot(x - c.x, y - c.y) <= r);
+  }
+
   square(c: P, size: number, rgb: RGB): void {
     const h = size / 2;
     this.paint(rgb, c.x - h - 1, c.y - h - 1, c.x + h + 1, c.y + h + 1, (x, y) => Math.abs(x - c.x) <= h && Math.abs(y - c.y) <= h);
@@ -245,6 +250,35 @@ describe('traceLine: curves', () => {
     expect(r.kind).toBe('curve');
     expect(Math.max(...r.path.map((p) => p.px)) - Math.min(...r.path.map((p) => p.px))).toBeGreaterThan(280);
   });
+});
+
+describe('traceLine: polylines with a marker on every vertex', () => {
+  // Sharp V and Λ reversals at the data points, like fixtures/synthetic/synthetic-linear.png.
+  const vertices: P[] = [
+    { x: 60, y: 200 },
+    { x: 120, y: 120 },
+    { x: 170, y: 60 },
+    { x: 240, y: 170 },
+    { x: 290, y: 40 },
+    { x: 340, y: 150 },
+  ];
+  const segments = vertices.slice(1).map((b, i) => ({ x: (vertices[i]!.x + b.x) / 2, y: (vertices[i]!.y + b.y) / 2 }));
+
+  for (const markerColour of ['another colour', 'its own colour'] as const) {
+    it(`traces through markers of ${markerColour} from any segment, with a point on every vertex`, () => {
+      const c = new Canvas(400, 280);
+      frame(c);
+      c.stroke(vertices, 1.5, BLUE);
+      for (const v of vertices) c.disc(v, 9, markerColour === 'another colour' ? RED : BLUE);
+      for (const seed of segments) {
+        const r = traceLine(c.request(seed));
+        expect(r.kind).toBe('curve');
+        for (const v of vertices) expect(r.points.some((p) => Math.hypot(p.px - v.x, p.py - v.y) <= 1.5)).toBe(true);
+        // On the line, or through the body of a marker on it.
+        expect(pts(r).every((p) => polyDist(p, vertices) < 1.5 || vertices.some((v) => Math.hypot(p.x - v.x, p.y - v.y) <= 4.5))).toBe(true);
+      }
+    });
+  }
 });
 
 describe('traceLine: markers', () => {

@@ -1,7 +1,13 @@
 {
-  "$comment": "Real-world figures for npm run bench:lines. Each entry points at a label JSON whose knownValues (hand-labelled plateaus: series, x range in data units, y, py) become partial truth segments (bench/lines/truth.ts). Labels are shared with the e2e fixtures and bench:axes. Tags become benchmark categories.",
+  "$comment": "Figures beyond the generated corpus for npm run bench:lines. Each entry points at a label JSON, relative to this file (format: bench/lines/truth.ts): knownValues plateaus become partial truth; a points list (polyline with a marker on every data point) becomes full truth for the line and its markers. Labels are shared with the e2e fixtures and bench:axes. `source` is the top category (default real); tags become categories.",
   "figures": [
     { "truth": "../../../fixtures/real/km-pericardial-effusion.json", "tags": ["km", "jpeg", "curve-on-axis"] },
-    { "truth": "../../../fixtures/real/km-cns-lymphoma.json", "tags": ["km", "png", "two-series"] }
+    { "truth": "../../../fixtures/real/km-cns-lymphoma.json", "tags": ["km", "png", "two-series"] },
+    {
+      "truth": "../../../fixtures/synthetic/synthetic-linear.json",
+      "source": "fixture",
+      "tags": ["chromium", "png", "polyline-markers"],
+      "markerSizePx": 9
+    }
   ]
 }

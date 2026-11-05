@@ -12,6 +12,11 @@
  * units. They become horizontal truth segments (x converted with a least-squares fit of the
  * labelled x ticks; py from the label, else from the y ticks), so real-figure truth is *partial*:
  * scored only where it exists. The seed of a series is the middle of its first segment.
+ * A label with `points: [{ px, py }…]` (a polyline chart with a marker on every data point, like
+ * fixtures/synthetic/synthetic-linear.json) gives full truth instead: a line series through the
+ * points (seeded in the middle of its first segment, a corner at every point) and the marker series
+ * (seeded on its second marker, size from the manifest's `markerSizePx`). A manifest entry's
+ * `source` names the figure's top category (default `real`).
  *
  * Pixels follow the app's convention (integer = pixel centre).
  */
@@ -85,8 +90,45 @@ function fit(pairs: [number, number][]): (v: number) => number {
   return (v) => my + b * (v - mx);
 }
 
-function real(path: string, extraTags: string[]): ChartTruth {
+function polylineFigure(raw: Json, markerSizePx: number): SeriesTruth[] {
+  const vertices = (raw.points as Json[]).map((p) => ({ x: Number(p.px), y: Number(p.py) }));
+  const [a, b] = vertices as [P, P];
+  return [
+    {
+      id: 'line',
+      kind: 'line',
+      tags: ['series:line+markers', 'color:colour', 'kinks', 'markers:other-colour'],
+      seed: { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) },
+      pieces: [vertices],
+      markers: vertices,
+      corners: vertices,
+      markerSizePx,
+      partial: false,
+    },
+    {
+      id: 'markers',
+      kind: 'scatter',
+      tags: ['series:scatter', 'color:colour'],
+      seed: { x: Math.round(b.x), y: Math.round(b.y) },
+      pieces: [],
+      markers: vertices,
+      corners: [],
+      markerSizePx,
+      partial: false,
+    },
+  ];
+}
+
+function real(path: string, extraTags: string[], source: string, markerSizePx: number): ChartTruth {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
+  if (Array.isArray(raw.points)) {
+    return {
+      id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
+      imagePath: resolve(dirname(path), String(raw.image)),
+      tags: [source, ...extraTags],
+      series: polylineFigure(raw, markerSizePx),
+    };
+  }
   const xa = raw.xAxis as Json;
   const ya = raw.yAxis as Json;
   const xTicks = (xa.ticks as Json[]).map((t) => [Number(t.value), Number(t.px)] as [number, number]);
@@ -122,7 +164,7 @@ function real(path: string, extraTags: string[]): ChartTruth {
   return {
     id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
     imagePath: resolve(dirname(path), String(raw.image)),
-    tags: ['real', ...extraTags],
+    tags: [source, ...extraTags],
     series,
   };
 }
@@ -134,7 +176,11 @@ export function loadCorpus(here: string): ChartTruth[] {
     .sort()
     .map((f) => synthetic(join(synth, f)));
   const manifestPath = join(here, 'real', 'manifest.json');
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { figures: { truth: string; tags?: string[] }[] };
-  for (const fig of manifest.figures) out.push(real(resolve(dirname(manifestPath), fig.truth), fig.tags ?? []));
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    figures: { truth: string; tags?: string[]; source?: string; markerSizePx?: number }[];
+  };
+  for (const fig of manifest.figures) {
+    out.push(real(resolve(dirname(manifestPath), fig.truth), fig.tags ?? [], fig.source ?? 'real', fig.markerSizePx ?? 0));
+  }
   return out;
 }
