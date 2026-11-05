@@ -13,6 +13,7 @@ import {
 import type { DocState } from '../state/doc.ts';
 import type { AutoState } from '../ui/suggestion.ts';
 import { AutoDetectPanel } from './AutoDetectPanel.tsx';
+import { AxesHelp } from './AxesHelp.tsx';
 import { REF_COLORS } from '../ui/draw.ts';
 import { formatPixel } from '../ui/table.ts';
 
@@ -89,22 +90,17 @@ export function AxesStep(props: Props) {
 
   return (
     <section className="step-body" aria-label="Axes">
-      <AutoDetectPanel
-        auto={props.auto}
-        disabled={!props.canAutoDetect}
-        onDetect={props.onAutoDetect}
-        onValue={props.onAutoValue}
-        onAccept={props.onAutoAccept}
-        onDiscard={props.onAutoDiscard}
-      />
       <div className="row two">
         {scaleSelect('x')}
         {scaleSelect('y')}
       </div>
 
-      <p className="prompt" data-testid="axes-prompt">
-        {placingRef ? PROMPTS[placingRef] : 'All four refs are placed. Drag a marker to adjust it, or use Move to re-place it.'}
-      </p>
+      <div className="axes-head">
+        <p className="prompt" data-testid="axes-prompt">
+          {placingRef ? PROMPTS[placingRef] : 'All four refs are placed. Drag a marker to adjust it, or use Move to re-place it.'}
+        </p>
+        <AxesHelp />
+      </div>
 
       <ul className="refs">
         {REF_NAMES.map((name) => {
@@ -158,6 +154,17 @@ export function AxesStep(props: Props) {
           {result.error.message}
         </p>
       )}
+      {/* Below the refs and scales; a call to action until a calibration is valid. */}
+      <AutoDetectPanel
+        auto={props.auto}
+        disabled={!props.canAutoDetect}
+        cta={!result?.ok}
+        onDetect={props.onAutoDetect}
+        onValue={props.onAutoValue}
+        onAccept={props.onAutoAccept}
+        onDiscard={props.onAutoDiscard}
+      />
+
       {result?.ok && (
         <div className="ok-box" data-testid="calibration-ok">
           <span>Calibrated. Check the overlay gridlines against the chart.</span>

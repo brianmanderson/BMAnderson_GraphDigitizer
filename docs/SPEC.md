@@ -160,6 +160,14 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   "Move" re-places a ref; Delete on a selected ref clears it. Blank values prompt ("Type the
   known value…"); otherwise the engine's error message is shown verbatim. Date inputs show the
   parsed UTC interpretation or the parser's message.
+- **Axes step layout (first-time users)**: scale selects · prompt with a "?" button ("How to
+  place axis points") that opens an inline help panel (Esc or Close dismiss it, focus returns to
+  the button): an inline-SVG example chart with X1/X2 and Y1/Y2 on printed ticks far apart in the
+  canvas ref colours, X1 and Y1 sharing a known origin, a "don't" strip (refs too close, a ref
+  between labelled ticks) and four short steps · refs list · calibration messages · "Auto-detect
+  axes" (and its suggestion panel) **below the refs**. While no calibration is valid its idle
+  button is a full-width, 44 px, light-green call to action (`--cta-*` tokens); once calibrated
+  or while running it is a normal button, so it does not compete with "Continue to Data →".
 - **Overlay**: after a valid fit, dashed gridlines at round values plus the two calibrated axis
   lines, drawn through `linearToPixel` and clipped to the image. Ticks (`src/ui/ticks.ts`) are
   1-2-5 steps for linear, decades for log, values between the refs for reciprocal when the image
@@ -359,7 +367,7 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
 - **Confidence**: high = ≥ 3 read labels agree, at most one (or 20 %) disagrees, the scale is
   certain and mean OCR confidence ≥ 0.6; medium = ≥ 3 agree otherwise; low = no usable calibration
   → status `positions` (refs at the outermost major ticks, values blank) or `none`.
-- **UI**: "Auto-detect axes" at the top of the Axes step. The result is drawn as ghost markers
+- **UI**: "Auto-detect axes" in the Axes step, below the refs (see Axes step layout). The result is drawn as ghost markers
   (dashed axis lines, a box per read label — teal agrees, red disagrees — and dashed refs labelled
   `X1 = 20`) and a panel with the scale, a confidence badge (High/Medium/Low; the score is in its
   tooltip), the reason and editable values per axis. **Never applied silently**: "Accept

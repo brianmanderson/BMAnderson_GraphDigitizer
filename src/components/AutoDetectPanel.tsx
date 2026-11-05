@@ -9,6 +9,8 @@ const LEVEL_LABEL = { high: 'High', medium: 'Medium', low: 'Low' } as const;
 interface Props {
   auto: AutoState;
   disabled: boolean;
+  /** Show the idle button as the step's call to action (while nothing is calibrated). */
+  cta: boolean;
   onDetect: () => void;
   onValue: (ref: RefName, value: string) => void;
   onAccept: () => void;
@@ -69,11 +71,17 @@ function AxisBlock({ s, values, onValue }: { s: AxisSuggestion; values: Partial<
 }
 
 /** "Auto-detect axes" in the Axes step: run, review the suggestion, accept, edit or discard. */
-export function AutoDetectPanel({ auto, disabled, onDetect, onValue, onAccept, onDiscard }: Props) {
+export function AutoDetectPanel({ auto, disabled, cta, onDetect, onValue, onAccept, onDiscard }: Props) {
   if (auto.status === 'idle' || auto.status === 'error') {
     return (
       <div className="auto">
-        <button type="button" onClick={onDetect} disabled={disabled} title="Read the axes and tick labels from the image (nothing is uploaded)">
+        <button
+          type="button"
+          className={cta ? 'cta' : undefined}
+          onClick={onDetect}
+          disabled={disabled}
+          title="Read the axes and tick labels from the image (nothing is uploaded)"
+        >
           Auto-detect axes
         </button>
         {auto.status === 'error' && (
