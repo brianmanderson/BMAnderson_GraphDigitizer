@@ -14,25 +14,29 @@ const background = (page: Page, name: string) =>
 test('first load follows the OS; the toggle switches and its choice wins after a reload', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
-  const toggle = page.getByRole('button', { name: 'Dark theme' });
+  // The toggle is named after the theme a click switches to.
+  const toLight = page.getByRole('button', { name: 'Light theme', exact: true });
+  const toDark = page.getByRole('button', { name: 'Dark theme', exact: true });
   expect(await theme(page)).toBe('dark');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toLight).toBeVisible();
+  await expect(toDark).toHaveCount(0);
   const darkPage = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 
-  await toggle.click();
+  await toLight.click();
   expect(await theme(page)).toBe('light');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toDark).toBeVisible();
+  await expect(toLight).toHaveCount(0);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor)).not.toBe(darkPage);
 
   // The OS still prefers dark, but the saved choice wins.
   await page.reload();
   await expect(page.getByText('Drop a chart image here')).toBeVisible();
   expect(await theme(page)).toBe('light');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toDark).toBeVisible();
 
-  await toggle.click();
+  await toDark.click();
   await page.reload();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toLight).toBeVisible();
   expect(await theme(page)).toBe('dark');
 });
 

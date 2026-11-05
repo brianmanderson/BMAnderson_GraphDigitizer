@@ -168,8 +168,9 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   axes" (and its suggestion panel) **below the refs**. While no calibration is valid its idle
   button is a full-width, 44 px, light-green call to action (`--cta-*` tokens); once calibrated
   or while running it is a normal button, so it does not compete with "Continue to Data →".
-- **Theme (light/dark, decided after Phase 5)**: a toolbar toggle ("Dark theme", `aria-pressed`)
-  switches `data-theme` on `<html>` instantly. With no saved choice the OS preference
+- **Theme (light/dark, decided after Phase 5)**: a toolbar toggle, named after the theme it switches to
+  ("Dark theme" while light, "Light theme" while dark — the owner's choice over a fixed name with
+  `aria-pressed`), switches `data-theme` on `<html>` instantly. With no saved choice the OS preference
   (`prefers-color-scheme`) decides and is followed live; an explicit choice is kept in
   localStorage (`graph-digitizer:theme`, per browser, not in the Project or the autosave) and
   wins on later loads. An inline script in `index.html` applies it before first paint. Every
@@ -461,7 +462,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
 - **Suggested points** (`resample.ts`): always both ends, every step corner, every y extremum
   with prominence ≥ max(3 px, 2 line widths) and every sharp kink (Douglas–Peucker vertex at
   max(0.75 px, ½ line width) turning ≥ 30°, e.g. the data points of a polyline chart) — kept even
-  beyond `maxPoints`; the rest of the budget evenly in x over the non-vertical stretches, snapped
+  beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~15 s, part of `npm run verify`): `bench/lines/generate.py`
   (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 60 seeded charts, 142 series:
