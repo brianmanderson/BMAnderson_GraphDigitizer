@@ -11,7 +11,14 @@
   --ok: #2b8a3e;
   --ok-soft: #ebfbee;
   --workspace: #dde2e7;
-  /* Axes step: the Auto-detect call to action and the help diagrams (dark variants at the end). */
+  --on-fill: #fff;
+  --disabled-bg: #f3f4f6;
+  --warn: #9a5b00;
+  --warn-soft: #fff4e0;
+  --rule: #eceff2;
+  --row-hover: #f6f8fa;
+  --shadow: rgba(0, 0, 0, 0.25);
+  /* Axes step: the Auto-detect call to action (light green in both themes) and the help diagrams. */
   --cta-bg: #d3f9d8;
   --cta-bg-hover: #b2f2bb;
   --cta-fg: #14532d;
@@ -20,12 +27,48 @@
   --help-soft: var(--muted);
   --help-curve: var(--accent);
   --help-bad: var(--error);
+  --help-halo: transparent;
+
+  color-scheme: light;
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.4;
   color: var(--text);
   background: var(--bg);
+}
+
+/*
+ * Dark theme: set on <html> by index.html before first paint (saved choice, else the OS
+ * preference) and by the toolbar toggle (src/ui/theme.ts). Every token has a dark value; new
+ * styles should use tokens so they follow. The chart image itself is never recoloured.
+ */
+:root[data-theme='dark'] {
+  --bg: #15181c;
+  --surface: #1e2227;
+  --border: #3a424b;
+  --text: #e6e8eb;
+  --muted: #a3acb6;
+  --accent: #4fc3d6;
+  --accent-soft: #163a40;
+  --error: #ff8787;
+  --error-soft: #3b1e21;
+  --ok: #69db7c;
+  --ok-soft: #16321d;
+  --workspace: #0e1013;
+  --on-fill: #0b1a1e;
+  --disabled-bg: #262b31;
+  --warn: #ffc078;
+  --warn-soft: #3a2a10;
+  --rule: #2c3238;
+  --row-hover: #252a30;
+  --shadow: rgba(0, 0, 0, 0.6);
+  /* The call to action keeps its light-green fill and dark text; only the border adapts. */
+  --cta-border: #8ce99a;
+  /* Like the canvas markers' white halo, so the ref colours read on the dark panel. */
+  --help-halo: rgba(255, 255, 255, 0.85);
+
+  color-scheme: dark;
 }
 
 * {
@@ -63,7 +106,7 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
 }
 button.small {
   padding: 2px 8px;
@@ -96,7 +139,7 @@ input[aria-invalid='true'] {
   background: var(--error-soft);
 }
 input:disabled {
-  background: #f3f4f6;
+  background: var(--disabled-bg);
 }
 
 kbd {
@@ -220,7 +263,7 @@ kbd {
   left: 50%;
   transform: translateX(-50%);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   border-radius: 6px;
   padding: 4px 12px;
   pointer-events: none;
@@ -265,7 +308,7 @@ kbd {
 }
 .step-tab.done .step-num {
   background: var(--ok);
-  color: #fff;
+  color: var(--on-fill);
 }
 
 .step-scroll {
@@ -420,8 +463,8 @@ kbd {
   color: var(--ok);
 }
 .badge.medium {
-  background: #fff4e0;
-  color: #9a5b00;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 .badge.low {
   background: var(--error-soft);
@@ -528,7 +571,7 @@ table {
 th,
 td {
   padding: 2px 6px;
-  border-bottom: 1px solid #eceff2;
+  border-bottom: 1px solid var(--rule);
   text-align: left;
 }
 th {
@@ -545,7 +588,7 @@ tbody tr {
   cursor: pointer;
 }
 tbody tr:hover {
-  background: #f6f8fa;
+  background: var(--row-hover);
 }
 tbody tr.selected {
   background: var(--accent-soft);
@@ -620,10 +663,10 @@ button.toggle[aria-pressed='true'] {
   top: 12px;
   /* Never in the way of a click: the loupe flips away from the cursor and ignores the pointer. */
   pointer-events: none;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 10px var(--shadow);
   overflow: hidden;
 }
 .loupe.top-left {
@@ -670,7 +713,7 @@ button.help-btn {
 }
 button.help-btn[aria-expanded='true'] {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
 }
 button.help-btn:focus-visible {
   outline: 2px solid var(--accent);
@@ -726,6 +769,11 @@ button.help-btn:focus-visible {
 .help-ring {
   fill: none;
   stroke-width: 2;
+}
+.help-halo {
+  fill: none;
+  stroke: var(--help-halo);
+  stroke-width: 4;
 }
 .help-ring.x {
   stroke: var(--ref-x);
@@ -787,12 +835,4 @@ button.cta:focus-visible {
 button.cta:disabled {
   opacity: 0.55;
   border-style: dashed;
-}
-
-/* The app has no dark theme yet; these take effect once it sets data-theme="dark". */
-:root[data-theme='dark'] {
-  --cta-bg: #1f3d26;
-  --cta-bg-hover: #2b5233;
-  --cta-fg: #b2f2bb;
-  --cta-border: #51cf66;
 }

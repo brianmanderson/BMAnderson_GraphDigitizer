@@ -168,6 +168,16 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   axes" (and its suggestion panel) **below the refs**. While no calibration is valid its idle
   button is a full-width, 44 px, light-green call to action (`--cta-*` tokens); once calibrated
   or while running it is a normal button, so it does not compete with "Continue to Data →".
+- **Theme (light/dark, decided after Phase 5)**: a toolbar toggle ("Dark theme", `aria-pressed`)
+  switches `data-theme` on `<html>` instantly. With no saved choice the OS preference
+  (`prefers-color-scheme`) decides and is followed live; an explicit choice is kept in
+  localStorage (`graph-digitizer:theme`, per browser, not in the Project or the autosave) and
+  wins on later loads. An inline script in `index.html` applies it before first paint. Every
+  colour in `src/index.css` is a token with a dark value. The Auto-detect call to action keeps
+  its light-green fill and dark text in both themes (only its border adapts). The canvas is not
+  themed: the chart image is never recoloured, and markers, points, ghost labels and overlay
+  labels carry white halos or boxes, so they read on light and dark charts alike; only the
+  workspace around the image and the loupe frame follow the theme.
 - **Overlay**: after a valid fit, dashed gridlines at round values plus the two calibrated axis
   lines, drawn through `linearToPixel` and clipped to the image. Ticks (`src/ui/ticks.ts`) are
   1-2-5 steps for linear, decades for log, values between the refs for reciprocal when the image

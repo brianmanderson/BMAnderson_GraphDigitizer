@@ -15,6 +15,16 @@ function Badge({ x, y, name }: { x: number; y: number; name: string }) {
   );
 }
 
+/** A ref marker: a ring in the canvas colour over a halo (visible in the dark theme). */
+function Ring({ cx, cy, r, axis }: { cx: number; cy: number; r: number; axis: 'x' | 'y' }) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} className="help-halo" />
+      <circle cx={cx} cy={cy} r={r} className={`help-ring ${axis}`} />
+    </g>
+  );
+}
+
 const refColorVars = { '--ref-x': REF_COLORS.X, '--ref-y': REF_COLORS.Y } as CSSProperties;
 
 /** Example chart: X1/X2 and Y1/Y2 on printed ticks, far apart, X1 and Y1 sharing the origin. */
@@ -48,10 +58,10 @@ function DoDiagram() {
         </g>
       ))}
       {/* Markers: rings on the ticks, in the canvas colours. */}
-      <circle cx={ox} cy={oy} r={8} className="help-ring y" />
-      <circle cx={ox} cy={oy} r={4.5} className="help-ring x" />
-      <circle cx={252} cy={oy} r={4.5} className="help-ring x" />
-      <circle cx={ox} cy={24} r={4.5} className="help-ring y" />
+      <Ring cx={ox} cy={oy} r={8} axis="y" />
+      <Ring cx={ox} cy={oy} r={4.5} axis="x" />
+      <Ring cx={252} cy={oy} r={4.5} axis="x" />
+      <Ring cx={ox} cy={24} r={4.5} axis="y" />
       <Badge x={ox - 11} y={oy + 22} name="X1" />
       <Badge x={252 - 11} y={oy + 22} name="X2" />
       <Badge x={14} y={oy - 6} name="Y1" />
@@ -99,8 +109,8 @@ function DontDiagram() {
       </title>
       <line x1={14} y1={ay} x2={134} y2={ay} className="help-axis" />
       {ticks(left)}
-      <circle cx={44} cy={ay} r={4.5} className="help-ring x" />
-      <circle cx={74} cy={ay} r={4.5} className="help-ring x" />
+      <Ring cx={44} cy={ay} r={4.5} axis="x" />
+      <Ring cx={74} cy={ay} r={4.5} axis="x" />
       <Badge x={33} y={ay - 21} name="X1" />
       <Badge x={63} y={ay - 21} name="X2" />
       {cross(124)}
@@ -110,8 +120,8 @@ function DontDiagram() {
 
       <line x1={166} y1={ay} x2={286} y2={ay} className="help-axis" />
       {ticks(right)}
-      <circle cx={166} cy={ay} r={4.5} className="help-ring x" />
-      <circle cx={242} cy={ay} r={4.5} className="help-ring x" />
+      <Ring cx={166} cy={ay} r={4.5} axis="x" />
+      <Ring cx={242} cy={ay} r={4.5} axis="x" />
       <Badge x={155} y={ay - 21} name="X1" />
       <Badge x={231} y={ay - 21} name="X2" />
       {cross(280)}

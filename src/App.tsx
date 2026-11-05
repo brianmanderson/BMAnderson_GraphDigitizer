@@ -3,6 +3,7 @@ import { calibrateSpec, parseProject, parseProjectText, type Project, type RefNa
 import { AxesStep } from './components/AxesStep.tsx';
 import { DataStep } from './components/DataStep.tsx';
 import { DataTable } from './components/DataTable.tsx';
+import { ThemeToggle } from './components/ThemeToggle.tsx';
 import { Workspace, type Step } from './components/Workspace.tsx';
 import {
   calibrationSpec,
@@ -644,6 +645,7 @@ export function App() {
             </div>
           )}
         </div>
+        <ThemeToggle />
       </header>
 
       <main className="main">
