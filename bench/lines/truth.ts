@@ -3,15 +3,16 @@
  *
  * Synthetic charts (bench/lines/synthetic/lNN.json, written by generate.py): one JSON per image
  * with `series: [{ id, kind: 'line'|'step'|'scatter', tags, color, seed: [x,y], path?: [[x,y]…],
- * markers?: [[x,y]…], corners?: [[x,y]…], lineWidthPx, markerSizePx, data, pixels }]` — `path` is
- * the drawn polyline (lines, steps), `markers` the marker centres (scatter, lines with markers),
- * `corners` the step corners.
+ * markers?: [[x,y]…], corners?: [[x,y]…], style, lineWidthPx, markerSizePx, data, pixels }]` — `path`
+ * is the drawn polyline (lines, steps), `markers` the marker centres (scatter, lines with markers),
+ * `corners` the step corners, `style` the line style ('solid', 'dashed', 'dotted', 'dashdot').
  *
  * Real figures (bench/lines/real/manifest.json → label JSON shared with fixtures/real/): only
  * hand-labelled plateaus exist, as `knownValues: [{ series?, x: [x0, x1], y, py? }]` with x in data
  * units. They become horizontal truth segments (x converted with a least-squares fit of the
  * labelled x ticks; py from the label, else from the y ticks), so real-figure truth is *partial*:
- * scored only where it exists. The seed of a series is the middle of its first segment.
+ * scored only where it exists. The seed of a series is the middle of its first segment. An optional
+ * `styles: { <series>: 'solid' | 'dashed' | … }` gives the series' line styles.
  * A label with `points: [{ px, py }…]` (a polyline chart with a marker on every data point, like
  * fixtures/synthetic/synthetic-linear.json) gives full truth instead: a line series through the
  * points (seeded in the middle of its first segment, a corner at every point) and the marker series
@@ -39,9 +40,14 @@ export interface SeriesTruth {
   markers: P[];
   corners: P[];
   markerSizePx: number;
+  /** Line style ('solid' | 'dashed' | 'dotted' | 'dash-dot', as TraceResult.style), or null (scatter, unlabelled). */
+  style: string | null;
   /** Real figures: truth exists only on the labelled segments. */
   partial: boolean;
 }
+
+/** The generator's style names → TraceResult.style. */
+const styleName = (v: unknown): string | null => (typeof v === 'string' && v !== 'none' ? (v === 'dashdot' ? 'dash-dot' : v) : null);
 
 export interface ChartTruth {
   id: string;
@@ -68,6 +74,7 @@ function synthetic(path: string): ChartTruth {
       markers,
       corners: pts(s.corners),
       markerSizePx: Number(s.markerSizePx),
+      style: kind === 'scatter' ? null : styleName(s.style),
       partial: false,
     };
   });
@@ -103,6 +110,7 @@ function polylineFigure(raw: Json, markerSizePx: number): SeriesTruth[] {
       markers: vertices,
       corners: vertices,
       markerSizePx,
+      style: 'solid',
       partial: false,
     },
     {
@@ -114,6 +122,7 @@ function polylineFigure(raw: Json, markerSizePx: number): SeriesTruth[] {
       markers: vertices,
       corners: [],
       markerSizePx,
+      style: null,
       partial: false,
     },
   ];
@@ -147,6 +156,7 @@ function real(path: string, extraTags: string[], source: string, markerSizePx: n
     ]);
     bySeries.set(name, list);
   }
+  const styles = (raw.styles ?? {}) as Record<string, unknown>;
   const series = [...bySeries.entries()].map(([name, pieces], i): SeriesTruth => {
     const [a, b] = pieces[0]!;
     return {
@@ -158,6 +168,7 @@ function real(path: string, extraTags: string[], source: string, markerSizePx: n
       markers: [],
       corners: [],
       markerSizePx: 0,
+      style: styleName(styles[name]),
       partial: true,
     };
   });

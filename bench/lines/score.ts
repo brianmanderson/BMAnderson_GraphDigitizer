@@ -14,6 +14,8 @@
  * Markers (scatter series; 'markers' expected): true centres matched one-to-one (greedy, nearest
  * first) by traced centroids within max(2, 0.4 × marker size); recall and precision.
  * kind: whether 'auto' chose the expected kind.
+ * style: whether a curve's reported line style (TraceResult.style) is its true style ('unknown'
+ * counts as wrong); over curve series with a known style.
  */
 
 import type { TraceResult } from '../../src/auto/index.ts';
@@ -38,6 +40,8 @@ export interface TraceScore {
   /** Markers. */
   markers: { truth: number; found: number; matched: number };
   points: number;
+  /** Curves with a known style: the true style and the reported one. */
+  style: { truth: string; got: string } | null;
 }
 
 function segDist(p: P, a: P, b: P): number {
@@ -108,6 +112,7 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
     corners: { truth: s.corners.length, matched: 0 },
     markers: { truth: s.markers.length, found: 0, matched: 0 },
     points: r.points.length,
+    style: expected === 'curve' && s.style ? { truth: s.style, got: r.style } : null,
   };
   if (expected === 'markers') {
     score.markers.truth = s.markers.length;
@@ -161,6 +166,8 @@ export interface Metrics {
   cornerRecall: number | null;
   markerRecall: number | null;
   markerPrecision: number | null;
+  /** Curves whose reported line style is right. */
+  styleAccuracy: number | null;
   meanMs: number;
 }
 
@@ -175,6 +182,7 @@ export function aggregate(scores: TraceScore[]): Metrics {
   const mTruth = marks.reduce((n, s) => n + s.markers.truth, 0);
   const mFound = marks.reduce((n, s) => n + s.markers.found, 0);
   const mMatched = marks.reduce((n, s) => n + s.markers.matched, 0);
+  const styled = curves.filter((s) => s.style);
   return {
     traces: scores.length,
     kindAccuracy: scores.length ? scores.filter((s) => s.kind === s.expected).length / scores.length : null,
@@ -185,6 +193,7 @@ export function aggregate(scores: TraceScore[]): Metrics {
     cornerRecall: cornerTruth ? curves.reduce((n, s) => n + s.corners.matched, 0) / cornerTruth : null,
     markerRecall: mTruth ? mMatched / mTruth : null,
     markerPrecision: mTruth ? (mFound ? mMatched / mFound : 0) : null,
+    styleAccuracy: styled.length ? styled.filter((s) => s.style!.got === s.style!.truth).length / styled.length : null,
     meanMs: scores.length ? scores.reduce((n, s) => n + s.ms, 0) / scores.length : 0,
   };
 }
@@ -199,4 +208,5 @@ export const GATED: { key: keyof Metrics; higherIsBetter: boolean }[] = [
   { key: 'cornerRecall', higherIsBetter: true },
   { key: 'markerRecall', higherIsBetter: true },
   { key: 'markerPrecision', higherIsBetter: true },
+  { key: 'styleAccuracy', higherIsBetter: true },
 ];

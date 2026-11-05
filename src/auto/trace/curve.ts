@@ -90,7 +90,7 @@ export function columnRuns(alpha: Float32Array, width: number, x: number, y0: nu
 }
 
 /** α-weighted centre of a run, extended over the partially covered pixels at both ends. */
-function runCentre(alpha: Float32Array, width: number, height: number, x: number, run: Run): number {
+export function runCentre(alpha: Float32Array, width: number, height: number, x: number, run: Run): number {
   let sw = 0;
   let sy = 0;
   const add = (y: number) => {
@@ -135,6 +135,12 @@ export interface TraceOptions {
    */
   other?: Uint8Array;
   maxHiddenGap?: number;
+  /**
+   * Longest hole in a vertical stroke that is bridged when all of it is ink of another colour or
+   * series (by default no more than any hole). A dashed series uses one dash and two gaps: where it
+   * crosses a same-colour series, the dash touching that series went with it.
+   */
+  coveredHole?: number;
 }
 /** A branch that dies within this many columns of a fork is retried with the alternatives. */
 const RETRY_COLUMNS = 25;
@@ -263,13 +269,19 @@ export function traceColumns(
     const from = isLong(prev) ? st.entryY : prev.cy;
     if (isLong(best) && !across(best, from)) {
       // A vertical stroke interrupted by a line of another colour drawn over it: continue it
-      // through small holes, away from where the walk entered it.
+      // through small holes, away from where the walk entered it — wider ones (`coveredHole`) when
+      // all of the hole is ink of another colour or of another series (with its anti-aliased edges).
       const hole = Math.max(4, 2 * t + 1);
+      const covered = (a: number, b: number) => {
+        if (!opts.other) return false;
+        for (let y = a; y <= b; y++) if (!opts.other[y * w + st.x] && (alpha[y * w + st.x] ?? -1) >= 0) return false;
+        return true;
+      };
       const up = Math.abs(best.bottom - from) < Math.abs(best.top - from);
       for (let j = index + (up ? -1 : 1); j >= 0 && j < runs.length; j += up ? -1 : 1) {
         const r = runs[j]!;
         const g = up ? best.top - r.bottom - 1 : r.top - best.bottom - 1;
-        if (g > hole) break;
+        if (g > hole && !(g <= (opts.coveredHole ?? hole) && covered(up ? r.bottom + 1 : best.bottom + 1, up ? best.top - 1 : r.top - 1))) break;
         best = up ? { top: r.top, bottom: best.bottom } : { top: best.top, bottom: r.bottom };
       }
     }
@@ -440,7 +452,11 @@ const iou = (a: Run, b: Run) => {
 };
 
 /** Turn traced columns into centreline points with step corners (see the file comment). */
-export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width: number): PathPoint[] {
+/**
+ * `spurs`: also bridge a thin spur on one side of a curve that runs straight past it — used when
+ * another series of the curve's colour is known to be there (its dashes touch the curve).
+ */
+export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width: number, spurs = false): PathPoint[] {
   const t = thicknessOf(entries);
   const half = (t - 1) / 2;
   const long = (e: ColumnEntry) => runLength(e) - t >= 2.5;
@@ -519,6 +535,9 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
       if (sw > 0) out.push({ px: sx / sw, py: sy / sw, confidence: 0.8, corner: true });
     } else if (T < Math.min(yin, yout) - 1.5 && B > Math.max(yin, yout) + 1.5) {
       // Sticks out on both sides: a marker or a mark of the same colour on the curve. Bridged.
+    } else if (spurs && thin && Math.abs(yout - yin) < 1.5 && D >= 2.5) {
+      // A thin spur on one side of a curve that runs straight past it: the dash of a same-colour
+      // dashed series touching it. Bridged.
     } else {
       for (const g of group) plain(g, 0.8);
     }

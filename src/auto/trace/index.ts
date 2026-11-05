@@ -27,9 +27,10 @@ import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, matchMarkers, type Blob, type Blobs } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
+import { applyStyle, classifyStyle, unfill } from './style.ts';
 import type { TracedPoint, TraceRequest, TraceResult } from './types.ts';
 
-export type { TraceMode, TracedPoint, TraceRequest, TraceResult } from './types.ts';
+export type { LineStyle, TraceMode, TracedPoint, TraceRequest, TraceResult } from './types.ts';
 
 /** How far from the click the seed's ink may be, px. */
 const SEED_RADIUS = 4;
@@ -179,7 +180,7 @@ export function traceLine(req: TraceRequest): TraceResult {
   const t0 = now();
   const result = (r: Omit<TraceResult, 'timings'>): TraceResult => ({ ...r, timings: { totalMs: now() - t0 } });
   const fail = (message: string, color: RGB = [0, 0, 0]): TraceResult =>
-    result({ ok: false, kind: 'none', color: color.map(Math.round) as RGB, path: [], points: [], message });
+    result({ ok: false, kind: 'none', style: 'unknown', color: color.map(Math.round) as RGB, path: [], points: [], message });
 
   const { width: w, height: h, rgba, seed } = req;
   if (!(Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0) || rgba.length < w * h * 4) {
@@ -227,32 +228,68 @@ export function traceLine(req: TraceRequest): TraceResult {
   const markerMax = Math.max(30, 0.06 * regionMin);
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
+  const ctx = { found, alpha, other, region };
+  const sig = classifyStyle(ctx, template, markerMax);
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
   const chained = small && template.elongation < 2.5 && regularChain(found, template, markerMax);
-  if (req.mode === 'auto' && small && template.elongation < 2.5 && !chained) kind = 'markers';
+  // A piece of a dashed or dotted line (an L-shaped dash at a step corner is compact too, and a
+  // dotted step curve is no straight chain) is not a marker.
+  const patterned = sig.style === 'dashed' || sig.style === 'dotted' || sig.style === 'dash-dot';
+  if (req.mode === 'auto' && small && template.elongation < 2.5 && !chained && !patterned) kind = 'markers';
 
   if (kind === 'markers') {
     if (!small) return fail('The clicked series is a line, not markers: trace it as a curve.', color);
     const path: TracedPoint[] = matchMarkers(found, template, w);
-    return result({ ok: path.length > 0, kind: 'markers', color, path, points: path.map((p) => ({ ...p })) });
+    return result({ ok: path.length > 0, kind: 'markers', style: 'unknown', color, path, points: path.map((p) => ({ ...p })) });
   }
 
   let traced: PathPoint[];
   let thickness: number;
-  if (chained) {
-    // A dotted or dash-dot line: follow the chain of dots and dashes itself.
+  if (chained && !patterned) {
+    // A chain of dots whose pattern was not read (too few, uneven): follow the chain itself.
     traced = chainPath(found, blobChain(found, template, markerMax, Number.POSITIVE_INFINITY).chain, alpha, w);
     thickness = Math.max(1, Math.min(blobWidth(template), blobHeight(template)));
   } else {
-    const e = traceColumns(alpha, region, s, { maxGap: defaultMaxGap(region), maxHiddenGap: defaultMaxHiddenGap(region), other });
-    if (!e || e.length < 2) return fail('Could not follow a line from the clicked point.', color);
-    thickness = thicknessOf(e);
-    // Vertices hidden under markers: kinks between straight stretches, and ends under a marker.
-    const maps = { width: w, height: h, alpha, other };
-    traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w), thickness, maps), thickness, maps);
+    // A dotted series' straight chain of dots, before the coverage map is changed (fallback below).
+    const straight = sig.style === 'dotted' && chained ? blobChain(found, template, markerMax, Number.POSITIVE_INFINITY).chain : [];
+    // Ink of the series' colour that does not fit the seed's style is another series: an occluder.
+    const { fill, dropped } = applyStyle(ctx, template, sig, markerMax);
+    // Where a dashed series crosses the other one, the dash touching it went with it: a hole of up
+    // to a dash and two gaps in a vertical is bridged when all of it is that series' ink.
+    const hole = patterned ? { coveredHole: Math.ceil(sig.maxOn + 2 * sig.gap + 2 * sig.thickness) } : {};
+    const walked = traceColumns(alpha, region, s, { maxGap: defaultMaxGap(region), maxHiddenGap: defaultMaxHiddenGap(region), other, ...hole });
+    const e = walked && fill ? unfill(fill, walked, alpha, region) : walked;
+    // The dots the walk went through (a walk can't start up a steep thin dotted line from one dot).
+    const dots: Blob[] = [];
+    if (sig.style === 'dotted' && e) {
+      const seen = new Set<number>();
+      for (const c of e) {
+        for (let y = c.top; y <= c.bottom; y++) {
+          const l = found.labels[y * w + c.x] ?? 0;
+          if (l && !seen.has(l)) {
+            seen.add(l);
+            dots.push(found.blobs[l - 1]!);
+          }
+        }
+      }
+    }
+    if (sig.style === 'dotted' && (dots.length >= 2 || straight.length >= 2)) {
+      // A dotted line: its points are the centroids of its dots, along the walk or the straight
+      // chain, whichever passes through more of them.
+      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
+      thickness = Math.max(1, Math.min(blobWidth(template), blobHeight(template)));
+    } else {
+      if (!e || e.length < 2) return fail('Could not follow a line from the clicked point.', color);
+      thickness = thicknessOf(e);
+      // Vertices hidden under markers: kinks between straight stretches, and ends under a marker.
+      const maps = { width: w, height: h, alpha, other };
+      // A solid line among dashes of its own colour: the dashes touching it stick out as spurs.
+      const spurs = sig.style === 'solid' && dropped;
+      traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w, spurs), thickness, maps), thickness, maps);
+    }
   }
   if (traced.length < 2) return fail('Could not follow a line from the clicked point.', color);
   const points = resample(traced, req.maxPoints, thickness);
   const path: TracedPoint[] = traced.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
-  return result({ ok: true, kind: 'curve', color, path, points });
+  return result({ ok: true, kind: 'curve', style: sig.style, color, path, points });
 }

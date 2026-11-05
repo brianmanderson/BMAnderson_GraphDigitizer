@@ -252,6 +252,115 @@ describe('traceLine: curves', () => {
   });
 });
 
+/** The on-pieces of a dash pattern (`pattern` = on, off, on, off… in px) along a polyline. */
+function dashes(poly: P[], pattern: number[]): P[][] {
+  const out: P[][] = [];
+  let k = 0;
+  let left = pattern[0]!;
+  let cur: P[] | null = [poly[0]!];
+  for (let i = 0; i + 1 < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    let t = 0;
+    while (len - t > left) {
+      t += left;
+      const p = { x: a.x + ((b.x - a.x) * t) / len, y: a.y + ((b.y - a.y) * t) / len };
+      if (cur) {
+        cur.push(p);
+        out.push(cur);
+        cur = null;
+      } else cur = [p];
+      k = (k + 1) % pattern.length;
+      left = pattern[k]!;
+    }
+    left -= len - t;
+    if (cur) cur.push(b);
+  }
+  if (cur && cur.length > 1) out.push(cur);
+  return out;
+}
+
+/** A Kaplan–Meier style staircase (steps-post) through the levels at the given x. */
+function staircase(xs: number[], levels: number[]): P[] {
+  const out: P[] = [{ x: xs[0]!, y: levels[0]! }];
+  for (let i = 1; i < levels.length; i++) out.push({ x: xs[i]!, y: levels[i - 1]! }, { x: xs[i]!, y: levels[i]! });
+  out.push({ x: xs[xs.length - 1]!, y: levels[levels.length - 1]! });
+  return out;
+}
+
+describe('traceLine: line style and same-colour series', () => {
+  it('reads the line style at the seed', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const solid = sine(15, 0, 50);
+    const dashed = sine(15, 0, 100);
+    const dotted = sine(15, 0, 150);
+    const dashDot = sine(15, 0, 200);
+    c.stroke(solid, 2.2, BLACK);
+    for (const d of dashes(dashed, [8, 5])) c.stroke(d, 2.2, BLACK);
+    for (const d of dashes(dotted, [0.1, 5])) c.stroke(d, 2.2, BLACK);
+    for (const d of dashes(dashDot, [11, 5, 0.1, 5])) c.stroke(d, 2.2, BLACK);
+    const at = (curve: P[]) => traceLine(c.request(curve[150]!));
+    expect(at(solid).style).toBe('solid');
+    expect(at(dashed).style).toBe('dashed');
+    expect(at(dotted).style).toBe('dotted');
+    expect(at(dashDot).style).toBe('dash-dot');
+    for (const curve of [solid, dashed, dotted, dashDot]) expect(at(curve).kind).toBe('curve');
+  });
+
+  it('keeps a solid and a dashed step curve of one colour apart, with their corners', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    // Both start together at the top and interleave: same colour, told apart only by style.
+    const solid = staircase([50, 90, 130, 180, 240, 300, 350], [40, 70, 100, 130, 160, 190]);
+    const dashed = staircase([50, 110, 150, 200, 260, 320, 350], [40, 80, 112, 145, 178, 210]);
+    c.stroke(solid, 1.8, BLACK);
+    for (const d of dashes(dashed, [9, 6])) c.stroke(d, 1.8, BLACK);
+    const s = traceLine(c.request({ x: 210, y: 130 }));
+    expect(s.style).toBe('solid');
+    expect(pts(s).every((p) => polyDist(p, solid) < 1.5)).toBe(true);
+    expect(Math.max(...s.path.map((p) => p.px)) - Math.min(...s.path.map((p) => p.px))).toBeGreaterThan(280);
+    for (const k of solid.slice(3, -1)) expect(s.points.some((p) => Math.hypot(p.px - k.x, p.py - k.y) < 2)).toBe(true);
+    const onDash = dashes(dashed, [9, 6]).find((p) => p[0]!.y === 178 && p[p.length - 1]!.y === 178)!;
+    const d = traceLine(c.request({ x: (onDash[0]!.x + onDash[onDash.length - 1]!.x) / 2, y: 178 }));
+    expect(d.style).toBe('dashed');
+    expect(pts(d).every((p) => polyDist(p, dashed) < 1.5)).toBe(true);
+    // Across the solid curve four times, to its right end (left of x = 150 the two run together).
+    expect(Math.min(...d.path.map((p) => p.px))).toBeLessThan(155);
+    expect(Math.max(...d.path.map((p) => p.px))).toBeGreaterThan(345);
+  });
+
+  it('keeps a solid and a dashed curve of one colour apart through their crossing', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const a = sine(60, 0);
+    const b = sine(60, Math.PI);
+    c.stroke(a, 1.8, BLACK);
+    for (const d of dashes(b, [9, 5])) c.stroke(d, 1.8, BLACK);
+    for (const [curve, style] of [
+      [a, 'solid'],
+      [b, 'dashed'],
+    ] as const) {
+      const r = traceLine(c.request(curve[60]!));
+      expect(r.style).toBe(style);
+      expect(pts(r).every((p) => polyDist(p, curve) < 1.5)).toBe(true);
+      expect(Math.max(...r.path.map((p) => p.px)) - Math.min(...r.path.map((p) => p.px))).toBeGreaterThan(280);
+    }
+  });
+
+  it('takes a dash at a step corner for a line in auto mode, not for a marker', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const dashed = staircase([50, 100, 150, 200, 250, 300, 350], [50, 80, 110, 140, 170, 200]);
+    for (const d of dashes(dashed, [9, 6])) c.stroke(d, 1.8, BLACK);
+    const corner = dashes(dashed, [9, 6]).find((d) => d.length > 2)!; // a dash that turns a corner
+    const r = traceLine(c.request(corner[1]!));
+    expect(r.kind).toBe('curve');
+    expect(r.style).toBe('dashed');
+  });
+});
+
 describe('traceLine: polylines with a marker on every vertex', () => {
   // Sharp V and Λ reversals at the data points, like fixtures/synthetic/synthetic-linear.png.
   const vertices: P[] = [

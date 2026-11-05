@@ -9,6 +9,7 @@ const image = { dataUrl: 'data:image/png;base64,', width: 200, height: 100, name
 const result = (points: [number, number][], color: [number, number, number] = [28, 95, 168]): TraceResult => ({
   ok: true,
   kind: 'curve',
+  style: 'solid',
   color,
   path: points.map(([px, py]) => ({ px, py, confidence: 1 })),
   points: points.map(([px, py]) => ({ px, py, confidence: 1 })),

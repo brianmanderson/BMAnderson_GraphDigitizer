@@ -3,6 +3,7 @@
   "figures": [
     { "truth": "../../../fixtures/real/km-pericardial-effusion.json", "tags": ["km", "jpeg", "curve-on-axis"] },
     { "truth": "../../../fixtures/real/km-cns-lymphoma.json", "tags": ["km", "png", "two-series"] },
+    { "truth": "../../../fixtures/real/km-same-colour-styles.json", "tags": ["km", "jpeg", "same-colour"] },
     {
       "truth": "../../../fixtures/synthetic/synthetic-linear.json",
       "source": "fixture",

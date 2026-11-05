@@ -20,7 +20,10 @@ Scenarios (chart i uses SCENARIOS[i % 8]): smooth crossing curves, lines with ma
 dotted / dash-dot lines, Kaplan-Meier step curves (starting together at 1.0, with '+' censoring
 marks of the same colour), scatter, black series on black axes, a mix of kinds, and many series
 on dark gridlines. Gridlines, legends, box/L frames, line widths, DPI (72-200) and JPEG (every
-third chart, q35-90) vary on top.
+third chart, q35-90) vary on top. Appended later (earlier charts stay byte-identical): l60-l71
+zigzag polylines ("kinks"), l72-l83 pairs of series of one colour told apart only by line style
+("same-colour": solid + dashed or dotted KM steps starting together, crossing smooth curves, close
+plateaus).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -45,7 +48,7 @@ from matplotlib.colors import to_rgb  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 72
+COUNT = 84
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -54,6 +57,9 @@ SCENARIOS = ["curves", "line-markers", "dashed", "step", "scatter", "black", "mi
 # with a marker on every vertex - sharp V/Lambda reversals hidden under markers of the line's own
 # colour or of another colour drawn on top, in varying sizes.
 KINKS_FROM = 60
+# Charts from SAME_FROM on: two series of the same colour, one solid and one dashed or dotted.
+SAME_FROM = 72
+SAME_VARIANTS = ["km-together", "crossing", "close-plateaus", "dotted"]
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -172,7 +178,7 @@ def coverage_at(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
 
 def build(i: int):
     rng = np.random.default_rng(5000 + i)
-    scenario = "kinks" if i >= KINKS_FROM else SCENARIOS[i % len(SCENARIOS)]
+    scenario = "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM else SCENARIOS[i % len(SCENARIOS)]
     dpi = int(DPIS[i % len(DPIS)] if rng.random() < 0.7 else rng.choice(DPIS))
     w_in = float(rng.uniform(4.5, 7.5))
     h_in = float(w_in * rng.uniform(0.55, 0.8))
@@ -218,6 +224,13 @@ def build(i: int):
     elif scenario == "kinks":
         for k in range(int(rng.integers(1, 3))):
             specs.append(("kink", "solid", str(rng.choice(["o", "s", "D", "^"])), colors[k]))
+    elif scenario == "same-colour":
+        variant = SAME_VARIANTS[(i - SAME_FROM) % len(SAME_VARIANTS)]
+        color = "k" if rng.random() < 0.5 else colors[0]
+        kind = "step" if variant in ("km-together", "close-plateaus") or (variant == "dotted" and rng.random() < 0.5) else "line"
+        other = "dotted" if variant == "dotted" else str(rng.choice(["dashed", "dashed", "dashdot"]))
+        specs.append((kind, "solid", None, color))
+        specs.append((kind, other, None, color))
     else:  # dense
         for k in range(4):
             specs.append(("line", "solid" if k < 3 else "dashed", None, colors[k]))
@@ -239,6 +252,24 @@ def build(i: int):
             ylo = float(rng.choice([0, -1, 20]))
             yhi = ylo + float(rng.choice([1, 10, 80, 500]))
         series = []
+        # Same-colour pairs: the second series' data are made from the first's (crossing, close).
+        pair = None
+        if scenario == "same-colour":
+            if specs[0][0] == "step":
+                xs1, ys1, _ = km_curve(rng, xhi)
+                if variant == "close-plateaus":
+                    xs2 = np.clip(xs1 * rng.uniform(1.03, 1.12), 0, xhi)
+                    ys2 = np.clip(ys1 - rng.uniform(0.03, 0.06), 0, 1)
+                    ys2[0] = 1.0
+                else:
+                    xs2, ys2, _ = km_curve(rng, xhi)
+            else:
+                xs1 = np.linspace(xlo, xhi, 300)
+                ys1 = smooth_curve(rng, xs1, ylo, yhi)
+                xs2 = xs1
+                tilt = rng.uniform(-0.2, 0.2) * (yhi - ylo) * (xs1 - xs1.mean()) / (xhi - xlo)
+                ys2 = 2 * ys1.mean() - ys1 + tilt
+            pair = [(xs1, ys1), (xs2, ys2)]
         for k, (kind, style, marker, color) in enumerate(specs):
             lw = float(rng.uniform(0.8, 2.5))
             ms = float(rng.uniform(4, 8))
@@ -261,8 +292,11 @@ def build(i: int):
                 verts = np.column_stack([xs, ys])
                 kind = "line"
             elif kind == "line" and marker is None:
-                xs = np.linspace(xlo, xhi, 300)
-                ys = smooth_curve(rng, xs, ylo, yhi)
+                if pair:
+                    xs, ys = pair[k]
+                else:
+                    xs = np.linspace(xlo, xhi, 300)
+                    ys = smooth_curve(rng, xs, ylo, yhi)
                 ax.plot(xs, ys, color=color, lw=lw, ls=ls, zorder=2 + k)
                 verts = np.column_stack([xs, ys])
             elif kind == "line":
@@ -273,8 +307,11 @@ def build(i: int):
                 ax.plot(xs, ys, color=color, lw=lw, ls=ls, marker=marker, ms=ms, zorder=2 + k)
                 verts = np.column_stack([xs, ys])
             elif kind == "step":
-                xs, ys, cens = km_curve(rng, xhi)
-                ax.plot(xs, ys, color=color, lw=lw, drawstyle="steps-post", zorder=2 + k)
+                if pair:
+                    xs, ys = pair[k]
+                else:
+                    xs, ys, cens = km_curve(rng, xhi)
+                ax.plot(xs, ys, color=color, lw=lw, ls=ls, drawstyle="steps-post", zorder=2 + k)
                 if marker and cens:
                     c = np.array(cens)
                     ax.plot(c[:, 0], c[:, 1], ls="none", marker="+", color=color, ms=ms, mew=max(0.8, lw * 0.7), zorder=2 + k)
@@ -327,7 +364,7 @@ def build(i: int):
     for k, s in enumerate(series):
         others = [o for j, o in enumerate(series) if j != k]
         s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
-        s["seed"] = pick_seed(s, others, rgb, bg, legend_box, W, H)
+        s["seed"] = pick_seed(s, others, rgb, bg, legend_box, W, H, strict=scenario == "same-colour")
 
     tags = [f"scenario:{scenario}", "grid" if grid else "no-grid", f"frame:{frame}", "jpeg" if jpeg_q else "png",
             "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
@@ -346,6 +383,8 @@ def build(i: int):
             stags.append("crossing")
         if s["kind"] == "step" and s["marker"]:
             stags.append("censor-marks")
+        if scenario == "same-colour":
+            stags.append("same-colour")
         if s["marker_color"] is not None:
             stags.append("kinks")
             stags.append("markers:same-colour" if s["marker_color"] == s["color"] else "markers:other-colour")
@@ -386,7 +425,7 @@ def build(i: int):
     return Image.fromarray(rgb), doc, jpeg_q
 
 
-def pick_seed(s, others, rgb, bg, legend_box, W, H):
+def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
     col = np.array(to_rgb(s["color"])) * 255
     if s["kind"] == "scatter":
         cands = s["points"]
@@ -418,6 +457,10 @@ def pick_seed(s, others, rgb, bg, legend_box, W, H):
         x0, y0, x1, y1 = legend_box
         inside = (cands[:, 0] >= x0 - 6) & (cands[:, 0] <= x1 + 6) & (cands[:, 1] >= y0 - 6) & (cands[:, 1] <= y1 + 6)
         clear[inside] = -1e9
+    if strict and np.any(clear >= 3):
+        # Another series of the same colour: its ink is not told apart by the render test below,
+        # so keep at least 3 px from it here (a click on the series itself, not on the other).
+        cands, clear = cands[clear >= 3], clear[clear >= 3]
     xr = (cands[:, 0] - cands[:, 0].min()) / max(1e-9, np.ptp(cands[:, 0]))
     score = np.minimum(clear, 12.0) - 4.0 * np.abs(xr - s["seed_at"])
     for idx in np.argsort(-score):

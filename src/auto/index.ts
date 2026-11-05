@@ -9,7 +9,7 @@
 
 export { detectAxes, detectAxesInMap } from './detect.ts';
 export { darknessMap, INK_THRESHOLD } from './darkness.ts';
-export { traceLine, type TraceMode, type TracedPoint, type TraceRequest, type TraceResult } from './trace/index.ts';
+export { traceLine, type LineStyle, type TraceMode, type TracedPoint, type TraceRequest, type TraceResult } from './trace/index.ts';
 export { autoCalibrate, type AutoOptions, type OcrCharset, type OcrEngine, type OcrRequest } from './auto.ts';
 export { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
 export { monthOf, parseDateToken, parseNumberLabel, resolveDateLabels, type LabelToken } from './parseLabel.ts';

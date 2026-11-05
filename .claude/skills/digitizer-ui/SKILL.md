@@ -112,7 +112,7 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,
   `auto-message-x`/`-y`, `auto-timing`, `trace-prompt`, `trace-panel`, `trace-running`,
-  `trace-error`, `trace-kind`, `trace-count`.
+  `trace-error`, `trace-kind`, `trace-style` (curves whose line style was read), `trace-count`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
   `Sort by X`, `Significant figures`, `Collapse all`, `Expand all`, line headers `Line 1 (n)`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
   `Suggested X1 value`…, `Accept suggestion`, `Discard`,
