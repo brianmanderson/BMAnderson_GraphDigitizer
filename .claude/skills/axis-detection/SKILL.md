@@ -42,7 +42,10 @@ description: >
 2. `skew.ts`: Hough restricted to ±5° (sum of squared bins), snapped to 0 unless clearly better;
    then `detect.ts` refines it once from the median tilt of the longest fitted lines.
 3. `lines.ts`: per row/column of the skew-corrected frame (`frame.ts`), the *longest* ink run
-   (gaps ≤ 2 px bridged) — text never makes a long run. Bands → candidates; sub-pixel offset =
+   (gaps ≤ 2 px bridged) — text never makes a long run. Bands → candidates; a band's run is then
+   continued across a hole where a white-faced marker hides the axis (`extendPastOcclusions`: hole
+   ≤ 4 % of the short side, long similar pieces on both sides; never per row, or rows through
+   side-by-side bars chain into one thick band and the axis under them is lost); sub-pixel offset =
    median of clean cross-profile centroids (ignores bars/ticks/labels touching the line).
 4. Pair choice: strong horizontal × vertical candidates that meet with the plot above/right
    (L corner or a cross for axes through zero), scored by strength, extent into the plot and

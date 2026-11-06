@@ -218,6 +218,32 @@ describe('detectAxes on drawn charts', () => {
     expect(Math.abs((det.yAxis?.line.offset ?? 0) - ORIGIN.x)).toBeLessThan(0.15);
   });
 
+  it('keeps the whole axis when markers drawn on top of it hide parts of the line', () => {
+    const img = chart();
+    // Open square markers (white face, grey edge) centred on the axes hide 15 px of each line;
+    // a long error bar with caps stands in the data area (bench/lines l84–l93).
+    const marker = (x: number, y: number) => {
+      rect(img, x - 8, y - 8, x + 8, y + 8, 255);
+      for (const [a, b] of [[[-8, -8], [8, -8]], [[8, -8], [8, 8]], [[8, 8], [-8, 8]], [[-8, 8], [-8, -8]]] as const) {
+        line(img, { x: x + a[0], y: y + a[1] }, { x: x + b[0], y: y + b[1] }, 1.5, 120);
+      }
+    };
+    marker(150, ORIGIN.y);
+    marker(400, ORIGIN.y);
+    marker(ORIGIN.x, 120);
+    line(img, { x: 480, y: 60 }, { x: 480, y: 300 }, 1.5, 0);
+    line(img, { x: 475, y: 60 }, { x: 485, y: 60 }, 1.5, 0);
+    line(img, { x: 475, y: 300 }, { x: 485, y: 300 }, 1.5, 0);
+    const det = detectAxes(img);
+    expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 1);
+    expect(det.yAxis?.line.offset).toBeCloseTo(ORIGIN.x, 1);
+    const box = det.plotBox;
+    expect(Math.abs((box?.bottomLeft.x ?? 0) - ORIGIN.x)).toBeLessThan(1.5);
+    expect(Math.abs((box?.topRight.x ?? 0) - RIGHT)).toBeLessThan(1.5);
+    expect(Math.abs((box?.topRight.y ?? 0) - TOP)).toBeLessThan(1.5);
+    expect(box?.framed).toEqual({ top: false, right: false });
+  });
+
   it('picks the bottom-left corner of a box frame and reports the frame', () => {
     const det = detectAxes(chart({ frame: true }));
     expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 1);

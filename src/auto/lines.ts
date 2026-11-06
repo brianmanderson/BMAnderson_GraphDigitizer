@@ -40,6 +40,29 @@ export interface LineOptions {
 
 export const DEFAULT_LINE_OPTIONS: LineOptions = { minFraction: 0.15, minLength: 30 };
 
+/**
+ * Continuing a line past an occlusion: a marker or error-bar cap drawn on top of an axis (a white
+ * face hides the line under it) leaves a hole far wider than the gap bridging allows, and the
+ * line would end there (the plot box with it). A found line's run is extended across a hole of
+ * at most `maxGap` px when the pieces on both sides are long (≥ `minPiece` and ≥ 3× the hole: a
+ * dashed line's dashes, a text row's glyphs are not) and about as dark as each other. Only a
+ * line already found is extended — joining every row would chain the rows through side-by-side
+ * bars into one thick band and lose the axis they stand on.
+ */
+export interface Occlusion {
+  maxGap: number;
+  minPiece: number;
+}
+
+/** Pieces joined across an occlusion must be within this ratio of each other's mean darkness. */
+const OCCLUSION_CONTRAST = 0.6;
+
+/** Limits scale with the image's short side, like a marker's size (it does not depend on the axis). */
+export function occlusionFor(width: number, height: number, gap: number): Occlusion {
+  const short = Math.min(width, height);
+  return { maxGap: Math.max(gap, Math.round(0.04 * short)), minPiece: Math.max(4 * gap, Math.round(0.04 * short)) };
+}
+
 /** Longest ink run along one line of a family (at a whole-pixel offset). */
 export function longestRun(
   map: DarknessMap,
@@ -51,14 +74,21 @@ export function longestRun(
   gap: number,
 ): Run | null {
   let best: Run | null = null;
+  for (const r of inkRuns(map, frame, family, offset, from, to, gap)) {
+    if (!best || r.end - r.start > best.end - best.start) best = r;
+  }
+  return best;
+}
+
+/** The gap-bridged ink runs along one line of a family, in order. */
+function inkRuns(map: DarknessMap, frame: Frame, family: Family, offset: number, from: number, to: number, gap: number): Run[] {
+  const runs: Run[] = [];
   let start = NaN;
   let last = NaN;
   let mass = 0;
   let ink = 0;
   const close = () => {
-    if (!Number.isNaN(start) && (!best || last - start > best.end - best.start)) {
-      best = { start, end: last, mass, ink };
-    }
+    if (!Number.isNaN(start)) runs.push({ start, end: last, mass, ink });
     start = NaN;
   };
   for (let t = Math.ceil(from); t <= to; t++) {
@@ -77,7 +107,47 @@ export function longestRun(
     }
   }
   close();
-  return best;
+  return runs;
+}
+
+/** `run` (one of the runs at `offset`) extended across occlusions on both sides (see `Occlusion`). */
+function extendPastOcclusions(
+  map: DarknessMap,
+  frame: Frame,
+  family: Family,
+  offset: number,
+  run: Run,
+  from: number,
+  to: number,
+  gap: number,
+  o: Occlusion,
+): Run {
+  const runs = inkRuns(map, frame, family, offset, from, to, gap);
+  const k = runs.findIndex((r) => r.start === run.start);
+  if (k < 0) return run;
+  let lo = k;
+  let hi = k;
+  while (lo > 0 && joins(runs[lo - 1] as Run, runs[lo] as Run, o)) lo--;
+  while (hi < runs.length - 1 && joins(runs[hi] as Run, runs[hi + 1] as Run, o)) hi++;
+  if (lo === hi) return run;
+  const parts = runs.slice(lo, hi + 1);
+  return {
+    start: parts[0]?.start ?? run.start,
+    end: parts[parts.length - 1]?.end ?? run.end,
+    mass: parts.reduce((s, r) => s + r.mass, 0),
+    ink: parts.reduce((s, r) => s + r.ink, 0),
+  };
+}
+
+/** Whether run `b` continues run `a` past an occluding mark (see `Occlusion`). */
+function joins(a: Run, b: Run, o: Occlusion): boolean {
+  const hole = b.start - a.end - 1;
+  if (hole > o.maxGap) return false;
+  const piece = Math.max(o.minPiece, 3 * hole);
+  if (a.end - a.start + 1 < piece || b.end - b.start + 1 < piece) return false;
+  const ca = a.mass / Math.max(1, a.ink);
+  const cb = b.mass / Math.max(1, b.ink);
+  return Math.min(ca, cb) >= OCCLUSION_CONTRAST * Math.max(ca, cb);
 }
 
 export interface LineFit {
@@ -189,6 +259,7 @@ export function findLines(
   const minLen = Math.max(options.minLength, options.minFraction * (aMax - aMin));
   const gap = gapTolerance(map.width, map.height);
   const maxThick = Math.max(6, Math.round(Math.min(map.width, map.height) * 0.012));
+  const occlusion = occlusionFor(map.width, map.height, gap);
 
   const first = Math.ceil(oMin);
   const runs: (Run | null)[] = [];
@@ -209,8 +280,8 @@ export function findLines(
     // Band [i, j]: pick the strongest offset; its run defines the extent.
     let peak = i;
     for (let k = i; k <= j; k++) if ((runs[k]?.mass ?? 0) > (runs[peak]?.mass ?? 0)) peak = k;
-    const run = runs[peak] as Run;
-    const peakLen = run.end - run.start + 1;
+    const core = runs[peak] as Run;
+    const peakLen = core.end - core.start + 1;
     let thick = 0;
     for (let k = i; k <= j; k++) {
       const r = runs[k];
@@ -219,6 +290,7 @@ export function findLines(
     if (thick <= maxThick) {
       // Sub-pixel centroid over contiguous offsets around the peak with real mass.
       const peakOffset = first + peak;
+      const run = extendPastOcclusions(map, frame, family, peakOffset, core, aMin, aMax, gap, occlusion);
       const peakMass = massAlong(map, frame, family, peakOffset, run.start, run.end);
       let sw = peakMass;
       let swo = peakMass * peakOffset;

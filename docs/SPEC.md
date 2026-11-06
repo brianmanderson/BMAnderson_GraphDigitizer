@@ -279,7 +279,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
   clearly better), refined once from the median tilt of the longest fitted lines → per row/column
   of the skew-corrected frame, the **longest gap-bridged ink run** (text never forms one) →
-  bands → sub-pixel offset = median of clean cross-profile centroids → axis pair = strong
+  bands → each band's run continued past **occlusions** (a white-faced marker drawn on an axis
+  hides a stretch of it: a hole ≤ 4 % of the image's short side is crossed when the pieces on
+  both sides are ≥ 4 % of the short side and ≥ 3× the hole, of similar darkness; only found
+  lines are extended, so rows through side-by-side bars are never chained) → sub-pixel offset = median of clean cross-profile centroids → axis pair = strong
   horizontal × vertical candidates that meet with the plot above/right (L corner or cross),
   ranked by strength, extent and tick evidence → plot box to the far axis ends or a frame line of
   similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
@@ -595,6 +598,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   diamonds); the Graph figure 19/19 markers, each in its own group (none with the blob matcher,
   which took both for lines); the synthetic Find-points charts 54.6 % recall / 55.4 % precision /
   18.2 % wrong group (7.0 / 19.4 / 15.5 % with the blob matcher). Curve metrics unchanged.
+- **After the occlusion fix in `detectAxes`** (markers drawn over an axis no longer cut it short;
+  `l84`, `l85`, `l88`, `l89`, `l92`, `l93` now get their true plot box): kind 96.8 %, markers
+  recall 81.7 % / precision 81.6 % / wrong group 6.8 %; Find-points charts kind 70.8 % (66.7),
+  recall 58.8 % / precision 57.2 % / wrong group 17.5 %. Trade-off: `l85/s0` 13 → 12 of 14 markers
+  — its seed used to lie outside the wrong box, so the whole image was searched; inside the true
+  box the black marker sitting on the black x axis is removed with the axis (`excludeEdgeLines`).
 - **Baseline before part B** (191 traces, after Phase 6 part A — line style): kind 100 %, coverage 93.4 %,
   centreline error median 0.03 px / p95 0.84 px, wrong series 1.7 %, corner recall 57.0 % (68.4 %
   before: the new dashed/dotted KM steps lose most corners, see below), markers recall 91.2 % /
@@ -624,10 +633,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   thicker than its error bars (≲ 10 px at low DPI) gives no template, so the trace falls back to
   the blob match or becomes a curve; filled circles and filled squares of ≲ 13 px in JPEG are
   told apart only partly (their corners are a pixel or two); clumps of 3+ overlapping markers of
-  one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre; on
-  half of the generated error-bar charts with an L frame `detectAxes` takes a long vertical error
-  bar for the right frame or finds no box (`l84`, `l85`, `l88`, `l89`, `l92`, `l93`), so only part
-  of the plot is searched (synthetic Find-points recall 59.5 % with the true box).
+  one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre; a
+  marker of the axes' colour sitting on an axis or frame line is removed with it (`l85/s0`).
 
 ## Auto-trace — UI
 
