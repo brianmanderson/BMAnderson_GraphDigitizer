@@ -7,7 +7,10 @@
  * top-left, y down (docs/SPEC.md → Pixel convention).
  */
 
-/** 'curve' follows a drawn line; 'markers' finds every marker of the clicked colour; 'auto' picks. */
+/**
+ * 'curve' follows a drawn line; 'markers' ("Find points") finds every marker that looks like the
+ * clicked one (colour, shape, filled or open, size); 'auto' picks.
+ */
 export type TraceMode = 'auto' | 'curve' | 'markers';
 
 export interface TraceRequest {

@@ -1,9 +1,10 @@
 {
-  "$comment": "Figures beyond the generated corpus for npm run bench:lines. Each entry points at a label JSON, relative to this file (format: bench/lines/truth.ts): knownValues plateaus become partial truth; a points list (polyline with a marker on every data point) becomes full truth for the line and its markers. Labels are shared with the e2e fixtures and bench:axes. `source` is the top category (default real); tags become categories.",
+  "$comment": "Figures beyond the generated corpus for npm run bench:lines. Each entry points at a label JSON, relative to this file (format: bench/lines/truth.ts): knownValues plateaus become partial truth; a points list (polyline with a marker on every data point) becomes full truth for the line and its markers; markerSeries (scatter groups) full marker truth. Labels are shared with the e2e fixtures and bench:axes. `source` is the top category (default real); tags become categories.",
   "figures": [
     { "truth": "../../../fixtures/real/km-pericardial-effusion.json", "tags": ["km", "jpeg", "curve-on-axis"] },
     { "truth": "../../../fixtures/real/km-cns-lymphoma.json", "tags": ["km", "png", "two-series"] },
     { "truth": "../../../fixtures/real/km-same-colour-styles.json", "tags": ["km", "jpeg", "same-colour"] },
+    { "truth": "../../../fixtures/real/scatter-filled-open-errorbars.json", "tags": ["png", "find-points", "errorbars"] },
     {
       "truth": "../../../fixtures/synthetic/synthetic-linear.json",
       "source": "fixture",

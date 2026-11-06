@@ -23,7 +23,10 @@ on dark gridlines. Gridlines, legends, box/L frames, line widths, DPI (72-200) a
 third chart, q35-90) vary on top. Appended later (earlier charts stay byte-identical): l60-l71
 zigzag polylines ("kinks"), l72-l83 pairs of series of one colour told apart only by line style
 ("same-colour": solid + dashed or dotted KM steps starting together, crossing smooth curves, close
-plateaus).
+plateaus), l84-l95 pairs of scatter series of one colour told apart only by marker fill or shape
+("find-points": filled vs open circles / squares / triangles, filled circles vs filled squares,
+with vertical and horizontal error bars and caps, overlapping pairs, markers against the x axis, a
+dashed reference line of the same colour, legends).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -48,7 +51,7 @@ from matplotlib.colors import to_rgb  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 84
+COUNT = 96
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -60,6 +63,9 @@ KINKS_FROM = 60
 # Charts from SAME_FROM on: two series of the same colour, one solid and one dashed or dotted.
 SAME_FROM = 72
 SAME_VARIANTS = ["km-together", "crossing", "close-plateaus", "dotted"]
+# Charts from POINTS_FROM on: two scatter series of the same colour, told apart by fill or shape.
+POINTS_FROM = 84
+POINTS_VARIANTS = ["circle", "square", "triangle", "shapes"]
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -178,7 +184,8 @@ def coverage_at(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
 
 def build(i: int):
     rng = np.random.default_rng(5000 + i)
-    scenario = "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM else SCENARIOS[i % len(SCENARIOS)]
+    scenario = ("find-points" if i >= POINTS_FROM else "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM
+                else SCENARIOS[i % len(SCENARIOS)])
     dpi = int(DPIS[i % len(DPIS)] if rng.random() < 0.7 else rng.choice(DPIS))
     w_in = float(rng.uniform(4.5, 7.5))
     h_in = float(w_in * rng.uniform(0.55, 0.8))
@@ -231,6 +238,17 @@ def build(i: int):
         other = "dotted" if variant == "dotted" else str(rng.choice(["dashed", "dashed", "dashdot"]))
         specs.append((kind, "solid", None, color))
         specs.append((kind, other, None, color))
+    elif scenario == "find-points":
+        variant = POINTS_VARIANTS[(i - POINTS_FROM) % len(POINTS_VARIANTS)]
+        color = "k" if rng.random() < 0.5 else colors[0]
+        if variant == "shapes":
+            specs.append(("scatter", "none", "o", color))
+            specs.append(("scatter", "none", "s", color))
+        else:
+            m = {"circle": "o", "square": "s", "triangle": "^"}[variant]
+            specs.append(("scatter", "none", m, color))
+            specs.append(("scatter", "none", m, color))
+        legend = legend or variant == "triangle"
     else:  # dense
         for k in range(4):
             specs.append(("line", "solid" if k < 3 else "dashed", None, colors[k]))
@@ -276,6 +294,7 @@ def build(i: int):
             ls = "-" if style == "solid" else STYLES.get(style, "-")
             cens = []
             marker_color = None
+            marker_fill = None
             if kind == "kink":
                 # Vertices alternate above and below a trend: every interior vertex reverses the
                 # slope. Markers of the line's colour, or of another colour drawn over the line.
@@ -306,6 +325,32 @@ def build(i: int):
                 ys = smooth_curve(rng, xs, ylo, yhi) + rng.normal(0, 0.05 * (yhi - ylo), n)
                 ax.plot(xs, ys, color=color, lw=lw, ls=ls, marker=marker, ms=ms, zorder=2 + k)
                 verts = np.column_stack([xs, ys])
+            elif scenario == "find-points":
+                # Filled, then open (white inside) or a second shape; error bars with caps drawn
+                # under the markers; a few points of the second series right next to the first's.
+                filled = variant == "shapes" or k == 0
+                ms = float(rng.uniform(5, 9))
+                n = int(rng.integers(8, 16))
+                xs = np.sort(rng.uniform(xlo + 0.06 * (xhi - xlo), xhi - 0.06 * (xhi - xlo), n))
+                trend = smooth_curve(rng, xs, ylo, yhi)
+                ys = np.clip(trend + rng.normal(0, 0.1 * (yhi - ylo), n), ylo + 0.03 * (yhi - ylo), yhi - 0.03 * (yhi - ylo))
+                if k == 1:
+                    first = series[0]
+                    for j in rng.choice(n, size=min(n, 2), replace=False):
+                        f = int(rng.integers(0, len(first["xs"])))
+                        xs[j] = first["xs"][f] + float(rng.uniform(0.25, 0.6)) * float(rng.choice([-1, 1])) * 0.012 * (xhi - xlo) * ms
+                        ys[j] = first["ys"][f] + float(rng.uniform(-0.3, 0.3)) * 0.012 * (yhi - ylo) * ms
+                if variant != "triangle":
+                    ys[int(np.argmin(ys))] = ylo  # one marker against the x axis
+                yerr = rng.uniform(0.03, 0.12, n) * (yhi - ylo) if variant != "triangle" else None
+                xerr = rng.uniform(0.01, 0.04, n) * (xhi - xlo) if variant in ("circle", "triangle", "shapes") else None
+                ax.errorbar(xs, ys, yerr=yerr, xerr=xerr, fmt=marker, color=color, ecolor=color, mec=color,
+                            mfc=color if filled else "white", ms=ms, mew=float(rng.uniform(1.2, 1.8)),
+                            elinewidth=float(rng.uniform(0.8, 1.6)), capsize=float(rng.uniform(2, 4)), zorder=2 + k)
+                if k == 1 and rng.random() < 0.6:
+                    ax.axhline(float(np.median(ys)), ls="--", color=color, lw=float(rng.uniform(0.8, 1.5)), zorder=1.5)
+                verts = np.column_stack([xs, ys])
+                marker_fill = filled
             elif kind == "step":
                 if pair:
                     xs, ys = pair[k]
@@ -326,11 +371,11 @@ def build(i: int):
                 verts = np.column_stack([xs, ys])
             series.append(dict(kind=kind, style=style, marker=marker, color=color, lw=lw, ms=ms, verts=verts,
                                xs=np.asarray(xs), ys=np.asarray(ys), cens=cens, seed_at=float(rng.uniform(0.25, 0.75)),
-                               marker_color=marker_color))
+                               marker_color=marker_color, fill=marker_fill))
         allv = np.vstack([s["verts"] for s in series])
         pad_y = 0.06 * (allv[:, 1].max() - allv[:, 1].min() + 1e-9)
         ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
-        ax.set_ylim(allv[:, 1].min() - pad_y, allv[:, 1].max() + pad_y)
+        ax.set_ylim(allv[:, 1].min() - (0 if scenario == "find-points" else pad_y), allv[:, 1].max() + pad_y)
         if grid:
             ax.grid(True, color=grid_color, ls=str(rng.choice(["-", "--", ":"])), lw=float(rng.uniform(0.5, 1.0)))
         if frame == "L":
@@ -385,6 +430,9 @@ def build(i: int):
             stags.append("censor-marks")
         if scenario == "same-colour":
             stags.append("same-colour")
+        if s["fill"] is not None:
+            stags.append("fill:filled" if s["fill"] else "fill:open")
+            stags.append(f"marker:{ {'o': 'circle', 's': 'square', '^': 'triangle'}[s['marker']] }")
         if s["marker_color"] is not None:
             stags.append("kinks")
             stags.append("markers:same-colour" if s["marker_color"] == s["color"] else "markers:other-colour")
@@ -427,7 +475,14 @@ def build(i: int):
 
 def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
     col = np.array(to_rgb(s["color"])) * 255
-    if s["kind"] == "scatter":
+    if s["kind"] == "scatter" and s.get("fill") is False:
+        # An open marker is clicked on its outline (its inside is white), away from its error bars:
+        # points around it, of which the coverage test below keeps those on ink.
+        ang = np.radians([a for a in range(0, 360, 10) if 20 <= a % 90 <= 70])
+        rad = np.arange(0.3, 0.76, 0.05) * s["ms_px"]
+        offs = np.array([[r * np.cos(t), r * np.sin(t)] for r in rad for t in ang])
+        cands = (s["points"][:, None, :] + offs[None, :, :]).reshape(-1, 2)
+    elif s["kind"] == "scatter":
         cands = s["points"]
     else:
         cands = resample_poly(s["path"], 1.0)
@@ -449,7 +504,12 @@ def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
         clear = np.minimum(clear, seg_dist(cands, geom) - reach)
         if o["marker"] is not None and o["kind"] != "scatter":
             clear = np.minimum(clear, seg_dist(cands, o["points"]) - o["ms_px"] / 2)
-    if s["kind"] == "scatter" and len(cands) > 1:  # isolated from its own markers too
+    if s["kind"] == "scatter" and s.get("fill") is False and len(cands) > 1:  # clear of its other markers
+        own = s["points"]
+        d_own = np.hypot(cands[:, None, 0] - own[None, :, 0], cands[:, None, 1] - own[None, :, 1])
+        d_own[d_own < s["ms_px"]] = 1e9  # the marker the candidate is on
+        clear = np.minimum(clear, d_own.min(1) - s["ms_px"])
+    elif s["kind"] == "scatter" and len(cands) > 1:  # isolated from its own markers too
         d_own = np.hypot(cands[:, None, 0] - cands[None, :, 0], cands[:, None, 1] - cands[None, :, 1])
         np.fill_diagonal(d_own, 1e9)
         clear = np.minimum(clear, d_own.min(1) - s["ms_px"])

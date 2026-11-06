@@ -509,21 +509,48 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   evenly gapped chain of small blobs (gaps ≥ 1.5 px within max(1.5 px, 35 %) of each other;
   smaller gaps join JPEG fragments of one stroke), the path follows the chain blob to blob (dot
   centroids, per-column centres along dashes).
-- **Markers** (`markers.ts`): 8-connected blobs of "on" pixels; the seed's blob is the template;
-  a blob matches when its area is 0.45–2× the template's, its size ≤ 1.6× + 2 px and its fill
-  ratio within 0.25 (lines, text and legend boxes differ in one of these); merged blobs of 2–8×
-  the area are split by k-means. Centroids are coverage-weighted over the blob and its touching
-  pixels (as snap, SPEC → Precision tools). `points` = every marker (`maxPoints` does not apply).
+- **Markers by shape — "Find points"** (`markers.ts`, Phase 6): one click on a marker finds every
+  marker of the same appearance (shape, filled or open, size) and only those, although error bars,
+  caps, reference lines and axes run into markers and make each one blob with them. *Template*
+  (`markerTemplate`): filled — the thickest point of the seed's blob whose inscribed circle holds
+  the seed (inscribed radius D ≥ 2.5 px), the blob opened by k = max(2, min(D − 1, 0.4 D)) px (the
+  attached thinner strokes vanish), the shape = the blob's ink within 1 px of the opened part (a
+  square keeps its corners); open — the hole the blob encloses next to the seed (4-connected
+  background not reaching the search window's edge) plus the ring around it (twice the blob's half
+  width there + 1 px). It must be compact (≤ max(30 px, 6 % of the plot's short side), aspect ≤
+  2.5). Ink to match: the shape's inside (its 1-px rim left out) or the whole ring; background
+  that defines the shape: an open marker's inside (≥ 2 px from the ring), a filled one's concave
+  corners within its box (≥ 1.5 px out); for a filled one also a margin 2–3.4 px around it, which
+  pins the size. *Matching* (`findMarkers`): at every anchor in the plot, filled shapes on the image
+  opened like the template (bars and lines gone), corners on the raw image (the opening would
+  round a square's corners; no bar runs through them); pixels outside the plot or under ink of
+  another colour are unknown, ≥ half of each set must be known. Accept when ≥ 80 % of the ink is
+  found (a filled shape: ≥ 65 % when the missing part lies to one side — half hidden under an open
+  marker's white inside — never for a missing ring, which pockets between error bars would fake),
+  ≥ 75 % of the defining background clear and ≥ 50 % of the margin (neighbours in a cluster reach
+  into it). Peaks closer than 0.6 × the size are one marker; the centre is the template's centre
+  plus a sub-pixel parabola through the agreement at the neighbouring anchors; ink around found
+  filled markers that is a whole multiple of a marker's area beyond their number is split
+  (k-means) into extra markers. *Legend samples are excluded* (decided in Phase 6, rather than
+  flagged): a found marker with a word beside it — ≥ 3 letter-sized pieces of ink of any colour
+  (≤ 1.5 sizes wide, ≥ max(3 px, a third of a size) high, ≤ 0.6 sizes apart) starting within 2
+  sizes of its edge, at its height — is dropped (an error bar is one long piece, a cap one, a
+  dashed line's dashes a line width high). When no template can be cut out (a marker as thin as
+  its bars, an open marker whose inside is < 3 px), a small seed blob falls back to the blob match
+  of Phase 5: 8-connected blobs whose area is 0.45–2× the seed blob's, size ≤ 1.6× + 2 px and fill
+  ratio within 0.25, merged blobs of 2–8× the area split by k-means, centroids coverage-weighted.
+  `points` = every marker (`maxPoints` does not apply).
 - **Auto mode**: markers when the seed's blob is at most max(30 px, 6 % of the plot's short
   side), roughly round (second-moment elongation < 2.5), not part of a regular chain and not read
-  as dashed, dotted or dash-dot; else curve.
+  as dashed, dotted or dash-dot; or when the seed's blob is larger (a marker joined to its error
+  bars) but a marker template is cut out of it and found at least three times; else curve.
 - **Suggested points** (`resample.ts`): always both ends, every step corner, every y extremum
   with prominence ≥ max(3 px, 2 line widths) and every sharp kink (Douglas–Peucker vertex at
   max(0.75 px, ½ line width) turning ≥ 30°, e.g. the data points of a polyline chart) — kept even
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 84 seeded charts, 184 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 96 seeded charts, 208 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -531,25 +558,44 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   another colour, 4–11 pt; (l72–l83, `scenario:same-colour`, series tag `same-colour`) pairs of
   one colour (black or a palette colour) told apart only by style — solid + dashed / dash-dot KM
   steps starting together, crossing smooth curves, close plateaus (the second staircase a few px
-  off the first), solid + dotted; their seeds keep ≥ 3 px from the other series. Gridlines,
+  off the first), solid + dotted; their seeds keep ≥ 3 px from the other series; (l84–l95,
+  `scenario:find-points`, series tags `fill:filled|open`, `marker:circle|square|triangle`) pairs of
+  scatter series of one colour told apart by fill (filled vs open circles, squares, triangles) or
+  shape (filled circles vs filled squares), 5–9 pt, with vertical and/or horizontal error bars and
+  caps drawn under the markers, two points of the second series beside the first's, a marker on
+  the x axis, a dashed reference line of the same colour (60 %), legends; an open marker's seed
+  is on its outline away from the bars. Gridlines,
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
   Real figures (`bench/lines/real/manifest.json`): the three KM fixtures' `knownValues` plateaus as
   partial truth (`km-same-colour-styles.jpg` = Takata fig. 1: black solid TFT and dashed FFT,
-  plateaus measured to ±1 px, line styles in the label's `styles`), and
+  plateaus measured to ±1 px, line styles in the label's `styles`), `scatter-filled-open-errorbars.png`
+  (`Graph.png`: black filled vs open circles with error bars, caps, a dashed reference line,
+  overlapping pairs, legend; full marker truth per group in the label's `markerSeries`, centres
+  from circle fits to the outer edge, ±0.5 px; category `find-points`), and
   `fixtures/synthetic/synthetic-linear.png` (Chromium-rendered polyline with
   pink markers on its five data points; full truth from its `points`, category `fixture`).
   Corner recall also counts the data points of kink polylines (every vertex is a marker). The plot box passed is `detectAxes`'s (once per image), mode `auto`, 25 points.
   **Metrics**: kind accuracy; coverage (% of the true x-range traced within 3 px); median / p95
   centreline error of traced points; wrong-series rate (> 20 % of a trace's points nearer another
   series); corner recall (true step corners within 2 px of a suggested point); marker recall /
-  precision (one-to-one within max(2 px, 0.4 × marker size)); style accuracy (a curve's reported
+  precision (one-to-one within max(2 px, 0.4 × marker size)); wrong-group rate (found markers that
+  match none of their own series but one of another series, as a share of all found); style
+  accuracy (a curve's reported
   `style` equals its true one, `unknown` counts as wrong); ms per trace (not gated). Gated
   against `bench/lines/baseline.json`, overall and per category (series kind, style, colour,
   crossing, line width, scenario, grid, JPEG, DPI, legend, frame…); `-- --update` only for an
   explained improvement or trade-off.
-- **Baseline** (191 traces, after Phase 6 part A — line style): kind 100 %, coverage 93.4 %,
+- **Baseline** (217 traces, after Phase 6 part B — Find points): kind 96.3 % (the misses are 8 of
+  the new scatter series: 7 yield no template and become curves, 1 seed lies on the x axis line),
+  markers recall 80.1 % / precision 81.3 % / wrong group 6.9 % over all 45 scatter series. The 19
+  scatter series from before: 95.7 % recall / 97.2 % precision (91.2 / 96.0 with the blob matcher;
+  every change an improvement except one marker fewer in `l30/s1`, a clump of three overlapping
+  diamonds); the Graph figure 19/19 markers, each in its own group (none with the blob matcher,
+  which took both for lines); the synthetic Find-points charts 54.6 % recall / 55.4 % precision /
+  18.2 % wrong group (7.0 / 19.4 / 15.5 % with the blob matcher). Curve metrics unchanged.
+- **Baseline before part B** (191 traces, after Phase 6 part A — line style): kind 100 %, coverage 93.4 %,
   centreline error median 0.03 px / p95 0.84 px, wrong series 1.7 %, corner recall 57.0 % (68.4 %
   before: the new dashed/dotted KM steps lose most corners, see below), markers recall 91.2 % /
   precision 96.0 %, style accuracy 97.6 %, ~60 ms per trace in Node. PNG coverage 96.5 %, JPEG
@@ -568,13 +614,20 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   (42 % of kink vertices missed); two series drawn over each other along a step (only the one on
   top is visible) end the trace; thin, faint lines in low-DPI JPEGs fragment (`lw:thin` coverage
   81 %); four-series charts on dark gridlines in JPEG still switch series sometimes (dense: 10.7 %
-  wrong); legend samples and same-colour legend text count as markers (precision 96 %); markers
-  hidden behind another series below 45 % of their area are missed. Same-colour series (Phase 6):
+  wrong); in the blob fallback (no marker template) legend samples and same-colour legend text
+  still count as markers; markers hidden behind another series below 45 % of their area are missed. Same-colour series (Phase 6):
   where a dashed series touches the solid one its dashes belong to the solid's stroke, so where the
   two run merged for a while (Takata FFT between ~0.25 and ~0.6, KM pairs with close plateaus) the
   dashed trace ends there (`l74/s1`: 29 %, style unread); dashed/dotted KM steps keep few corners
   (a step's vertical falls in a dash gap: corner recall 13 % dashed, 5 % dotted); dotted JPEG
-  steps on gridlines are still often cut short (`l79/s1` 44 %).
+  steps on gridlines are still often cut short (`l79/s1` 44 %). Find points (Phase 6): a marker no
+  thicker than its error bars (≲ 10 px at low DPI) gives no template, so the trace falls back to
+  the blob match or becomes a curve; filled circles and filled squares of ≲ 13 px in JPEG are
+  told apart only partly (their corners are a pixel or two); clumps of 3+ overlapping markers of
+  one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre; on
+  half of the generated error-bar charts with an L frame `detectAxes` takes a long vertical error
+  bar for the right frame or finds no box (`l84`, `l85`, `l88`, `l89`, `l92`, `l93`), so only part
+  of the plot is searched (synthetic Find-points recall 59.5 % with the true box).
 
 ## Auto-trace — UI
 
@@ -598,6 +651,13 @@ this is the UI half. The contract between them is `src/auto/trace/types.ts` (`Tr
   point count and the time. "Points"
   (slider + number, `maxPoints`, 2–200, default 25) and the mode (Auto / Curve / Markers) are
   session settings; changing either re-runs the trace from the same seed (debounced 120 ms).
+- **Find points** (decided in Phase 6): a "Find points" button beside "Auto-trace line" (and "Find
+  points into a new line" beside "Trace into a new line") starts the same pick-and-review flow in
+  markers mode for that trace only — the prompt reads "Click on one marker to find every marker
+  like it", the panel "Find points into …" — without changing the session's mode setting; the
+  panel's Mode select shows and changes the open trace's mode. One click on a marker proposes every
+  marker of its appearance (engine: Markers by shape above); legend samples are left out. Reading
+  error-bar values is not part of it (Non-goals).
 - **Never applied silently**: "Accept" adds the proposed points (finite, on the image) as one
   undo step — `add-points` to the active line, or `add-dataset` for a new line named like
   "+ Add line" and coloured with the traced series' colour when it is colourful (max − min channel
@@ -621,7 +681,9 @@ on any regression against `bench/axes/baseline.json`, `bench:lines` (Auto-trace)
 ## Non-goals (for now)
 
 PDF/vector import, polar/ternary/map axes, accounts or cloud storage. (Automatic curve tracing
-was listed here until the Auto-trace work above.)
+was listed here until the Auto-trace work above.) Reading error-bar values (the bar ends and caps
+around a found marker) is not done yet: "Find points" proposes only the marker centres — a
+possible later phase.
 
 ## Test fixtures
 

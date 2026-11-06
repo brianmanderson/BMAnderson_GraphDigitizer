@@ -35,7 +35,7 @@ description: >
    regenerate, rebaseline, explain in the commit), never to dodge a failure.
 6. **Gate**: `npm run bench:lines` is in `npm run verify` and exits 1 when kind accuracy,
    coverage, median/p95 centreline error, wrong-series rate, corner recall or marker recall /
-   precision or style accuracy gets worse than `bench/lines/baseline.json`, overall or in any category. It is
+   precision, wrong-group rate or style accuracy gets worse than `bench/lines/baseline.json`, overall or in any category. It is
    deterministic. Rebaseline (`npm run bench:lines -- --update`) only when every change is an
    improvement or an explained trade-off, and say why in the commit. The plot box comes from
    `detectAxes`, so **a detection change can move bench:lines** — run both benches.
@@ -51,7 +51,8 @@ description: >
 3. Style (`style.ts → classifyStyle`): the chain of blobs around the seed → solid / dashed /
    dotted / dash-dot / unknown (gaps that agree, piece lengths; occlusions end a chain, crossings
    of same-colour ink don't count). Mode: blobs of "on" pixels (`markers.ts → findBlobs`); seed
-   blob small + round and not patterned → markers; a dotted chain whose pattern wasn't read →
+   blob small + round and not patterned → markers (also a larger blob from which `markerTemplate`
+   cuts a marker found ≥ 3 times: a marker with error bars); a dotted chain whose pattern wasn't read →
    `chainPath`. Otherwise `applyStyle` (same-colour ink of another style becomes an occluder; a
    patterned seed's own gaps are filled, `unfill` after the walk) and the column walker.
 4. Column walker (`curve.ts → traceColumns`): runs per column; prediction = centre + median
@@ -67,6 +68,10 @@ description: >
 6. `kinks.ts`: vertices hidden under other-colour markers (occluder centroid, or the intersection
    of the stretches either side, both only over ink) and line ends under a marker.
 7. `resample.ts`: ends + corners + extrema + DP kinks always, rest evenly in x up to `maxPoints`.
+8. Markers ("Find points", `markers.ts`): `markerTemplate` cuts the clicked marker out of its blob
+   (filled: opening wider than the attached strokes; open: the enclosed hole + ring), `findMarkers`
+   matches its ink / defining background / margin everywhere (filled on the opened image, corners
+   raw), splits clumps by area, drops legend samples (`legendSample`). No template → blob match.
 
 ## Debugging a failing trace
 
@@ -82,9 +87,10 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (84 charts, 184 series; committed,
-  ~2.5 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
-  `same-colour` (solid + dashed/dotted pairs of one colour) — so earlier ones stay
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (96 charts, 208 series; committed,
+  ~2.8 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
+  `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
+  or circle vs square scatter of one colour with error bars) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -95,7 +101,8 @@ description: >
   (horizontal segments; x via the labelled x ticks), or a `points` list (`px`, `py`) becomes full
   truth for a polyline with a marker on every point (line + marker series; entry needs
   `markerSizePx`; `source` names its top category, e.g. `fixture`); an optional `styles` map
-  (series → line style) feeds the style metric. Add a figure: label plateaus from measured pixels (±1 px),
+  (series → line style) feeds the style metric; a `markerSeries` list (`series`, `markerSizePx`,
+  `seed`, `markers`) gives full marker truth for scatter groups (Graph.png). Add a figure: label plateaus from measured pixels (±1 px),
   add it to the manifest with tags, run `-- --verbose`, rebaseline (new categories) and commit
   image + label + manifest + baseline together.
 

@@ -16,6 +16,10 @@ export interface TraceSettings {
 
 /** Shown over the canvas and in the panel while the user picks the series to trace. */
 export const TRACE_PROMPT = 'Click on the curve or markers to trace';
+/** The same for "Find points" (markers mode): one marker stands for all that look like it. */
+export const FIND_PROMPT = 'Click on one marker to find every marker like it';
+
+export const promptFor = (mode: TraceMode): string => (mode === 'markers' ? FIND_PROMPT : TRACE_PROMPT);
 
 export const DEFAULT_TRACE_SETTINGS: TraceSettings = { mode: 'auto', maxPoints: 25 };
 export const MIN_TRACE_POINTS = 2;
@@ -29,12 +33,16 @@ export type TraceTarget = 'active' | 'new';
 
 type Seed = { px: number; py: number };
 
-/** Auto-trace state for the current image (App owns it; it is not part of the document). */
-export type TraceState =
-  | { status: 'picking'; target: TraceTarget }
-  | { status: 'running'; target: TraceTarget; seed: Seed }
-  | { status: 'done'; target: TraceTarget; seed: Seed; result: TraceResult }
-  | { status: 'error'; target: TraceTarget; seed: Seed; message: string };
+/**
+ * Auto-trace state for the current image (App owns it; it is not part of the document). `mode` is
+ * the trace's own: the session's mode for "Auto-trace line", 'markers' for "Find points".
+ */
+export type TraceState = { target: TraceTarget; mode: TraceMode } & (
+  | { status: 'picking' }
+  | { status: 'running'; seed: Seed }
+  | { status: 'done'; seed: Seed; result: TraceResult }
+  | { status: 'error'; seed: Seed; message: string }
+);
 
 export const rgbHex = ([r, g, b]: readonly [number, number, number]): string =>
   `#${[r, g, b].map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;

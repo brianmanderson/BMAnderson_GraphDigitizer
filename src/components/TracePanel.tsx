@@ -1,5 +1,5 @@
 import type { TraceMode } from '../auto/trace/types.ts';
-import { MAX_TRACE_POINTS, MIN_TRACE_POINTS, TRACE_PROMPT, type TraceSettings, type TraceState, type TraceTarget } from '../ui/trace.ts';
+import { MAX_TRACE_POINTS, MIN_TRACE_POINTS, promptFor, type TraceSettings, type TraceState, type TraceTarget } from '../ui/trace.ts';
 
 const MODES: { id: TraceMode; label: string }[] = [
   { id: 'auto', label: 'Auto' },
@@ -21,7 +21,8 @@ interface Props {
   color: string;
   /** The number of points Accept would add. */
   count: number;
-  onStart: (target: TraceTarget) => void;
+  /** Start picking; `mode` 'markers' is "Find points", else the session's mode. */
+  onStart: (target: TraceTarget, mode?: TraceMode) => void;
   onSettings: (patch: Partial<TraceSettings>) => void;
   onAccept: () => void;
   onDiscard: () => void;
@@ -30,20 +31,36 @@ interface Props {
 /**
  * "Auto-trace line" in the Data step: pick a series with one click, review the proposed points
  * (ghosts on the chart), tune the point count or mode (each change re-runs the trace), then
- * accept them into the active line (or a new one) or discard them.
+ * accept them into the active line (or a new one) or discard them. "Find points" is the same in
+ * markers mode: one click on a marker proposes every marker that looks like it (shape, fill, size).
  */
 export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoints, color, count, onStart, onSettings, onAccept, onDiscard }: Props) {
   if (!trace) {
     const title = canTrace ? `Click a plotted series to propose its points for ${activeName}` : 'Calibrate the axes first';
+    const findTitle = canTrace ? `Click one marker to propose every marker like it for ${activeName}` : 'Calibrate the axes first';
     return (
       <div className="row trace-start">
         <button type="button" className="small" onClick={() => onStart('active')} disabled={!canTrace} title={title}>
           Auto-trace line
         </button>
+        <button type="button" className="small" onClick={() => onStart('active', 'markers')} disabled={!canTrace} title={findTitle}>
+          Find points
+        </button>
         {activeHasPoints && (
-          <button type="button" className="small" onClick={() => onStart('new')} disabled={!canTrace} title="Trace a series into a new line">
-            Trace into a new line
-          </button>
+          <>
+            <button type="button" className="small" onClick={() => onStart('new')} disabled={!canTrace} title="Trace a series into a new line">
+              Trace into a new line
+            </button>
+            <button
+              type="button"
+              className="small"
+              onClick={() => onStart('new', 'markers')}
+              disabled={!canTrace}
+              title="Find every marker like the one clicked, into a new line"
+            >
+              Find points into a new line
+            </button>
+          </>
         )}
       </div>
     );
@@ -55,11 +72,12 @@ export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoi
   return (
     <section className="auto-result trace" aria-label="Auto-trace" data-testid="trace-panel">
       <p className="prompt">
-        <span className="swatch ghost" style={{ borderColor: color }} /> Auto-trace into <strong>{into}</strong>
+        <span className="swatch ghost" style={{ borderColor: color }} /> {trace.mode === 'markers' ? 'Find points' : 'Auto-trace'} into{' '}
+        <strong>{into}</strong>
       </p>
       {trace.status === 'picking' && (
         <p className="info" role="status">
-          {TRACE_PROMPT}.
+          {promptFor(trace.mode)}.
         </p>
       )}
       {trace.status === 'running' && (
@@ -112,7 +130,7 @@ export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoi
         </label>
         <label className="inline">
           Mode
-          <select value={settings.mode} onChange={(e) => onSettings({ mode: e.target.value as TraceMode })} aria-label="Trace mode">
+          <select value={trace.mode} onChange={(e) => onSettings({ mode: e.target.value as TraceMode })} aria-label="Trace mode">
             {MODES.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}

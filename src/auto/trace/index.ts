@@ -12,8 +12,10 @@
  *    series colour (region.ts).
  * 3. Mode: 'curve' follows the line through the seed (curve.ts) — or, when the seed's blob is one
  *    link of an evenly gapped chain of small blobs (a dotted or dash-dot line), the chain itself;
- *    'markers' collects every blob that matches the one under the seed (markers.ts). 'auto' takes
- *    markers when the seed's blob is small, roughly round and not part of such a chain.
+ *    'markers' ("Find points") cuts the clicked marker's shape out of its blob (error bars and
+ *    lines attached to it are thinner) and finds every marker that looks like it (markers.ts).
+ *    'auto' takes markers when the seed's blob is small, roughly round and not part of such a
+ *    chain or a dashed line, or when a marker shape cut out of it is found three times or more.
  *    Vertices hidden under markers are restored (kinks.ts): the intersection of the straight
  *    stretches either side of a bridged marker, and a line's end under a marker at its centre.
  * 4. Suggested points (resample.ts): corners and extrema always, then evenly spread to maxPoints;
@@ -24,7 +26,7 @@ import { detectAxes } from '../detect.ts';
 import { backgroundColor, colorModel, coverage, dist, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
 import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
-import { blobHeight, blobWidth, findBlobs, matchMarkers, type Blob, type Blobs } from './markers.ts';
+import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { applyStyle, classifyStyle, unfill } from './style.ts';
@@ -237,9 +239,22 @@ export function traceLine(req: TraceRequest): TraceResult {
   const patterned = sig.style === 'dashed' || sig.style === 'dotted' || sig.style === 'dash-dot';
   if (req.mode === 'auto' && small && template.elongation < 2.5 && !chained && !patterned) kind = 'markers';
 
+  // Markers by shape: the clicked marker cut out of its blob (error bars, caps, reference lines and
+  // axes attached to it are thinner) and every place that looks the same. In auto mode a large blob
+  // is markers too when a marker shape is cut out of it and found at least three times.
+  let shape: MarkerTemplate | null = null;
+  let found3: TracedPoint[] | null = null;
+  if (kind === 'markers') shape = markerTemplate(found, alpha, region, s, markerMax);
+  else if (req.mode === 'auto' && !small && !patterned) {
+    shape = markerTemplate(found, alpha, region, s, markerMax);
+    if (shape) {
+      found3 = findMarkers(found, alpha, other, region, shape);
+      if (found3.length >= 3) kind = 'markers';
+    }
+  }
   if (kind === 'markers') {
-    if (!small) return fail('The clicked series is a line, not markers: trace it as a curve.', color);
-    const path: TracedPoint[] = matchMarkers(found, template, w);
+    if (!shape && !small) return fail('The clicked series is a line, not markers: trace it as a curve.', color);
+    const path: TracedPoint[] = shape ? (found3 ?? findMarkers(found, alpha, other, region, shape)) : matchMarkers(found, template, w);
     return result({ ok: path.length > 0, kind: 'markers', style: 'unknown', color, path, points: path.map((p) => ({ ...p })) });
   }
 

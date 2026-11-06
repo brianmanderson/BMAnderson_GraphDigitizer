@@ -12,7 +12,9 @@
  *   their own series and nearer to another series.
  * - corner recall (steps): true step corners with a suggested point within CORNER_PX.
  * Markers (scatter series; 'markers' expected): true centres matched one-to-one (greedy, nearest
- * first) by traced centroids within max(2, 0.4 × marker size); recall and precision.
+ * first) by traced centroids within max(2, 0.4 × marker size); recall and precision; wrong group:
+ * found markers that match no marker of their own series but one of another series (filled taken
+ * for open, a square for a circle) within that distance, as a share of all found.
  * kind: whether 'auto' chose the expected kind.
  * style: whether a curve's reported line style (TraceResult.style) is its true style ('unknown'
  * counts as wrong); over curve series with a known style.
@@ -38,7 +40,7 @@ export interface TraceScore {
   wrong: boolean;
   corners: { truth: number; matched: number };
   /** Markers. */
-  markers: { truth: number; found: number; matched: number };
+  markers: { truth: number; found: number; matched: number; wrongGroup: number };
   points: number;
   /** Curves with a known style: the true style and the reported one. */
   style: { truth: string; got: string } | null;
@@ -77,7 +79,8 @@ function geometry(s: SeriesTruth): P[][] {
   return s.kind === 'scatter' ? s.markers.map((m) => [m]) : s.pieces;
 }
 
-function matchMarkers(truth: P[], found: P[], tol: number): number {
+/** One-to-one matches (greedy, nearest first): how many, and which found ones are used. */
+function matchMarkers(truth: P[], found: P[], tol: number): { matched: number; used: Set<number> } {
   const pairs: { d: number; i: number; j: number }[] = [];
   truth.forEach((t, i) =>
     found.forEach((f, j) => {
@@ -93,7 +96,7 @@ function matchMarkers(truth: P[], found: P[], tol: number): number {
     ti.add(p.i);
     fj.add(p.j);
   }
-  return ti.size;
+  return { matched: ti.size, used: fj };
 }
 
 export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, others: SeriesTruth[], r: TraceResult): TraceScore {
@@ -110,15 +113,19 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
     errors: [],
     wrong: false,
     corners: { truth: s.corners.length, matched: 0 },
-    markers: { truth: s.markers.length, found: 0, matched: 0 },
+    markers: { truth: s.markers.length, found: 0, matched: 0, wrongGroup: 0 },
     points: r.points.length,
     style: expected === 'curve' && s.style ? { truth: s.style, got: r.style } : null,
   };
   if (expected === 'markers') {
     score.markers.truth = s.markers.length;
     if (r.kind === 'markers') {
+      const tol = Math.max(2, 0.4 * s.markerSizePx);
+      const m = matchMarkers(s.markers, path, tol);
+      const theirs = others.flatMap((o) => o.markers);
       score.markers.found = path.length;
-      score.markers.matched = matchMarkers(s.markers, path, Math.max(2, 0.4 * s.markerSizePx));
+      score.markers.matched = m.matched;
+      score.markers.wrongGroup = path.filter((p, j) => !m.used.has(j) && theirs.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= tol)).length;
     }
     return score;
   }
@@ -166,6 +173,8 @@ export interface Metrics {
   cornerRecall: number | null;
   markerRecall: number | null;
   markerPrecision: number | null;
+  /** Found markers that belong to another series (see TraceScore). */
+  wrongGroupRate: number | null;
   /** Curves whose reported line style is right. */
   styleAccuracy: number | null;
   meanMs: number;
@@ -193,6 +202,7 @@ export function aggregate(scores: TraceScore[]): Metrics {
     cornerRecall: cornerTruth ? curves.reduce((n, s) => n + s.corners.matched, 0) / cornerTruth : null,
     markerRecall: mTruth ? mMatched / mTruth : null,
     markerPrecision: mTruth ? (mFound ? mMatched / mFound : 0) : null,
+    wrongGroupRate: mTruth ? (mFound ? marks.reduce((n, s) => n + s.markers.wrongGroup, 0) / mFound : 0) : null,
     styleAccuracy: styled.length ? styled.filter((s) => s.style!.got === s.style!.truth).length / styled.length : null,
     meanMs: scores.length ? scores.reduce((n, s) => n + s.ms, 0) / scores.length : 0,
   };
@@ -209,4 +219,5 @@ export const GATED: { key: keyof Metrics; higherIsBetter: boolean }[] = [
   { key: 'markerRecall', higherIsBetter: true },
   { key: 'markerPrecision', higherIsBetter: true },
   { key: 'styleAccuracy', higherIsBetter: true },
+  { key: 'wrongGroupRate', higherIsBetter: false },
 ];

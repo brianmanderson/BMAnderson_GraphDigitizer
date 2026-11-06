@@ -17,7 +17,10 @@
  * fixtures/synthetic/synthetic-linear.json) gives full truth instead: a line series through the
  * points (seeded in the middle of its first segment, a corner at every point) and the marker series
  * (seeded on its second marker, size from the manifest's `markerSizePx`). A manifest entry's
- * `source` names the figure's top category (default `real`).
+ * `source` names the figure's top category (default `real`). A label with `markerSeries: [{ series,
+ * markerSizePx, seed: [x, y], markers: [[x, y]…] }]` (scatter groups, e.g. filled vs open markers of
+ * one colour, centres measured to ±1 px) gives full marker truth for each group; its legend samples
+ * are not markers.
  *
  * Pixels follow the app's convention (integer = pixel centre).
  */
@@ -128,8 +131,34 @@ function polylineFigure(raw: Json, markerSizePx: number): SeriesTruth[] {
   ];
 }
 
+function markerFigure(raw: Json): SeriesTruth[] {
+  return (raw.markerSeries as Json[]).map((m, i): SeriesTruth => {
+    const seed = m.seed as [number, number];
+    return {
+      id: `${i}:${String(m.series)}`,
+      kind: 'scatter',
+      tags: ['series:scatter', 'color:black'],
+      seed: { x: seed[0], y: seed[1] },
+      pieces: [],
+      markers: pts(m.markers),
+      corners: [],
+      markerSizePx: Number(m.markerSizePx),
+      style: null,
+      partial: false,
+    };
+  });
+}
+
 function real(path: string, extraTags: string[], source: string, markerSizePx: number): ChartTruth {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
+  if (Array.isArray(raw.markerSeries)) {
+    return {
+      id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
+      imagePath: resolve(dirname(path), String(raw.image)),
+      tags: [source, ...extraTags],
+      series: markerFigure(raw),
+    };
+  }
   if (Array.isArray(raw.points)) {
     return {
       id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),

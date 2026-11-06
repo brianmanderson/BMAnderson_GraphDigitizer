@@ -1,0 +1,64 @@
+{
+  "image": "scatter-filled-open-errorbars.png",
+  "description": "Scatter of two groups of black circles told apart only by fill: filled (3 months) and open (12 months), with vertical and horizontal error bars and caps, a dashed reference line at y = 25, overlapping filled/open pairs near x = 52 and 61, markers against the x axis, legend samples in a box. Journal figure ('Graph.png'), 809x665 PNG. Marker centres measured by circle fits to the outer edge along rays clear of the error bars (radius 8.46 px; the overlapping pairs and the marker beside a cap at x = 32.8 fitted with that radius fixed), +/- ~0.5 px. Positions are image pixels, origin top-left.",
+  "plotFrame": { "left": 109.7, "right": 757.9, "top": 42.5, "bottom": 567.5 },
+  "plotBox": [[109.7, 42.5], [757.9, 42.5], [757.9, 567.5], [109.7, 567.5]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 567.5,
+    "tickMarks": true,
+    "notes": "Inward ticks on the bottom and top frame lines; major every 10 Gy (labelled 0-70), minor every 5.",
+    "ticks": [
+      { "value": 0, "px": 109.7 },
+      { "value": 10, "px": 202.4 },
+      { "value": 20, "px": 295.0 },
+      { "value": 30, "px": 387.3 },
+      { "value": 40, "px": 480.1 },
+      { "value": 50, "px": 572.3 },
+      { "value": 60, "px": 665.4 },
+      { "value": 70, "px": 757.9 }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 109.7,
+    "tickMarks": true,
+    "notes": "Inward ticks on the left and right frame lines every 10 (labelled 0-120); y = 0 is the x axis.",
+    "ticks": [
+      { "value": 0, "py": 567.5 },
+      { "value": 20, "py": 480 },
+      { "value": 40, "py": 392 },
+      { "value": 60, "py": 305 },
+      { "value": 80, "py": 217.5 },
+      { "value": 100, "py": 130 },
+      { "value": 120, "py": 42.5 }
+    ]
+  },
+  "markerSeries": [
+    {
+      "series": "3 months (filled)",
+      "markerSizePx": 17,
+      "seed": [181, 344],
+      "markers": [
+        [180.55, 344.77], [223.43, 351.37], [291.1, 451.02], [362.87, 498.16], [413.72, 510.71],
+        [456.04, 547.3], [537.79, 539.15], [592.02, 548.53], [676.05, 553.99]
+      ]
+    },
+    {
+      "series": "12 months (open)",
+      "markerSizePx": 17,
+      "seed": [188, 313],
+      "markers": [
+        [137.12, 270.38], [181.47, 308.26], [224.87, 251.65], [276.98, 401.98], [362.9, 353.46],
+        [407.24, 409.18], [456.05, 505.9], [535.66, 499.19], [599.27, 549.91], [683.99, 547.22]
+      ]
+    }
+  ],
+  "legendSamples": [[471.64, 124.57], [471.6, 156.08]],
+  "pitfalls": [
+    "Every marker is joined to its error bars, caps and (near x = 20) the dashed reference line: one blob per marker group.",
+    "Filled and open markers share colour and size; the open ones have white insides that hide the bars.",
+    "Near x = 52 and x = 61 a filled and an open marker overlap; the filled one at x = 52 is half hidden by the open one's white inside. The markers at x = 52-61 touch the x axis.",
+    "The legend box holds one sample of each marker beside its label: not data."
+  ]
+}

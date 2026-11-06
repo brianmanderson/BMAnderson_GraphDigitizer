@@ -432,6 +432,66 @@ describe('traceLine: markers', () => {
   });
 });
 
+describe('traceLine: find points (markers by shape)', () => {
+  const WHITE: RGB = [255, 255, 255];
+  /** A marker with vertical and horizontal error bars and caps, drawn under it. */
+  const withBars = (c: Canvas, p: P, rgb: RGB) => {
+    c.stroke([{ x: p.x, y: p.y - 22 }, { x: p.x, y: p.y + 18 }], 1.6, rgb);
+    c.stroke([{ x: p.x - 4, y: p.y - 22 }, { x: p.x + 4, y: p.y - 22 }], 1.6, rgb);
+    c.stroke([{ x: p.x - 4, y: p.y + 18 }, { x: p.x + 4, y: p.y + 18 }], 1.6, rgb);
+    c.stroke([{ x: p.x - 16, y: p.y }, { x: p.x + 14, y: p.y }], 1.6, rgb);
+  };
+  const filled = (c: Canvas, p: P) => {
+    withBars(c, p, BLACK);
+    c.disc(p, 12, BLACK);
+  };
+  const open = (c: Canvas, p: P) => {
+    withBars(c, p, BLACK);
+    c.disc(p, 12, BLACK);
+    c.disc(p, 8.4, WHITE);
+  };
+  const F = [
+    { x: 80, y: 70 },
+    { x: 150, y: 120 },
+    { x: 230, y: 90 },
+    { x: 300, y: 200 },
+  ];
+  const O = [
+    { x: 110, y: 190 },
+    { x: 190, y: 60 },
+    { x: 260, y: 160 },
+    { x: 330, y: 110 },
+  ];
+  const chart = () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    F.forEach((p) => filled(c, p));
+    O.forEach((p) => open(c, p));
+    for (let x = 45; x < 355; x += 12) c.stroke([{ x, y: 120 }, { x: x + 7, y: 120 }], 1.4, BLACK); // dashed reference line
+    // Legend: a sample of each marker with a word beside it.
+    c.disc({ x: 70, y: 240 }, 12, BLACK);
+    c.disc({ x: 70, y: 220 }, 12, BLACK);
+    c.disc({ x: 70, y: 220 }, 8.4, WHITE);
+    for (const y of [220, 240]) for (let k = 0; k < 5; k++) c.square({ x: 88 + 9 * k, y }, 6, BLACK);
+    return c;
+  };
+  const near = (r: TraceResult, set: P[]) => set.every((q) => r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < 1)) && r.path.length === set.length;
+
+  for (const mode of ['markers', 'auto'] as const) {
+    it(`finds every filled marker and only those, despite error bars and a line through one (${mode})`, () => {
+      const r = traceLine(chart().request({ x: F[2]!.x + 2, y: F[2]!.y + 2 }, { mode }));
+      expect(r.kind).toBe('markers');
+      expect(near(r, F)).toBe(true);
+    });
+
+    it(`finds every open marker and only those, from a click on its ring (${mode})`, () => {
+      const r = traceLine(chart().request({ x: O[0]!.x + 3, y: O[0]!.y - 3 }, { mode }));
+      expect(r.kind).toBe('markers');
+      expect(near(r, O)).toBe(true);
+    });
+  }
+});
+
 describe('traceLine: failures', () => {
   it('reports a click on the background or the frame without throwing', () => {
     const c = new Canvas(400, 280);
