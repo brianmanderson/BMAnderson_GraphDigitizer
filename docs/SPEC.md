@@ -18,7 +18,8 @@ implementation — do not copy their branding, layout, or assets.
    `date/time`.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
    (points with known y values), then type the value for each.
-4. **Digitize** — click to place data points; drag to move; select + delete; multiple named,
+4. **Digitize** — click to place data points (always, even beside another point); with the
+   "Move points" tool on, click to select and drag to move; select + delete; multiple named,
    colour-coded **lines** (the UI's word for a dataset: one curve or series).
 5. **Output** — live table of (x, y) per line; export CSV, copy as TSV (pastes into Excel),
    download JSON.
@@ -156,6 +157,22 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   the Data step, so a click in one step never moves the other's markers. In Axes, a *click* on an
   existing ref still places the pending one (X1 and Y1 usually share the origin); a *drag* moves
   it. Placement and drags are limited to the image area.
+- **Place and move modes in the Data step (decided after Phase 6)**: a "Move points" toggle (hand
+  icon, `aria-pressed`, shortcut `M`) sits in the toolbar beside Loupe and Snap; it is off by
+  default and disabled outside the Data step (Axes ref placement and dragging are unchanged).
+  *Off* ("place" mode): every click on the image adds a point to the active line — even on top of
+  an existing point of any line — and a pointer drag never moves a point; points are not
+  hit-tested or hover-highlighted at all, and the cursor is a crosshair. This replaced Phase 2's
+  rule that a press within 9 px of any line's point grabbed it, which made placing a point of one
+  line beside another line's point move that point instead. *On* ("move" mode): a click on a point
+  selects it, a drag moves it (one undo step), a click on empty canvas clears the selection, and
+  nothing is placed; the cursor is a grab hand over a point. **Decision — selection in place mode:**
+  a canvas click never selects an existing point (that would make the click near a point do
+  something other than place, which is the bug); in place mode the selection comes from the table
+  (clicking rows) and from the point just placed. The loupe, snap (new points only, so place mode
+  only), arrow-key nudging, undo and the status bar work in both modes; an open Auto-trace takes
+  clicks in either mode. The setting is a session preference like the loupe and snap (below), not
+  part of the Project.
 - **Calibration UX**: guided order X1 → X2 → Y1 → Y2; after a click the value input takes focus.
   "Move" re-places a ref; Delete on a selected ref clears it. Blank values prompt ("Type the
   known value…"); otherwise the engine's error message is shown verbatim. Date inputs show the
@@ -265,8 +282,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   "Download JSON". "Open project…" (Ctrl+O), or dropping/pasting a `.json`, reads it through
   `parseProject`, checks that the embedded image decodes to the stated size, and replaces the
   document as an undo step. Plain downloads, not the File System Access API (Chromium-only).
-- **Preferences** (loupe on/off and zoom, snap) are remembered per browser in `localStorage`;
-  they are not part of the project.
+- **Preferences** (loupe on/off and zoom, snap, and the "Move points" tool) are
+  remembered per browser in `localStorage` (`graph-digitizer:prefs`); they are not part of the
+  project.
 
 ## Axis detection and benchmark (decided in Phase 4)
 

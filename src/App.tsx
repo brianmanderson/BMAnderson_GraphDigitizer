@@ -64,14 +64,16 @@ function stepFor(doc: DocState): Step {
 
 const targetKey = (t: Target) => (t.kind === 'ref' ? t.ref : `${t.datasetId}/${t.pointId}`);
 
-/** Precision-tool preferences, remembered per browser (not part of the project). */
+/** Precision-tool and edit-mode preferences, remembered per browser (not part of the project). */
 interface Prefs {
   loupe: boolean;
   loupeZoom: number;
   snap: boolean;
+  /** "Move points" tool (Data step): on, clicks select and drags move; off, every click places a point. */
+  movePoints: boolean;
 }
 const PREFS_KEY = 'graph-digitizer:prefs';
-const DEFAULT_PREFS: Prefs = { loupe: true, loupeZoom: DEFAULT_LOUPE_ZOOM, snap: false };
+const DEFAULT_PREFS: Prefs = { loupe: true, loupeZoom: DEFAULT_LOUPE_ZOOM, snap: false, movePoints: false };
 
 function loadPrefs(): Prefs {
   try {
@@ -80,6 +82,7 @@ function loadPrefs(): Prefs {
       loupe: typeof raw.loupe === 'boolean' ? raw.loupe : DEFAULT_PREFS.loupe,
       loupeZoom: (LOUPE_ZOOMS as readonly number[]).includes(raw.loupeZoom ?? NaN) ? raw.loupeZoom! : DEFAULT_PREFS.loupeZoom,
       snap: typeof raw.snap === 'boolean' ? raw.snap : DEFAULT_PREFS.snap,
+      movePoints: typeof raw.movePoints === 'boolean' ? raw.movePoints : DEFAULT_PREFS.movePoints,
     };
   } catch {
     return DEFAULT_PREFS;
@@ -88,6 +91,18 @@ function loadPrefs(): Prefs {
 
 /** Settings changes (dragging the Points slider) settle this long before the trace re-runs. */
 const TRACE_DEBOUNCE_MS = 120;
+
+/** An open hand, the "Move points" tool's icon (stroke follows the button's text colour). */
+function HandIcon() {
+  return (
+    <svg className="tool-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 11V6a2 2 0 0 0-4 0v5" />
+      <path d="M14 10V4a2 2 0 0 0-4 0v6" />
+      <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+    </svg>
+  );
+}
 
 const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -440,11 +455,13 @@ export function App() {
         setPrefs((p) => ({ ...p, loupe: !p.loupe }));
       } else if (e.key === 's' || e.key === 'S') {
         setPrefs((p) => ({ ...p, snap: !p.snap }));
+      } else if ((e.key === 'm' || e.key === 'M') && step === 'data') {
+        setPrefs((p) => ({ ...p, movePoints: !p.movePoints }));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
+  }, [selected, step, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
 
   const onCursor = useCallback((pos: { px: number; py: number } | null) => {
     setCursor(pos);
@@ -748,6 +765,23 @@ export function App() {
             Snap
           </button>
         </div>
+        <div className="tool-group" role="group" aria-label="Edit">
+          <button
+            type="button"
+            className="toggle icon-label"
+            aria-pressed={prefs.movePoints}
+            disabled={step !== 'data'}
+            onClick={() => setPrefs((p) => ({ ...p, movePoints: !p.movePoints }))}
+            title={
+              step === 'data'
+                ? 'Move points (M): select, drag and box-select points. Off: every click places a new point.'
+                : 'Move points (M) — in the Data step'
+            }
+          >
+            <HandIcon />
+            Move points
+          </button>
+        </div>
         <div className="notice-slot">
           {notice && (
             <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice" title={notice.text}>
@@ -787,6 +821,7 @@ export function App() {
           loupe={loupe}
           loupeOnSelection={loupeOnSelection}
           snap={prefs.snap}
+          movePoints={prefs.movePoints}
           ghost={ghost}
           tracing={trace !== null}
           tracePrompt={trace?.status === 'picking' ? promptFor(trace.mode) : null}
@@ -871,6 +906,7 @@ export function App() {
                 onDelete={deleteDataset}
                 onAdd={addDataset}
                 onDeleteSelected={deleteSelected}
+                movePoints={prefs.movePoints}
                 trace={{
                   trace,
                   settings: traceSettings,
@@ -928,7 +964,7 @@ export function App() {
           </span>
         )}
         <span className="muted">
-          Wheel: zoom · Space/middle-drag: pan · Arrows: nudge (Shift ×10, Alt ×0.1) · Z: loupe · S: snap · F: fit
+          Wheel: zoom · Space/middle-drag: pan · Arrows: nudge (Shift ×10, Alt ×0.1) · M: move points · Z: loupe · S: snap · F: fit
         </span>
       </footer>
     </div>

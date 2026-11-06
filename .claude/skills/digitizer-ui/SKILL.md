@@ -33,6 +33,10 @@ description: >
 5. **Markers are step-scoped** (`hitTest(…, step)`): refs in Axes, points in Data. In Axes a
    click without movement on another ref places the pending ref (X1/Y1 share the origin); only
    a drag past `CLICK_SLOP` (3 px) moves a marker. `e2e/real-km.spec.ts` guards this.
+   In Data, points are live only with the **Move points** tool on (`prefs.movePoints`, `M`):
+   off ("place" mode, the default) Workspace never hit-tests or hovers points — every click
+   places on the active line, drags move nothing. Don't reintroduce a grab in place mode: placing
+   beside another line's point must stay safe (`e2e/edit-modes.spec.ts`).
 6. **Exports = the table view**: `exportCells` takes the same `TableOptions` the table renders
    with; `null` values export as blank cells. JSON export is `toProject(doc)`.
 
@@ -109,11 +113,13 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   target is shown; caption `loupe-pixel`. `e2e/helpers.ts` → `loupeState()`.
 - `project-input` (Open project), `autosave` (status bar); IndexedDB via `readAutosave()`.
 - Toolbar groups `History` (Undo/Redo; a notice may have its own "Undo" button, so scope to the
-  group) and `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select).
+  group), `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select) and
+  `Edit` (`Move points` toggle, `aria-pressed`, disabled outside Data). Shortcuts (`M`, `Z`, `S`)
+  are ignored while a form control has focus — specs click the button or blur first.
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,
-  `auto-message-x`/`-y`, `auto-timing`, `trace-prompt`, `trace-panel`, `trace-running`,
+  `auto-message-x`/`-y`, `auto-timing`, `data-prompt`, `trace-prompt`, `trace-panel`, `trace-running`,
   `trace-error`, `trace-kind`, `trace-style` (curves whose line style was read), `trace-count`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
   `Sort by X`, `Significant figures`, `Collapse all`, `Expand all`, line headers `Line 1 (n)`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,

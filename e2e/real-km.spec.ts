@@ -54,14 +54,16 @@ test('real Kaplan–Meier figure: plateau reads 16.2%, zoom and pan keep points 
   expect(afterPan.x - afterZoom.x).toBeCloseTo(-60, 0);
   expect(afterPan.y - afterZoom.y).toBeCloseTo(-40, 0);
 
-  // Stored pixels are untouched by the view, and the marker is still where it is drawn:
-  // clicking it selects it rather than adding a point.
+  // Stored pixels are untouched by the view, and the marker is still where it is drawn: with
+  // Move points on, clicking it selects it rather than adding a point.
   expect((await tableRows(page))[0]!.slice(3)).toEqual([px, py]);
+  await page.getByRole('button', { name: 'Move points' }).click();
   await page.mouse.click(afterPan.x, afterPan.y);
   await expect(page.locator('tbody tr').first()).toHaveAttribute('aria-selected', 'true');
   expect(await tableRows(page)).toHaveLength(1);
 
-  // A point placed in the zoomed view lands on the right image pixel; dragging moves it.
+  // A point placed in the zoomed view lands on the right image pixel; dragging (Move points) moves it.
+  await page.getByRole('button', { name: 'Move points' }).click();
   await clickImage(page, 450, plateau.py!);
   let second = (await tableRows(page))[1]!;
   expect(Math.abs(Number(second[3]) - 450)).toBeLessThanOrEqual(0.2);
@@ -69,6 +71,7 @@ test('real Kaplan–Meier figure: plateau reads 16.2%, zoom and pan keep points 
 
   const from = await imageToClient(page, 450, plateau.py!);
   const to = await imageToClient(page, 500, plateau.py!);
+  await page.getByRole('button', { name: 'Move points' }).click();
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 5 });

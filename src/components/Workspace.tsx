@@ -42,6 +42,12 @@ interface Props {
   /** Show the loupe on the selected marker (it was just nudged with the keyboard). */
   loupeOnSelection: boolean;
   snap: boolean;
+  /**
+   * The "Move points" tool (Data step only). Off ("place" mode): every click on the image adds a
+   * point to the active line and existing points are never grabbed, however close. On: clicks
+   * select and drags move points; nothing is placed.
+   */
+  movePoints: boolean;
   /** A pending auto-detect suggestion to draw (Axes step only). */
   ghost?: Ghost | null;
   /**
@@ -79,7 +85,7 @@ export function Workspace(props: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0, dpr: 1 });
-  const [hovered, setHovered] = useState<Target | null>(null);
+  const [hoveredRaw, setHovered] = useState<Target | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [dropping, setDropping] = useState(false);
   const gesture = useRef<Gesture | null>(null);
@@ -90,19 +96,25 @@ export function Workspace(props: Props) {
   const loupeRef = useRef<HTMLCanvasElement>(null);
 
   const tracing = step === 'data' && !!props.tracing;
+  /** Data-step placing: clicks add points and markers are not live (no hover, no grab). */
+  const placingPoints = step === 'data' && !tracing && !props.movePoints;
+  /** Markers that can be hovered and grabbed: refs in Axes, points with the Move tool on. */
+  const markersLive = step === 'axes' || (step === 'data' && !tracing && props.movePoints);
+  // A hover from before the mode changed (M pressed without moving the mouse) is no hover.
+  const hovered = markersLive ? hoveredRaw : null;
   const pixels = useMemo(() => (props.snap && image ? imagePixels(image) : null), [props.snap, image]);
   const pointerAt = pointer ? screenToImage(view, pointer.x, pointer.y) : null;
   const pointerOnImage = !!(doc && pointerAt && isOnImage(pointerAt.px, pointerAt.py, doc.image.width, doc.image.height));
   // Snapping applies to new points: preview it while hovering in the Data step.
   const snapTarget: SnapTarget | null =
-    pixels && step === 'data' && !tracing && pointerAt && pointerOnImage && gestureKind === null && !props.loupeOnSelection
+    pixels && placingPoints && pointerAt && pointerOnImage && gestureKind === null && !props.loupeOnSelection
       ? findSnapTarget(pixels, pointerAt.px, pointerAt.py, snapOptions(view.scale))
       : null;
   const activeColor = doc?.datasets.find((d) => d.id === doc.activeDatasetId)?.color ?? '#d6336c';
 
   // The loupe follows the marker being dragged, else a just-nudged selection, else the cursor
   // while a click would place something (or grab the marker under it).
-  const placing = (step === 'axes' && props.placingRef !== null) || step === 'data';
+  const placing = (step === 'axes' && props.placingRef !== null) || placingPoints || tracing;
   let loupeAt: { px: number; py: number } | null = null;
   if (doc && dragTarget) loupeAt = findTargetPos(doc, dragTarget);
   else if (doc && props.loupeOnSelection && props.selected) loupeAt = findTargetPos(doc, props.selected);
@@ -238,7 +250,7 @@ export function Workspace(props: Props) {
       e.preventDefault();
       gesture.current = { kind: 'pan', lastX: x, lastY: y };
     } else if (e.button === 0) {
-      const hit = tracing ? null : hitTest(doc, view, x, y, step);
+      const hit = markersLive ? hitTest(doc, view, x, y, step) : null;
       if (hit) {
         props.onSelect(hit);
         setDragTarget(hit);
@@ -277,7 +289,7 @@ export function Workspace(props: Props) {
     props.onCursor(isOnImage(at.px, at.py, doc.image.width, doc.image.height) ? at : null);
     const g = gesture.current;
     if (!g) {
-      setHovered(tracing ? null : hitTest(doc, view, x, y, step));
+      setHovered(markersLive ? hitTest(doc, view, x, y, step) : null);
       return;
     }
     if (g.kind === 'pan') {
@@ -320,7 +332,7 @@ export function Workspace(props: Props) {
       props.onPlaceRef(props.placingRef, at.px, at.py);
     } else if (tracing) {
       props.onTraceSeed?.(at.px, at.py);
-    } else if (step === 'data') {
+    } else if (placingPoints) {
       const snapped = pixels ? findSnapTarget(pixels, at.px, at.py, snapOptions(view.scale)) : null;
       props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py);
     } else {

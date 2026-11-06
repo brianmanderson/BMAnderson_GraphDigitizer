@@ -704,6 +704,14 @@ button.icon-text {
   padding-left: 6px;
   padding-right: 6px;
 }
+button.icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.tool-icon {
+  flex: none;
+}
 button.toggle[aria-pressed='true'] {
   background: var(--accent-soft);
   border-color: var(--accent);
