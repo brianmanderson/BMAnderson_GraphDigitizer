@@ -753,6 +753,20 @@ button.toggle[aria-pressed='true'] {
 .statusbar .bad {
   color: var(--error);
 }
+/* The shortcut hint gives way (ellipsis) before the credit does; the credit never wraps. */
+.statusbar .shortcuts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statusbar .credit {
+  flex: none;
+  white-space: nowrap;
+}
+.statusbar .credit a {
+  color: var(--accent);
+}
 
 .loupe {
   position: absolute;

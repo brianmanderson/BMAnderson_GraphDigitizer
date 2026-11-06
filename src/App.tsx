@@ -1015,8 +1015,14 @@ export function App() {
             {autosaved.ok ? `Autosaved ${timeOf(autosaved.at)}` : 'Autosave failed (storage full or blocked)'}
           </span>
         )}
-        <span className="muted">
+        <span className="muted shortcuts">
           Wheel: zoom · Space/middle-drag: pan · Arrows: nudge (Shift ×10, Alt ×0.1) · M: move points · Z: loupe · S: snap · F: fit
+        </span>
+        <span className="muted credit">
+          Brian Anderson, UC San Diego ·{' '}
+          <a href="https://github.com/brianmanderson/UCSD_GraphEvaluator" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
         </span>
       </footer>
     </div>
