@@ -44,7 +44,11 @@ description: >
 
 1. Region (`region.ts`): given box → else `detectAxes` box if it contains the seed → else image.
 2. Colour (`color.ts`): background median; seed = nearest ink within 4 px, hill-climbed to the
-   strongest shade; ink colour, then scaled to the line's typical peak (`typicalStrength`).
+   strongest shade — or, in markers/auto mode, a click on background enclosed by ink within
+   `markerMax` (`enclosedHole`: inside an open marker, whatever its size) seeds on the enclosing
+   ink and hands the hole to `markerTemplate`, which then cuts the open shape around it (never
+   the filled marker the ring may be merged with); ink colour, then scaled to the line's typical
+   peak (`typicalStrength`).
    Coverage α per pixel with a saturation-dependent residual tolerance (tight for black/grey/brown,
    loose for saturated colours JPEG washes out). `other` marks ink of another colour. A frame line
    along an edge is excluded only when it has the series colour (`excludeEdgeLines`).
