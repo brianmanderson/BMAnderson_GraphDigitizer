@@ -11,6 +11,7 @@ if a phase changes a decision, update SPEC.md in the same change.
 | 3     | Zoom loupe & precision tools, undo, save/load |
 | 4     | Axis-detection benchmark + axis/tick detection |
 | 5     | Tick-label OCR, scale inference, auto-calibration UX |
+| 6     | Same-colour series: line style (solid vs dashed) and "Find points" by marker shape |
 
 ---
 
@@ -163,6 +164,86 @@ benchmarked. Now turn them into a suggested calibration.
 
 Done when the verification gate and benchmark pass, and the PR description reports
 per-category accuracy, including where it fails.
+```
+
+---
+
+## Phase 6 — Same-colour series: line style and "Find points"
+
+```
+Read CLAUDE.md, docs/SPEC.md (Auto-trace and Auto-trace — UI) and load the skills
+line-tracing, digitizer-ui and verify before touching code. Work on a new branch; do not
+commit to main.
+
+Goal: extend Auto-trace so it tells apart series that share a colour, in two cases.
+Test images (journal figures, untrusted downloads; copy the ones you use into the repo,
+don't run anything from that folder): C:\Users\BRA008\Downloads\Vitali
+  - "Takata fig 1.jpg": two black KM-style step curves, solid (TFT, plateau ≈0.82) and
+    dashed (FFT, plateau ≈0.78), interleaving and overlapping from 0–12 months.
+  - "Graph.png": two groups of black circles, filled (3 months) and open (12 months),
+    with vertical and horizontal error bars and caps, a dashed reference line at y=25
+    crossing a filled marker near x≈20, filled/open pairs overlapping near x≈52 and x≈61,
+    markers touching the x axis near y≈3–5, and legend samples in a box.
+  - Pao fig 1/3 (black vs grey), Takeuchi fig 1/3 (censor ticks on steps; fig 1 is already
+    fixtures/real/km-pericardial-effusion.jpg) and Xue fig 1 are extra trial images: they
+    must not get worse.
+
+Before designing anything, measure the current behaviour: run traceLine on Takata
+(seed on each line, in the overlap and on the plateau) and on Graph.png (seed on a
+filled and an open marker, mode markers and auto), draw overlays as the line-tracing skill
+describes (scripts in the scratchpad), and write down the failure modes you actually
+see. Design from those, not from this prompt's guesses.
+
+Part A — line style (solid vs dashed/dotted)
+1. Classify the clicked series' style at the seed (solid / dashed / dotted / dash-dot)
+   from the on/off profile along the stroke (dash and gap length, period), robust to
+   JPEG and to the short vertical drops of a step curve.
+2. Use the style as a constraint while tracing: at overlaps, crossings and retry forks,
+   prefer the continuation whose ink matches the seed's style signature, so clicking the
+   solid Takata line returns only TFT and clicking the dashed one returns only FFT, with
+   their step corners.
+3. Report the style in TraceResult (e.g. `style: 'solid' | 'dashed' | 'dotted' |
+   'dash-dot' | 'unknown'`). This is a contract change: update types.ts and SPEC →
+   Auto-trace in the same change, and show it in the trace panel (digitizer-ui rules; no
+   hard-coded colours).
+4. Benchmark: append a generator scenario (new charts after the last existing one; earlier
+   charts must stay byte-identical) with same-colour solid+dashed (and solid+dotted) pairs:
+   KM steps that start together, crossing smooth curves, close plateaus, JPEG and low DPI.
+   Add Takata fig 1 to bench/lines/real with measured knownValues plateaus for both
+   series. Add a gated style-accuracy metric and make sure wrong-series rate is reported
+   for the new category.
+
+Part B — "Find points" (same-colour markers by shape)
+1. Clicking one marker finds every marker of the same appearance (shape, filled vs open,
+   size) and only those: in Graph.png one click on a filled circle gives every 3-month
+   point, one on an open circle every 12-month point. Output centroids = marker centres.
+2. Separate markers from thin strokes attached to them (error bars, caps, reference lines,
+   axes, gridlines) before matching, e.g. by stroke width, not by colour. Handle
+   overlapping filled/open pairs and markers clipped by the axis. Legend samples should be
+   excluded or flagged (pick one, document it in SPEC).
+3. Prefer extending the existing `markers` mode/markers.ts over a parallel engine. Make it
+   a clear, one-click option in the Data step (e.g. a "Find points" action or a renamed
+   mode); decide the UI with the digitizer-ui skill and record the decision in SPEC.
+   Suggestions are applied only on Accept, as now.
+4. Reading error-bar values is a non-goal for now; list it under SPEC → Non-goals or
+   Possible later phases.
+5. Benchmark: append scatter scenarios with same-colour filled vs open markers (circle,
+   square, triangle), vertical and horizontal error bars with caps, overlapping pairs, a
+   dashed reference line, legend. Add Graph.png to bench/lines/real with full marker truth
+   for both groups (centres measured to ±1 px). If the truth format can't express a
+   scatter-only series yet, extend truth.ts and document it. Gate marker recall/precision
+   and a wrong-group rate.
+
+Rules
+- Engine stays pure TS and worker-safe; pixel-centre convention everywhere.
+- Never tune the corpus, seeds, scoring or baseline to make a trace pass. Fix the engine or
+  document the failure under SPEC → Auto-trace → Known failures. Rebaseline only for
+  improvements or explained trade-offs, and say why in the commit.
+- Run both benches (a plot-box change moves bench:lines).
+- Each part is its own commit (or PR) and is done only when `npm run verify` passes.
+  Include an e2e test per part using the new fixtures.
+- At the end, report for each test image: before/after overlays, what's fixed, what still
+  fails and why.
 ```
 
 ---
