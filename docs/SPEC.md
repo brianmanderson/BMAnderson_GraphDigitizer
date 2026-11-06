@@ -385,9 +385,12 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   (`src/ocr/pool.ts`) in Node.
 - **Tesseract is vendored, not fetched**: `vite.config.ts` (plugin `tesseract-assets`) serves its
   worker script, the three LSTM-only WASM cores and the `@tesseract.js-data/eng` 4.0.0
-  `best_int` data (2.9 MB gzipped) under `/tesseract/` in dev and copies them to
-  `dist/tesseract/` (~15 MB); no CDN at runtime, works offline, no IndexedDB copy
-  (`cacheMethod: 'none'`). The e2e spec aborts every non-localhost request and asserts none.
+  `best_int` data (2.9 MB gzipped) under `tesseract/` relative to the app's base URL
+  (`/tesseract/` in dev; `src/ui/ocr.ts` builds the URLs from `import.meta.env.BASE_URL`) and
+  copies them to `dist/tesseract/` (~15 MB); no CDN at runtime, works offline, no IndexedDB
+  copy (`cacheMethod: 'none'`). The e2e spec aborts every non-localhost request and asserts
+  none. The base is `BASE_PATH` at build time (default `/`; `/UCSD_GraphEvaluator/` for the
+  GitHub Pages deployment in `.github/workflows/deploy.yml`).
 - **Finding labels**: the band outside each axis (below X, left of Y), sampled in the
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
   adaptive threshold (30 % of the band's 98th-percentile darkness, clamped to 24–80); dropped:

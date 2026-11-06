@@ -1,7 +1,8 @@
 /**
  * Tesseract.js in the browser (Phase 5). Imported lazily (dynamic import) by autoDetect.ts, so
  * neither this module nor Tesseract.js is part of the first-paint bundle. Every runtime file
- * comes from this app's own /tesseract/ path (vite.config.ts → tesseract-assets): no CDN.
+ * comes from this app's own tesseract/ path under its base URL (vite.config.ts →
+ * tesseract-assets): no CDN.
  */
 
 import { createWorker, OEM } from 'tesseract.js';
