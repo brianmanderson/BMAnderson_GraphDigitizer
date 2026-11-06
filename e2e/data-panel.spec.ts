@@ -75,7 +75,7 @@ for (const size of [
     await openProject(page, 6, 200);
     expect(await tableRows(page, 'Line 6')).toHaveLength(200);
 
-    for (const name of ['+ Add line', 'Delete selected point', 'Auto-trace line', 'Trace into a new line']) {
+    for (const name of ['+ Add line', 'Delete selected points', 'Auto-trace line', 'Trace into a new line']) {
       await expectFullyShown(page, page.getByRole('button', { name, exact: true }));
     }
     await expectFullyShown(page, page.getByRole('radio', { name: 'Make Line 6 active' }));
@@ -143,7 +143,9 @@ test('selecting a point on the canvas expands its line and scrolls its row into 
   await page.getByRole('button', { name: 'Collapse all' }).click();
   await expect(lineToggle(page, 'Line 4')).toHaveAttribute('aria-expanded', 'false');
 
-  // Point #151 of Line 4 (index 150): far down a 200-row list.
+  // Point #151 of Line 4 (index 150): far down a 200-row list. Selecting on the canvas takes
+  // the Move points tool (without it the click would place a point).
+  await page.getByRole('button', { name: 'Move points' }).click();
   await clickImage(page, 100 + 150 * 3.5, 90 + 3 * 40);
   await expect(lineToggle(page, 'Line 4')).toHaveAttribute('aria-expanded', 'true');
   await expect(lineToggle(page, 'Line 3')).toHaveAttribute('aria-expanded', 'false');

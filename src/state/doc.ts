@@ -68,6 +68,10 @@ export type DocAction =
   | { type: 'add-points'; datasetId: string; points: DataPoint[] }
   | { type: 'move-point'; datasetId: string; pointId: string; px: number; py: number }
   | { type: 'delete-point'; datasetId: string; pointId: string }
+  /** Several points of any lines at once, as one edit (dragging or nudging a multi-selection). */
+  | { type: 'move-points'; moves: { datasetId: string; pointId: string; px: number; py: number }[] }
+  /** Several points of any lines at once, as one edit (deleting a multi-selection). */
+  | { type: 'delete-points'; points: { datasetId: string; pointId: string }[] }
   | { type: 'add-dataset'; dataset: Dataset }
   | { type: 'rename-dataset'; datasetId: string; name: string }
   | { type: 'recolor-dataset'; datasetId: string; color: string }
@@ -96,6 +100,22 @@ function mapDataset(state: DocState, datasetId: string, f: (d: Dataset) => Datas
     if (d.id !== datasetId) return d;
     changed = true;
     return f(d);
+  });
+  return changed ? { ...state, datasets } : state;
+}
+
+/**
+ * Apply `f` to each dataset named in `byDataset`. The state is returned unchanged (same object)
+ * when no dataset changed, so an edit that touches nothing is not an undo step.
+ */
+function editPoints<T>(state: DocState, byDataset: ReadonlyMap<string, T>, f: (d: Dataset, arg: T) => Dataset): DocState {
+  let changed = false;
+  const datasets = state.datasets.map((d) => {
+    const arg = byDataset.get(d.id);
+    if (arg === undefined) return d;
+    const next = f(d, arg);
+    if (next !== d) changed = true;
+    return next;
   });
   return changed ? { ...state, datasets } : state;
 }
@@ -149,6 +169,35 @@ export function docReducer(state: DocState, action: DocAction): DocState {
         ...d,
         points: d.points.filter((p) => p.id !== action.pointId),
       }));
+    case 'move-points': {
+      const to = new Map<string, Map<string, { px: number; py: number }>>();
+      for (const m of action.moves) {
+        if (!Number.isFinite(m.px) || !Number.isFinite(m.py)) continue;
+        if (!to.has(m.datasetId)) to.set(m.datasetId, new Map());
+        to.get(m.datasetId)!.set(m.pointId, { px: m.px, py: m.py });
+      }
+      return editPoints(state, to, (d, moves) => {
+        let changed = false;
+        const points = d.points.map((p) => {
+          const m = moves.get(p.id);
+          if (!m || (m.px === p.px && m.py === p.py)) return p;
+          changed = true;
+          return { ...p, px: m.px, py: m.py };
+        });
+        return changed ? { ...d, points } : d;
+      });
+    }
+    case 'delete-points': {
+      const ids = new Map<string, Set<string>>();
+      for (const q of action.points) {
+        if (!ids.has(q.datasetId)) ids.set(q.datasetId, new Set());
+        ids.get(q.datasetId)!.add(q.pointId);
+      }
+      return editPoints(state, ids, (d, gone) => {
+        const points = d.points.filter((p) => !gone.has(p.id));
+        return points.length === d.points.length ? d : { ...d, points };
+      });
+    }
     case 'add-dataset':
       return {
         ...state,

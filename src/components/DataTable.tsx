@@ -1,19 +1,24 @@
-import { memo, useEffect, useId, useRef } from 'react';
+import { memo, useEffect, useId, useMemo, useRef } from 'react';
 import type { Calibration } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
 import type { Target } from '../ui/draw.ts';
+import { lastPoint, selectionKeys, type SelectHow, type Selection } from '../ui/selection.ts';
 import { datasetRows, formatPixel, formatValue, type TableOptions } from '../ui/table.ts';
 
 interface Props {
   doc: DocState;
   calibration: Calibration | null;
   options: TableOptions;
-  selected: Target | null;
+  /** Every selected row is highlighted; the last selected point's row is scrolled into view. */
+  selection: Selection;
   /** Ids of the lines whose rows are collapsed (UI state only; exports always hold every point). */
   collapsed: ReadonlySet<string>;
   onToggle: (datasetId: string) => void;
   onCollapseAll: (collapse: boolean) => void;
-  onSelect: (target: Target) => void;
+  /** A row click: replaces the selection, or toggles the row with Shift / Ctrl / Cmd. */
+  onSelect: (targets: readonly Target[], how: SelectHow) => void;
+  /** "Select all" in a line's header. */
+  onSelectLine: (datasetId: string) => void;
   onOptions: (patch: Partial<TableOptions>) => void;
   onExportCsv: () => void;
   onCopyTsv: () => void;
@@ -25,11 +30,12 @@ export const DataTable = memo(function DataTable({
   doc,
   calibration,
   options,
-  selected,
+  selection,
   collapsed,
   onToggle,
   onCollapseAll,
   onSelect,
+  onSelectLine,
   onOptions,
   onExportCsv,
   onCopyTsv,
@@ -41,8 +47,9 @@ export const DataTable = memo(function DataTable({
   const idPrefix = useId();
   const tables = useRef<HTMLDivElement>(null);
 
+  const selectedKeys = useMemo(() => selectionKeys(selection), [selection]);
   // Bring a newly selected point's row into view (a no-op when it is visible, e.g. a click on it).
-  const selectedPoint = selected?.kind === 'point' ? selected : null;
+  const selectedPoint = lastPoint(selection);
   const rowShown = selectedPoint !== null && !collapsed.has(selectedPoint.datasetId);
   useEffect(() => {
     if (!selectedPoint || !rowShown) return;
@@ -105,7 +112,7 @@ export const DataTable = memo(function DataTable({
           const rows = open ? datasetRows(d, calibration, options.sortByX) : [];
           return (
             <div key={d.id} className="dataset-table">
-              <h3>
+              <h3 className="line-header">
                 <button
                   type="button"
                   className="line-toggle"
@@ -119,6 +126,16 @@ export const DataTable = memo(function DataTable({
                   <span className="chevron" aria-hidden="true">
                     ▾
                   </span>
+                </button>
+                <button
+                  type="button"
+                  className="small select-line"
+                  onClick={() => onSelectLine(d.id)}
+                  disabled={d.points.length === 0}
+                  aria-label={`Select all points of ${d.name}`}
+                  title={`Select all of ${d.name}'s points (then Delete, or arrows to nudge)`}
+                >
+                  Select all
                 </button>
               </h3>
               <div id={bodyId} hidden={!open}>
@@ -141,14 +158,21 @@ export const DataTable = memo(function DataTable({
                     </thead>
                     <tbody>
                       {rows.map((r) => {
-                        const isSelected = selected?.kind === 'point' && selected.pointId === r.pointId;
+                        const isSelected = selectedKeys.has(`${d.id}/${r.pointId}`);
                         return (
                           <tr
                             key={r.pointId}
                             data-point-id={r.pointId}
                             className={isSelected ? 'selected' : undefined}
                             aria-selected={isSelected}
-                            onClick={() => onSelect({ kind: 'point', datasetId: d.id, pointId: r.pointId })}
+                            // Shift+click must not select the table's text.
+                            onMouseDown={(e) => e.shiftKey && e.preventDefault()}
+                            onClick={(e) =>
+                              onSelect(
+                                [{ kind: 'point', datasetId: d.id, pointId: r.pointId }],
+                                e.shiftKey || e.ctrlKey || e.metaKey ? 'toggle' : 'replace',
+                              )
+                            }
                           >
                             <td>{r.index}</td>
                             <td className="num">{formatValue(r.x, doc.xScale, options) || '—'}</td>

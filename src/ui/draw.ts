@@ -5,6 +5,7 @@
 
 import { REF_NAMES, forward, type Calibration, type RefName } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
+import { selectionKeys, targetKey, type Selection } from './selection.ts';
 import type { Ghost } from './suggestion.ts';
 import type { TraceGhost } from './trace.ts';
 import { formatValue } from './table.ts';
@@ -33,7 +34,8 @@ export interface DrawInput {
   image: HTMLImageElement | null;
   doc: DocState;
   calibration: Calibration | null;
-  selected: Target | null;
+  /** Selected markers: one ref, or any number of points (each drawn with a ring). */
+  selected: Selection;
   hovered: Target | null;
   /** Ref markers are emphasised while calibrating. */
   step: 'image' | 'axes' | 'data';
@@ -43,12 +45,9 @@ export interface DrawInput {
   ghost?: Ghost | null;
   /** An auto-trace under review, drawn as hollow dashed points in the Data step. */
   trace?: TraceGhost | null;
+  /** A rubber-band selection being dragged (screen CSS px corners). */
+  marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
 }
-
-const sameTarget = (a: Target | null, b: Target): boolean =>
-  a !== null &&
-  a.kind === b.kind &&
-  (a.kind === 'ref' ? a.ref === (b as { ref: RefName }).ref : a.pointId === (b as { pointId: string }).pointId);
 
 export function drawWorkspace(input: DrawInput): void {
   const { ctx, width, height, dpr, view, image, doc } = input;
@@ -79,23 +78,44 @@ export function drawWorkspace(input: DrawInput): void {
     ctx.restore();
   }
 
+  const selected = selectionKeys(input.selected);
+  const hovered = input.hovered ? targetKey(input.hovered) : null;
   for (const d of doc.datasets) {
     for (const p of d.points) {
-      const target: Target = { kind: 'point', datasetId: d.id, pointId: p.id };
-      drawPoint(ctx, imageToScreen(view, p.px, p.py), d.color, sameTarget(input.selected, target), sameTarget(input.hovered, target));
+      const key = `${d.id}/${p.id}`;
+      drawPoint(ctx, imageToScreen(view, p.px, p.py), d.color, selected.has(key), hovered === key);
     }
   }
 
   for (const name of REF_NAMES) {
     const r = doc.refs[name];
     if (!r) continue;
-    const target: Target = { kind: 'ref', ref: name };
-    drawRef(ctx, imageToScreen(view, r.px, r.py), name, input.step === 'axes', sameTarget(input.hovered, target) || sameTarget(input.selected, target));
+    drawRef(ctx, imageToScreen(view, r.px, r.py), name, input.step === 'axes', hovered === name || selected.has(name));
   }
 
   if (input.ghost && input.step === 'axes') drawGhost(ctx, view, input.ghost);
   if (input.trace && input.step === 'data') drawTraceGhost(ctx, view, input.trace);
   if (input.snap) drawSnap(ctx, view, input.snap);
+  if (input.marquee) drawMarquee(ctx, input.marquee);
+}
+
+/** The rubber band: a dashed dark outline over a white one, faintly filled, on any chart. */
+function drawMarquee(ctx: CanvasRenderingContext2D, m: NonNullable<DrawInput['marquee']>) {
+  const x = Math.min(m.x0, m.x1);
+  const y = Math.min(m.y0, m.y1);
+  const w = Math.abs(m.x1 - m.x0);
+  const h = Math.abs(m.y1 - m.y0);
+  ctx.save();
+  ctx.fillStyle = 'rgba(28, 126, 214, 0.08)';
+  ctx.fillRect(x, y, w, h);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([5, 3]);
+  ctx.lineWidth = 1.25;
+  ctx.strokeStyle = 'rgba(33, 37, 41, 0.9)';
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
 }
 
 const GHOST_LINE = 'rgba(12, 133, 153, 0.9)';
@@ -307,8 +327,12 @@ function drawPoint(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, c
   ctx.strokeStyle = '#fff';
   ctx.stroke();
   if (selected) {
+    // A ring in the line's colour on a white halo, so it reads on light and dark charts.
     ctx.beginPath();
     ctx.arc(p.x, p.y, POINT_RADIUS + 4.5, 0, Math.PI * 2);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.stroke();
     ctx.lineWidth = 2;
     ctx.strokeStyle = color;
     ctx.stroke();

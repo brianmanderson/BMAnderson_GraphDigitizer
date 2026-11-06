@@ -17,6 +17,31 @@ const points = (h: History) => h.present!.datasets.flatMap((d) => d.points.map((
 const addPoint = (id: string, px: number, py: number) => edit({ type: 'add-point', datasetId: 'd1', point: { id, px, py } });
 
 describe('historyReducer', () => {
+  it('deletes a multi-selection as one undo step, and a multi-point drag merges like a single one', () => {
+    const h = run(loaded(), addPoint('p1', 10, 20), addPoint('p2', 30, 40), addPoint('p3', 50, 60));
+    const deleted = run(
+      h,
+      edit({ type: 'delete-points', points: ['p1', 'p3'].map((pointId) => ({ datasetId: 'd1', pointId })) }),
+    );
+    expect(points(deleted)).toEqual([[30, 40]]);
+    expect(points(run(deleted, { type: 'undo' }))).toEqual([
+      [10, 20],
+      [30, 40],
+      [50, 60],
+    ]);
+    let dragged = h;
+    for (let i = 1; i <= 10; i++) {
+      const moves = ['p1', 'p2'].map((pointId, k) => ({ datasetId: 'd1', pointId, px: 10 + 20 * k + i, py: 20 + 20 * k }));
+      dragged = run(dragged, edit({ type: 'move-points', moves }, 'drag:7'));
+    }
+    expect(points(dragged)).toEqual([
+      [20, 20],
+      [40, 40],
+      [50, 60],
+    ]);
+    expect(run(dragged, { type: 'undo' }).present).toBe(h.present);
+  });
+
   it('has nothing to undo after the first image', () => {
     const h = loaded();
     expect(h.present?.image.name).toBe('chart.png');

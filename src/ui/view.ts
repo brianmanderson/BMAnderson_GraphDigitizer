@@ -60,6 +60,30 @@ export function isOnImage(px: number, py: number, width: number, height: number)
   return px >= -0.5 && py >= -0.5 && px <= width - 0.5 && py <= height - 0.5;
 }
 
+/**
+ * The move (dx, dy) shortened per axis so that every one of `positions` stays on the image, which
+ * moves a group rigidly (its shape is kept at the edges). Positions already off the image
+ * are not pulled back.
+ */
+export function clampDelta(
+  positions: readonly { px: number; py: number }[],
+  dx: number,
+  dy: number,
+  width: number,
+  height: number,
+): { dx: number; dy: number } {
+  const limit = (d: number, values: number[], max: number) => {
+    if (values.length === 0) return d;
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    return Math.max(Math.min(d, Math.max(0, max - hi)), Math.min(0, -0.5 - lo));
+  };
+  return {
+    dx: limit(dx, positions.map((p) => p.px), width - 0.5),
+    dy: limit(dy, positions.map((p) => p.py), height - 0.5),
+  };
+}
+
 export function clampToImage(px: number, py: number, width: number, height: number): { px: number; py: number } {
   return {
     px: Math.min(width - 0.5, Math.max(-0.5, px)),
