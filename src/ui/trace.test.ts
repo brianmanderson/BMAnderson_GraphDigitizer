@@ -9,6 +9,7 @@ const image = { dataUrl: 'data:image/png;base64,', width: 200, height: 100, name
 const result = (points: [number, number][], color: [number, number, number] = [28, 95, 168]): TraceResult => ({
   ok: true,
   kind: 'curve',
+  style: 'solid',
   color,
   path: points.map(([px, py]) => ({ px, py, confidence: 1 })),
   points: points.map(([px, py]) => ({ px, py, confidence: 1 })),
@@ -111,10 +112,10 @@ describe('auto-trace', () => {
   it('draws the ghost in the colour the points will get', () => {
     const doc = withPoint();
     expect(traceGhostOf(doc, null)).toBeNull();
-    expect(traceGhostOf(doc, { status: 'picking', target: 'active' })).toBeNull();
+    expect(traceGhostOf(doc, { status: 'picking', target: 'active', mode: 'auto' })).toBeNull();
     const seed = { px: 10, py: 20 };
-    expect(traceGhostOf(doc, { status: 'running', target: 'active', seed })).toEqual({ color: '#d6336c', seed, path: [], points: [] });
-    const done = traceGhostOf(doc, { status: 'done', target: 'new', seed, result: result([[10, 20]]) });
+    expect(traceGhostOf(doc, { status: 'running', target: 'active', mode: 'auto', seed })).toEqual({ color: '#d6336c', seed, path: [], points: [] });
+    const done = traceGhostOf(doc, { status: 'done', target: 'new', mode: 'auto', seed, result: result([[10, 20]]) });
     expect(done?.color).toBe('#1c5fa8');
     expect(done?.points).toEqual([{ px: 10, py: 20 }]);
     expect(traceColor(doc, 'new', null)).toBe('#1c7ed6');

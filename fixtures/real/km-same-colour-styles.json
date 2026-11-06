@@ -1,0 +1,45 @@
+{
+  "image": "km-same-colour-styles.jpg",
+  "description": "Cumulative incidence (KM-style step curves), two black series told apart only by line style: TFT solid, FFT dashed (dash ~9 px, gap ~8 px). Journal figure (Takata, Fig. 1), 763x624 JPEG. Hand-labelled by pixel analysis; positions are image pixels, origin top-left, +/- ~1 px.",
+  "plotFrame": { "left": 129, "right": 724, "top": 30, "bottom": 409 },
+  "plotBox": [[129, 30], [724, 30], [724, 409], [129, 409]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 409,
+    "tickMarks": true,
+    "notes": "Tick marks every 10 months below the axis (rows ~410-412); labels at 0, 20, 40, 60, 80. x = 0 is right of the left axis line.",
+    "ticks": [
+      { "value": 0, "px": 132.5 },
+      { "value": 20, "px": 251 },
+      { "value": 40, "px": 369.5 },
+      { "value": 60, "px": 489.5 },
+      { "value": 80, "px": 608 }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 129,
+    "tickMarks": true,
+    "notes": "Tick marks every 0.1 left of the axis (cols ~124-127); labels 0.2-1.0. y = 0 is at the x axis.",
+    "ticks": [
+      { "value": 0.2, "py": 334.5 },
+      { "value": 0.4, "py": 259 },
+      { "value": 0.6, "py": 184.5 },
+      { "value": 0.8, "py": 109.5 },
+      { "value": 1.0, "py": 33.5 }
+    ]
+  },
+  "styles": { "TFT": "solid", "FFT": "dashed" },
+  "knownValues": [
+    { "series": "TFT", "description": "Final plateau (x ~241-701 px)", "x": [19, 95], "y": 0.819, "py": 101.6 },
+    { "series": "TFT", "description": "Step 0.79 (x ~205-240 px)", "x": [13, 17.5], "y": 0.793, "py": 111.4 },
+    { "series": "TFT", "description": "Step 0.77 (x ~182-205 px)", "x": [8.8, 11.8], "y": 0.770, "py": 120.2 },
+    { "series": "FFT", "description": "Final plateau, dashed (dashes from x ~227 to ~705 px)", "x": [20, 95], "y": 0.778, "py": 117.2 },
+    { "series": "FFT", "description": "Step 0.755, dashed (dashes at x ~203-209 and ~217-226 px)", "x": [12, 15.5], "y": 0.755, "py": 125.7 }
+  ],
+  "pitfalls": [
+    "Both series are black; only the line style tells them apart. Between ~0 and ~12 months both are near-vertical staircases a few px apart that touch in places.",
+    "FFT is dashed along its verticals too; its plateau dashes have 8 px gaps, so a seed in a gap is not on the series.",
+    "The text labels TFT / FFT and 'P = 0.6395' sit inside the plot box."
+  ]
+}

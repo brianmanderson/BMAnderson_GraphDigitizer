@@ -22,13 +22,14 @@ import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
 import { runAutoDetect, type AutoRun } from './ui/autoDetect.ts';
 import { runTrace, type TraceRun } from './ui/autoTrace.ts';
+import type { TraceMode } from './auto/trace/types.ts';
 import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, imagePixels, isProjectFile, loadImageFile } from './ui/loadImage.ts';
 import { DEFAULT_LOUPE_ZOOM, LOUPE_ZOOMS } from './ui/loupe.ts';
 import { nudgeDirection, nudgeStep, nudged } from './ui/nudge.ts';
 import { acceptAction, ghostOf, initialValues, type AutoState } from './ui/suggestion.ts';
 import {
   DEFAULT_TRACE_SETTINGS,
-  TRACE_PROMPT,
+  promptFor,
   acceptTraceAction,
   clampMaxPoints,
   traceColor,
@@ -194,22 +195,23 @@ export function App() {
 
   // Run the trace in the worker whenever it is (re)started: a new seed, or new settings.
   const runningSeed = trace?.status === 'running' ? trace.seed : null;
+  const runningMode = trace?.status === 'running' ? trace.mode : null;
   useEffect(() => {
     const pixels = image && imagePixels(image);
-    if (!runningSeed || !pixels || !docImage) return;
+    if (!runningSeed || !runningMode || !pixels || !docImage) return;
     let live = true;
     let run: TraceRun | null = null;
-    const settle = (state: (target: TraceTarget) => TraceState) =>
+    const settle = (state: (target: TraceTarget, mode: TraceMode) => TraceState) =>
       live &&
       setTrace((t) =>
-        t?.of === docImage && t.state.status === 'running' && t.state.seed === runningSeed ? { of: docImage, state: state(t.state.target) } : t,
+        t?.of === docImage && t.state.status === 'running' && t.state.seed === runningSeed ? { of: docImage, state: state(t.state.target, t.state.mode) } : t,
       );
     const timer = setTimeout(() => {
-      run = runTrace(pixels, runningSeed, traceSettings.mode, traceSettings.maxPoints);
+      run = runTrace(pixels, runningSeed, runningMode, traceSettings.maxPoints);
       run.result.then(
-        (result) => settle((target) => ({ status: 'done', target, seed: runningSeed, result })),
+        (result) => settle((target, mode) => ({ status: 'done', target, mode, seed: runningSeed, result })),
         (err: unknown) =>
-          settle((target) => ({ status: 'error', target, seed: runningSeed, message: err instanceof Error ? err.message : String(err) })),
+          settle((target, mode) => ({ status: 'error', target, mode, seed: runningSeed, message: err instanceof Error ? err.message : String(err) })),
       );
     }, TRACE_DEBOUNCE_MS);
     return () => {
@@ -217,7 +219,7 @@ export function App() {
       clearTimeout(timer);
       run?.cancel();
     };
-  }, [runningSeed, traceSettings, image, docImage]);
+  }, [runningSeed, runningMode, traceSettings, image, docImage]);
 
   /** Replace the document with an undoable step, and say so with an Undo button when work was replaced. */
   const replaceDoc = useCallback(
@@ -603,22 +605,29 @@ export function App() {
     });
   };
 
-  const onTraceStart = (target: TraceTarget) => {
+  /** "Auto-trace line" runs in the session's mode, "Find points" in markers mode. */
+  const onTraceStart = (target: TraceTarget, mode: TraceMode = traceSettings.mode) => {
     if (!doc) return;
-    setTrace({ of: doc.image, state: { status: 'picking', target } });
+    setTrace({ of: doc.image, state: { status: 'picking', target, mode } });
     setSelected(null);
   };
 
   const onTraceSeed = useCallback(
     (px: number, py: number) =>
-      setTrace((t) => (t ? { of: t.of, state: { status: 'running', target: t.state.target, seed: { px, py } } } : t)),
+      setTrace((t) => (t ? { of: t.of, state: { status: 'running', target: t.state.target, mode: t.state.mode, seed: { px, py } } } : t)),
     [],
   );
 
   const onTraceSettings = (patch: Partial<TraceSettings>) => {
     setTraceSettings((s) => ({ ...s, ...patch, maxPoints: clampMaxPoints(patch.maxPoints ?? s.maxPoints) }));
-    // A trace under review re-runs from the same click with the new settings.
-    setTrace((t) => (t && t.state.status !== 'picking' ? { of: t.of, state: { status: 'running', target: t.state.target, seed: t.state.seed } } : t));
+    // A trace under review re-runs from the same click with the new settings (a new mode is its own).
+    setTrace((t) => {
+      if (!t) return t;
+      const mode = patch.mode ?? t.state.mode;
+      return t.state.status === 'picking'
+        ? { of: t.of, state: { ...t.state, mode } }
+        : { of: t.of, state: { status: 'running', target: t.state.target, mode, seed: t.state.seed } };
+    });
   };
 
   const traceCount = trace?.status === 'done' && trace.result.ok && doc ? tracedPoints(doc, trace.result).length : 0;
@@ -780,7 +789,7 @@ export function App() {
           snap={prefs.snap}
           ghost={ghost}
           tracing={trace !== null}
-          tracePrompt={trace?.status === 'picking' ? TRACE_PROMPT : null}
+          tracePrompt={trace?.status === 'picking' ? promptFor(trace.mode) : null}
           onTraceSeed={onTraceSeed}
           traceGhost={traceGhost}
         />

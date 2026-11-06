@@ -38,6 +38,8 @@ interface TraceReport {
   corners: string;
   markers: string;
   points: number;
+  /** Reported line style, '' when not a curve with a known style ('!' marks a wrong one). */
+  style: string;
 }
 
 interface Report {
@@ -50,7 +52,7 @@ const round = (v: number | null) => (v === null ? null : Math.round(v * 10000) /
 const pct = (v: number | null) => (v === null ? '   –  ' : `${(100 * v).toFixed(1).padStart(5)}%`);
 const px = (v: number | null) => (v === null ? '   – ' : v.toFixed(2).padStart(5));
 
-const HEADER = 'category                 n   kind   cover  med-px p95-px wrong  corner  mk-R   mk-P    ms';
+const HEADER = 'category                 n   kind   cover  med-px p95-px wrong  corner  mk-R   mk-P  mk-grp  style    ms';
 
 function row(name: string, m: Metrics): string {
   return [
@@ -64,6 +66,8 @@ function row(name: string, m: Metrics): string {
     pct(m.cornerRecall),
     pct(m.markerRecall),
     pct(m.markerPrecision),
+    pct(m.wrongGroupRate),
+    pct(m.styleAccuracy),
     m.meanMs.toFixed(0).padStart(5),
   ].join(' ');
 }
@@ -81,8 +85,9 @@ function report1(s: TraceScore): TraceReport {
     medianError: round(median(s.errors)),
     wrong: s.wrong,
     corners: s.corners.truth ? `${s.corners.matched}/${s.corners.truth}` : '',
-    markers: s.expected === 'markers' ? `${s.markers.matched}/${s.markers.truth} of ${s.markers.found}` : '',
+    markers: s.expected === 'markers' ? `${s.markers.matched}/${s.markers.truth} of ${s.markers.found}${s.markers.wrongGroup ? `, ${s.markers.wrongGroup} wrong group` : ''}` : '',
     points: s.points,
+    style: s.style ? `${s.style.got}${s.style.got === s.style.truth ? '' : '!'}` : '',
   };
 }
 
@@ -110,7 +115,7 @@ function main(): number {
       if (verbose) {
         const t = report1(score);
         console.log(
-          `${`${chart.id}/${s.id}`.padEnd(26)} ${s.kind.padEnd(7)} → ${r.kind.padEnd(7)} cover ${pct(t.coverage)} err ${px(t.medianError)}${t.wrong ? ' WRONG' : ''} ${t.corners ? `corners ${t.corners}` : ''}${t.markers ? `markers ${t.markers}` : ''} pts ${t.points} ${r.timings.totalMs.toFixed(0)}ms${r.message ? ` "${r.message}"` : ''}`,
+          `${`${chart.id}/${s.id}`.padEnd(26)} ${s.kind.padEnd(7)} → ${r.kind.padEnd(7)} cover ${pct(t.coverage)} err ${px(t.medianError)}${t.wrong ? ' WRONG' : ''} ${t.corners ? `corners ${t.corners}` : ''}${t.markers ? `markers ${t.markers}` : ''}${t.style ? ` style ${t.style}` : ''} pts ${t.points} ${r.timings.totalMs.toFixed(0)}ms${r.message ? ` "${r.message}"` : ''}`,
         );
       }
     }
@@ -127,7 +132,7 @@ function main(): number {
   for (const tag of tags) console.log(row(tag, report.categories[tag]!));
   console.log(`\n${scores.length} traces on ${charts.length} images in ${((performance.now() - started) / 1000).toFixed(1)} s (incl. decoding and detection)`);
   console.log(
-    `kind: auto chose curve/markers right; cover: % of the true x-range traced within ${COVER_PX} px; med/p95-px: centreline error of traced points; wrong: traces that follow another series; corner: step corners within ${CORNER_PX} px of a suggested point; mk-R/mk-P: marker recall/precision; ms: per trace (not gated)`,
+    `kind: auto chose curve/markers right; cover: % of the true x-range traced within ${COVER_PX} px; med/p95-px: centreline error of traced points; wrong: traces that follow another series; corner: step corners within ${CORNER_PX} px of a suggested point; mk-R/mk-P: marker recall/precision; mk-grp: found markers of another series (wrong group); style: curves whose line style is reported right; ms: per trace (not gated)`,
   );
 
   if (only) return 0;

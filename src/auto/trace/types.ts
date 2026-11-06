@@ -7,7 +7,10 @@
  * top-left, y down (docs/SPEC.md → Pixel convention).
  */
 
-/** 'curve' follows a drawn line; 'markers' finds every marker of the clicked colour; 'auto' picks. */
+/**
+ * 'curve' follows a drawn line; 'markers' ("Find points") finds every marker that looks like the
+ * clicked one (colour, shape, filled or open, size); 'auto' picks.
+ */
 export type TraceMode = 'auto' | 'curve' | 'markers';
 
 export interface TraceRequest {
@@ -31,9 +34,17 @@ export interface TracedPoint {
   confidence: number;
 }
 
+/** Line style of a traced curve, read from the stroke around the seed ('unknown' = can't tell). */
+export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'unknown';
+
 export interface TraceResult {
   ok: boolean;
   kind: 'curve' | 'markers' | 'none';
+  /**
+   * Line style of the clicked series (curves); 'unknown' for markers, failures, or when the
+   * stroke near the seed is too short or irregular to tell. The trace keeps to ink of this style.
+   */
+  style: LineStyle;
   /** Series colour sampled at the seed, sRGB 0–255. */
   color: [number, number, number];
   /** Dense centreline (curves) or every marker centroid (markers), ordered by px. */

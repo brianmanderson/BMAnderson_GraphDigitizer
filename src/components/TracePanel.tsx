@@ -1,5 +1,5 @@
 import type { TraceMode } from '../auto/trace/types.ts';
-import { MAX_TRACE_POINTS, MIN_TRACE_POINTS, TRACE_PROMPT, type TraceSettings, type TraceState, type TraceTarget } from '../ui/trace.ts';
+import { MAX_TRACE_POINTS, MIN_TRACE_POINTS, promptFor, type TraceSettings, type TraceState, type TraceTarget } from '../ui/trace.ts';
 
 const MODES: { id: TraceMode; label: string }[] = [
   { id: 'auto', label: 'Auto' },
@@ -7,6 +7,8 @@ const MODES: { id: TraceMode; label: string }[] = [
   { id: 'markers', label: 'Markers' },
 ];
 const KIND_LABEL = { curve: 'Curve', markers: 'Markers', none: 'Nothing found' } as const;
+/** The traced line's style, as shown after the kind (nothing when the tracer can't tell). */
+const STYLE_LABEL = { solid: 'solid', dashed: 'dashed', dotted: 'dotted', 'dash-dot': 'dash-dot', unknown: null } as const;
 
 interface Props {
   trace: TraceState | null;
@@ -19,7 +21,8 @@ interface Props {
   color: string;
   /** The number of points Accept would add. */
   count: number;
-  onStart: (target: TraceTarget) => void;
+  /** Start picking; `mode` 'markers' is "Find points", else the session's mode. */
+  onStart: (target: TraceTarget, mode?: TraceMode) => void;
   onSettings: (patch: Partial<TraceSettings>) => void;
   onAccept: () => void;
   onDiscard: () => void;
@@ -28,20 +31,36 @@ interface Props {
 /**
  * "Auto-trace line" in the Data step: pick a series with one click, review the proposed points
  * (ghosts on the chart), tune the point count or mode (each change re-runs the trace), then
- * accept them into the active line (or a new one) or discard them.
+ * accept them into the active line (or a new one) or discard them. "Find points" is the same in
+ * markers mode: one click on a marker proposes every marker that looks like it (shape, fill, size).
  */
 export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoints, color, count, onStart, onSettings, onAccept, onDiscard }: Props) {
   if (!trace) {
     const title = canTrace ? `Click a plotted series to propose its points for ${activeName}` : 'Calibrate the axes first';
+    const findTitle = canTrace ? `Click one marker to propose every marker like it for ${activeName}` : 'Calibrate the axes first';
     return (
       <div className="row trace-start">
         <button type="button" className="small" onClick={() => onStart('active')} disabled={!canTrace} title={title}>
           Auto-trace line
         </button>
+        <button type="button" className="small" onClick={() => onStart('active', 'markers')} disabled={!canTrace} title={findTitle}>
+          Find points
+        </button>
         {activeHasPoints && (
-          <button type="button" className="small" onClick={() => onStart('new')} disabled={!canTrace} title="Trace a series into a new line">
-            Trace into a new line
-          </button>
+          <>
+            <button type="button" className="small" onClick={() => onStart('new')} disabled={!canTrace} title="Trace a series into a new line">
+              Trace into a new line
+            </button>
+            <button
+              type="button"
+              className="small"
+              onClick={() => onStart('new', 'markers')}
+              disabled={!canTrace}
+              title="Find every marker like the one clicked, into a new line"
+            >
+              Find points into a new line
+            </button>
+          </>
         )}
       </div>
     );
@@ -49,14 +68,16 @@ export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoi
 
   const into = trace.target === 'new' ? 'a new line' : activeName;
   const result = trace.status === 'done' ? trace.result : null;
+  const style = result?.kind === 'curve' ? STYLE_LABEL[result.style] : null;
   return (
     <section className="auto-result trace" aria-label="Auto-trace" data-testid="trace-panel">
       <p className="prompt">
-        <span className="swatch ghost" style={{ borderColor: color }} /> Auto-trace into <strong>{into}</strong>
+        <span className="swatch ghost" style={{ borderColor: color }} /> {trace.mode === 'markers' ? 'Find points' : 'Auto-trace'} into{' '}
+        <strong>{into}</strong>
       </p>
       {trace.status === 'picking' && (
         <p className="info" role="status">
-          {TRACE_PROMPT}.
+          {promptFor(trace.mode)}.
         </p>
       )}
       {trace.status === 'running' && (
@@ -72,11 +93,18 @@ export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoi
       {result && (
         <>
           <p data-testid="trace-result">
-            Detected: <strong data-testid="trace-kind">{KIND_LABEL[result.kind]}</strong> ·{' '}
+            Detected: <strong data-testid="trace-kind">{KIND_LABEL[result.kind]}</strong>
+            {style && (
+              <>
+                , <strong data-testid="trace-style">{style}</strong> line
+              </>
+            )}{' '}
+            ·{' '}
             <strong data-testid="trace-count">{count}</strong> point{count === 1 ? '' : 's'}
             <span className="muted"> in {Math.round(result.timings.totalMs)} ms</span>
           </p>
           {result.message && <p className="hint muted">{result.message}</p>}
+          {style && <p className="hint muted">Keeps to the {style} line: lines of the same colour in another style are skipped.</p>}
           <p className="hint muted">Check the dashed points on the chart. Click elsewhere on the series to trace from there.</p>
         </>
       )}
@@ -102,7 +130,7 @@ export function TracePanel({ trace, settings, canTrace, activeName, activeHasPoi
         </label>
         <label className="inline">
           Mode
-          <select value={settings.mode} onChange={(e) => onSettings({ mode: e.target.value as TraceMode })} aria-label="Trace mode">
+          <select value={trace.mode} onChange={(e) => onSettings({ mode: e.target.value as TraceMode })} aria-label="Trace mode">
             {MODES.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}

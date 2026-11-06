@@ -77,7 +77,9 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 ## Auto-trace
 
 - `TraceState` (`src/ui/trace.ts`) lives in App, tagged with its image and shown in the Data step
-  only; `traceSettings` (mode, `maxPoints`) persist for the session. App's trace effect starts a
+  only; `traceSettings` (mode, `maxPoints`) persist for the session. Each trace carries its own
+  `mode`: "Auto-trace line" starts in the session mode, "Find points" in 'markers' without
+  changing the setting (prompt `promptFor(mode)`: `FIND_PROMPT` vs `TRACE_PROMPT`). App's trace effect starts a
   run (`runTrace`, `src/ui/autoTrace.ts`) whenever the state is `running` — a new seed object or
   new settings — and cancels it on cleanup; never trace on the main thread.
 - The worker reaches the tracer only through `src/workers/traceImpl.ts` (the single seam to
@@ -112,12 +114,12 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,
   `auto-message-x`/`-y`, `auto-timing`, `trace-prompt`, `trace-panel`, `trace-running`,
-  `trace-error`, `trace-kind`, `trace-count`.
+  `trace-error`, `trace-kind`, `trace-style` (curves whose line style was read), `trace-count`.
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
   `Sort by X`, `Significant figures`, `Collapse all`, `Expand all`, line headers `Line 1 (n)`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
   `Suggested X1 value`…, `Accept suggestion`, `Discard`,
   `Delete <name>`, `Auto-trace line`, `Trace into a new line`, `Points`, `Number of points`,
-  `Trace mode`, `Accept`, `Colour of <name>`, the `Steps` navigation and the export button labels.
+  `Trace mode`, `Find points`, `Find points into a new line`, `Accept`, `Colour of <name>`, the `Steps` navigation and the export button labels.
 
 ## Fixtures
 
