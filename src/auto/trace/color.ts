@@ -126,6 +126,12 @@ export function refineSeed(
     }
   }
   if (!seed) return null;
+  return climb(img, bg, seed, allowed);
+}
+
+/** Move a seed, a few 1-px steps at most, onto stronger shades of its own colour. */
+function climb(img: Img, bg: RGB, seed: { x: number; y: number }, allowed: (k: number) => boolean): { x: number; y: number } {
+  const { width: w, height: h } = img;
   for (let n = 0; n < 4; n++) {
     const m = colorModel(bg, rgbAt(img, seed.y * w + seed.x));
     let bestA = 1.05;
@@ -145,6 +151,63 @@ export function refineSeed(
     seed = next;
   }
   return seed;
+}
+
+/**
+ * A click inside an open marker: the background at (px, py) is enclosed by ink — its 4-connected
+ * background component stays within `reach` px of the click (a legend box or the space between
+ * error bars leaks out). The hole pixel and a seed on the enclosing ink nearest the click (moved
+ * onto its strongest shade, as `refineSeed`); null when the click is on ink, in open background,
+ * or the hole runs past the plot.
+ */
+export function enclosedHole(
+  img: Img,
+  bg: RGB,
+  px: number,
+  py: number,
+  reach: number,
+  allowed: (k: number) => boolean,
+): { hole: { x: number; y: number }; seed: { x: number; y: number } } | null {
+  const { width: w, height: h } = img;
+  const cx = Math.round(px);
+  const cy = Math.round(py);
+  if (cx < 0 || cy < 0 || cx >= w || cy >= h) return null;
+  const isInk = (k: number) => dist(rgbAt(img, k), bg) >= INK_MIN;
+  const k0 = cy * w + cx;
+  if (!allowed(k0) || isInk(k0)) return null;
+  const x0 = Math.max(0, cx - reach);
+  const y0 = Math.max(0, cy - reach);
+  const x1 = Math.min(w - 1, cx + reach);
+  const y1 = Math.min(h - 1, cy + reach);
+  const seen = new Set<number>([k0]);
+  const stack = [k0];
+  let seed: { x: number; y: number } | null = null;
+  let best = Infinity;
+  while (stack.length) {
+    const k = stack.pop()!;
+    const x = k % w;
+    const y = (k - x) / w;
+    // Reaching the window's edge: not a hole.
+    if (x === x0 || x === x1 || y === y0 || y === y1) return null;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const n = ny * w + nx;
+      if (seen.has(n)) continue;
+      if (!allowed(n)) return null;
+      if (isInk(n)) {
+        const d = Math.hypot(nx - px, ny - py);
+        if (d < best) {
+          best = d;
+          seed = { x: nx, y: ny };
+        }
+        continue;
+      }
+      seen.add(n);
+      stack.push(n);
+    }
+  }
+  return seed ? { hole: { x: cx, y: cy }, seed: climb(img, bg, seed, allowed) } : null;
 }
 
 /**

@@ -5,7 +5,9 @@
  * Pipeline (docs/SPEC.md → Auto-trace):
  * 1. Region: the plot box given, or the one `detectAxes` finds around the seed, or the image.
  * 2. Colour model (color.ts): background = median colour of the region; seed = nearest ink pixel
- *    within 4 px of the click, moved onto the strongest shade of its colour; series colour = mean
+ *    within 4 px of the click, moved onto the strongest shade of its colour — or, for a click on
+ *    background enclosed by ink (inside an open marker), the enclosing ink nearest the click, and
+ *    the marker is then cut out as the open shape around that hole; series colour = mean
  *    of the near-full-strength pixels around it, scaled to the typical peak of the line near the
  *    seed (thin lines never show their full colour). Coverage α per pixel; ink of another colour
  *    is marked (occlusion); a frame/axis line along a box edge is removed only when it has the
@@ -23,7 +25,7 @@
  */
 
 import { detectAxes } from '../detect.ts';
-import { backgroundColor, colorModel, coverage, dist, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
+import { backgroundColor, colorModel, coverage, dist, enclosedHole, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
 import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
@@ -198,7 +200,19 @@ export function traceLine(req: TraceRequest): TraceResult {
   const region = makeRegion(w, h, quad);
   const inRegion = (k: number) => region.mask[k] === 1;
   const bg = backgroundColor(img, region.x0, region.y0, region.x1, region.y1, inRegion);
-  const s = refineSeed(img, bg, seed.px, seed.py, SEED_RADIUS, inRegion);
+  const regionMin = Math.min(region.x1 - region.x0 + 1, region.y1 - region.y0 + 1);
+  const markerMax = Math.max(30, 0.06 * regionMin);
+  let s = refineSeed(img, bg, seed.px, seed.py, SEED_RADIUS, inRegion);
+  // A click inside an open marker (its hole is wider than SEED_RADIUS): the seed is its ring, and
+  // the marker is cut out as an open shape around that hole.
+  let hole: { x: number; y: number } | null = null;
+  if (req.mode !== 'curve') {
+    const h = enclosedHole(img, bg, seed.px, seed.py, Math.ceil(markerMax), inRegion);
+    if (h) {
+      s = h.seed;
+      hole = h.hole;
+    }
+  }
   if (!s) return fail('No line or marker at the clicked point: click on the series itself.');
   const ink = typicalStrength(img, bg, inkColor(img, bg, s, inRegion), s, inRegion);
   const color = ink.map(Math.round) as RGB;
@@ -226,8 +240,6 @@ export function traceLine(req: TraceRequest): TraceResult {
   const seedLabel = found.labels[s.y * w + s.x] ?? 0;
   const template = seedLabel ? found.blobs[seedLabel - 1] : undefined;
   if (!template) return fail('No line or marker at the clicked point: click on the series itself.', color);
-  const regionMin = Math.min(region.x1 - region.x0 + 1, region.y1 - region.y0 + 1);
-  const markerMax = Math.max(30, 0.06 * regionMin);
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
   const ctx = { found, alpha, other, region };
@@ -237,16 +249,16 @@ export function traceLine(req: TraceRequest): TraceResult {
   // A piece of a dashed or dotted line (an L-shaped dash at a step corner is compact too, and a
   // dotted step curve is no straight chain) is not a marker.
   const patterned = sig.style === 'dashed' || sig.style === 'dotted' || sig.style === 'dash-dot';
-  if (req.mode === 'auto' && small && template.elongation < 2.5 && !chained && !patterned) kind = 'markers';
+  if (req.mode === 'auto' && ((small && template.elongation < 2.5 && !chained && !patterned) || hole)) kind = 'markers';
 
   // Markers by shape: the clicked marker cut out of its blob (error bars, caps, reference lines and
   // axes attached to it are thinner) and every place that looks the same. In auto mode a large blob
   // is markers too when a marker shape is cut out of it and found at least three times.
   let shape: MarkerTemplate | null = null;
   let found3: TracedPoint[] | null = null;
-  if (kind === 'markers') shape = markerTemplate(found, alpha, region, s, markerMax);
+  if (kind === 'markers') shape = markerTemplate(found, alpha, region, s, markerMax, hole);
   else if (req.mode === 'auto' && !small && !patterned) {
-    shape = markerTemplate(found, alpha, region, s, markerMax);
+    shape = markerTemplate(found, alpha, region, s, markerMax, hole);
     if (shape) {
       found3 = findMarkers(found, alpha, other, region, shape);
       if (found3.length >= 3) kind = 'markers';

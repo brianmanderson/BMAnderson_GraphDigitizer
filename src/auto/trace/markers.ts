@@ -326,8 +326,17 @@ function component(mask: Uint8Array, w: number, h: number, start: number, eight:
  * (the seed inside its inscribed circle), opened by a radius between the attached strokes' half
  * width and the marker's (0.4 × its inscribed radius, ≥ 2 px). Open: a hole enclosed by the blob
  * right next to the seed, and the ring around it. Null when neither is a compact marker.
+ * `hole` (a background pixel the click landed on, enclosed by the blob) makes it the open marker
+ * around that hole, never the filled marker the ring may be merged with.
  */
-export function markerTemplate(found: Blobs, alpha: Float32Array, region: Region, seed: { x: number; y: number }, markerMax: number): MarkerTemplate | null {
+export function markerTemplate(
+  found: Blobs,
+  alpha: Float32Array,
+  region: Region,
+  seed: { x: number; y: number },
+  markerMax: number,
+  clicked: { x: number; y: number } | null = null,
+): MarkerTemplate | null {
   const W = region.width;
   const label = found.labels[seed.y * W + seed.x];
   if (!label) return null;
@@ -360,7 +369,7 @@ export function markerTemplate(found: Blobs, alpha: Float32Array, region: Region
   let hole: Uint8Array | null = null;
   let k = 0;
   const D = coreD / 3;
-  if (D >= 2.5) {
+  if (D >= 2.5 && !clicked) {
     k = Math.max(2, Math.min(D - 1, 0.4 * D));
     const notE = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) notE[i] = d[i]! >= 3 * k ? 0 : 1;
@@ -382,23 +391,32 @@ export function markerTemplate(found: Blobs, alpha: Float32Array, region: Region
   }
   if (!M) {
     // An open marker: the hole the blob encloses next to the seed (4-connected background, so a
-    // diagonal step in a thin ring does not leak).
+    // diagonal step in a thin ring does not leak) — or the hole the click landed in.
     const notB = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) notB[i] = B[i] ? 0 : 1;
-    const reach = Math.max(3, (2 * (d[sy * w + sx] ?? 3)) / 3 + 3);
     let best: number[] | null = null;
-    let bestDist = Infinity;
-    const tried = new Uint8Array(w * h);
-    for (let y = Math.max(0, Math.floor(sy - reach)); y <= Math.min(h - 1, Math.ceil(sy + reach)); y++) {
-      for (let x = Math.max(0, Math.floor(sx - reach)); x <= Math.min(w - 1, Math.ceil(sx + reach)); x++) {
-        const i = y * w + x;
-        if (!notB[i] || tried[i]) continue;
-        const c = component(notB, w, h, i, false);
-        for (const j of c.pixels) tried[j] = 1;
-        const dist = Math.hypot(x - sx, y - sy);
-        if (!c.border && c.pixels.length >= 3 && dist < bestDist) {
-          best = c.pixels;
-          bestDist = dist;
+    if (clicked) {
+      const hx = clicked.x - x0;
+      const hy = clicked.y - y0;
+      if (hx >= 0 && hy >= 0 && hx < w && hy < h && notB[hy * w + hx]) {
+        const c = component(notB, w, h, hy * w + hx, false);
+        if (!c.border && c.pixels.length >= 3) best = c.pixels;
+      }
+    } else {
+      const reach = Math.max(3, (2 * (d[sy * w + sx] ?? 3)) / 3 + 3);
+      let bestDist = Infinity;
+      const tried = new Uint8Array(w * h);
+      for (let y = Math.max(0, Math.floor(sy - reach)); y <= Math.min(h - 1, Math.ceil(sy + reach)); y++) {
+        for (let x = Math.max(0, Math.floor(sx - reach)); x <= Math.min(w - 1, Math.ceil(sx + reach)); x++) {
+          const i = y * w + x;
+          if (!notB[i] || tried[i]) continue;
+          const c = component(notB, w, h, i, false);
+          for (const j of c.pixels) tried[j] = 1;
+          const dist = Math.hypot(x - sx, y - sy);
+          if (!c.border && c.pixels.length >= 3 && dist < bestDist) {
+            best = c.pixels;
+            bestDist = dist;
+          }
         }
       }
     }
@@ -573,6 +591,19 @@ function clustered(ink: (x: number, y: number) => number, region: Region, t: Mar
     const inside = found.filter((q) => seen.has(q.y * W + q.x));
     const k = Math.round(pts.length / t.area);
     if (k <= inside.length || k > 8) continue;
+    // k markers drawn over each other span at most k sizes; a marker with a thick error bar that
+    // survived the opening spans far more, and is no cluster.
+    let bx0 = Infinity;
+    let by0 = Infinity;
+    let bx1 = -Infinity;
+    let by1 = -Infinity;
+    for (const p of pts) {
+      bx0 = Math.min(bx0, p.x);
+      bx1 = Math.max(bx1, p.x);
+      by0 = Math.min(by0, p.y);
+      by1 = Math.max(by1, p.y);
+    }
+    if (Math.max(bx1 - bx0, by1 - by0) + 1 > (k + 1) * t.size) continue;
     const centres = inside.map((q) => ({ x: q.x + t.ox, y: q.y + t.oy }));
     while (centres.length < k) {
       let best = pts[0]!;

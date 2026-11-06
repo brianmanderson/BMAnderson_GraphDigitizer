@@ -485,7 +485,11 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   the image, colour too close to the background, a line clicked in markers mode).
 - **Colour model** (`color.ts`): pixel = background + α·(ink − background) + residual.
   Background = median colour of the region; seed = nearest ink pixel within 4 px of the click,
-  moved onto the strongest shade of its own colour; ink = mean of the near-full-strength pixels
+  moved onto the strongest shade of its own colour. In markers and auto mode a click on background
+  that ink encloses (inside an open marker: its 4-connected background component stays within
+  max(30 px, 6 % of the plot's short side) of the click, so a legend box or the space between
+  error bars does not count) seeds on the enclosing ink nearest the click instead, however wide
+  the hole, and the template below is the open marker around that hole. Ink = mean of the near-full-strength pixels
   around it, scaled to the typical peak coverage of the line near the seed (a thin or faint line
   never shows its full colour). A pixel is "on" at α ≥ ½ with a residual ≤ max(20, f·|pixel −
   background|) where f = 0.12 + 0.3 × the series' saturation: tight for black, grey and dull
@@ -562,7 +566,9 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   the seed (inscribed radius D ≥ 2.5 px), the blob opened by k = max(2, min(D − 1, 0.4 D)) px (the
   attached thinner strokes vanish), the shape = the blob's ink within 1 px of the opened part (a
   square keeps its corners); open — the hole the blob encloses next to the seed (4-connected
-  background not reaching the search window's edge) plus the ring around it (twice the blob's half
+  background not reaching the search window's edge), or the hole the click landed in (then the
+  filled shape is never tried: an open marker merged with a filled one of its colour is still the
+  open one), plus the ring around it (twice the blob's half
   width there + 1 px). It must be compact (≤ max(30 px, 6 % of the plot's short side), aspect ≤
   2.5). Ink to match: the shape's inside (its 1-px rim left out) or the whole ring; background
   that defines the shape: an open marker's inside (≥ 2 px from the ring), a filled one's concave
@@ -577,7 +583,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   into it). Peaks closer than 0.6 × the size are one marker; the centre is the template's centre
   plus a sub-pixel parabola through the agreement at the neighbouring anchors; ink around found
   filled markers that is a whole multiple of a marker's area beyond their number is split
-  (k-means) into extra markers. *Legend samples are excluded* (decided in Phase 6, rather than
+  (k-means) into extra markers, provided it spans no more than (that multiple + 1) marker sizes
+  (an error bar thick enough to survive the opening is no cluster). *Legend samples are excluded* (decided in Phase 6, rather than
   flagged): a found marker with a word beside it — ≥ 3 letter-sized pieces of ink of any colour
   (≤ 1.5 sizes wide, ≥ max(3 px, a third of a size) high, ≤ 0.6 sizes apart) starting within 2
   sizes of its edge, at its height — is dropped (an error bar is one long piece, a cap one, a
@@ -676,7 +683,10 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   thicker than its error bars (≲ 10 px at low DPI) gives no template, so the trace falls back to
   the blob match or becomes a curve; filled circles and filled squares of ≲ 13 px in JPEG are
   told apart only partly (their corners are a pixel or two); clumps of 3+ overlapping markers of
-  one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre; a
+  one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre, or
+  only from some seeds when little more than a crescent of it shows (`Graph.png` x ≈ 52); an open
+  marker merged with a filled one is found ~2 px toward it, and a click on its ring where the two
+  merge (not inside it) may cut the filled shape and return that group; a
   marker of the axes' colour sitting on an axis or frame line is removed with it (`l85/s0`).
 
 ## Auto-trace — UI

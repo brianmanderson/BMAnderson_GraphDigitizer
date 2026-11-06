@@ -489,7 +489,42 @@ describe('traceLine: find points (markers by shape)', () => {
       expect(r.kind).toBe('markers');
       expect(near(r, O)).toBe(true);
     });
+
+    it(`finds every open marker from a click in its white inside, farther from the ring than the seed radius (${mode})`, () => {
+      const c = new Canvas(400, 280);
+      frame(c);
+      const big = (p: P) => {
+        withBars(c, p, BLACK);
+        c.disc(p, 20, BLACK);
+        c.disc(p, 16, WHITE); // a hole 8 px in radius: no ink within 4 px of its centre
+      };
+      O.forEach(big);
+      F.forEach((p) => filled(c, p));
+      const r = traceLine(c.request(O[1]!, { mode }));
+      expect(r.kind).toBe('markers');
+      expect(near(r, O)).toBe(true);
+    });
   }
+
+  it('takes a click inside an open marker for that marker, not the filled one it overlaps', () => {
+    const c = chart();
+    // A filled marker drawn first, an open one over its right half (the open's white inside bites into it).
+    const f = { x: 300, y: 200 };
+    const o = { x: 308, y: 204 };
+    open(c, o);
+    const r = traceLine(c.request(o, { mode: 'markers' }));
+    expect(r.kind).toBe('markers');
+    expect(r.path.some((p) => Math.hypot(p.px - o.x, p.py - o.y) < 2.5)).toBe(true); // pulled toward the merged disc
+    for (const q of O) expect(r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < 1)).toBe(true);
+    for (const q of F) if (q !== f) expect(r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < 1.5)).toBe(false);
+  });
+
+  it('does not take the space between error bars for a marker', () => {
+    const c = chart();
+    // Between a filled marker's vertical bar and its cap: background that is not enclosed.
+    const r = traceLine(c.request({ x: F[0]!.x + 2, y: F[0]!.y - 19 }, { mode: 'markers' }));
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe('traceLine: failures', () => {
