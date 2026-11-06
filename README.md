@@ -10,7 +10,7 @@ it, and export the table as CSV, TSV or a project file you can reopen later.
 Everything runs in your browser. Images never leave it: there is no upload, no server-side
 processing, and OCR runs offline from files bundled with the app.
 
-Built by Brian Anderson, UC San Diego.
+Built by Brian Anderson, UC San Diego. MIT licensed (see [LICENSE](LICENSE)).
 
 ## Development
 
