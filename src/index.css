@@ -681,11 +681,18 @@ tbody tr:hover {
 tbody tr.selected {
   background: var(--accent-soft);
 }
+/* Three buttons on one row at any font width (a label never breaks mid-word; the row wraps only
+   as a last resort), so the table above keeps its height. */
 .export-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 6px 8px;
   border-top: 1px solid var(--border);
+}
+.export-bar button {
+  white-space: nowrap;
+  padding: 2px 6px;
 }
 
 .statusbar {
@@ -698,6 +705,9 @@ tbody tr.selected {
   border-top: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   min-height: 24px;
+  /* A grid item: its one-line content must never widen the app (see the span rules below). */
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ---------- Phase 3: toolbar groups, notice, loupe ---------- */
@@ -730,9 +740,10 @@ button.toggle[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
 }
-/* Takes the rest of the toolbar row; a long notice shortens with an ellipsis rather than wrapping. */
+/* Takes the rest of the toolbar row (basis 0, so it never makes the row wrap); a long notice
+   shortens with an ellipsis rather than wrapping. */
 .notice-slot {
-  flex: 1 1 200px;
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   justify-content: flex-end;
@@ -753,16 +764,17 @@ button.toggle[aria-pressed='true'] {
 .statusbar .bad {
   color: var(--error);
 }
-/* The shortcut hint gives way (ellipsis) before the credit does; the credit never wraps. */
+/* One row whatever the font: no span wraps onto a second line (that would take height from the
+   panel beside it); only the shortcut hint shrinks (ellipsis) to make room for the rest. */
+.statusbar > span:not(.spacer) {
+  flex: none;
+  white-space: nowrap;
+}
 .statusbar .shortcuts {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.statusbar .credit {
-  flex: none;
-  white-space: nowrap;
 }
 .statusbar .credit a {
   color: var(--accent);

@@ -44,7 +44,8 @@ jobs:
   deploy:
     name: Build and deploy to GitHub Pages
     needs: verify
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # Only main is ever deployed, whether by a push or a manual run started on another branch.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # One deployment at a time; a queued one finishes rather than being cancelled mid-flight.
