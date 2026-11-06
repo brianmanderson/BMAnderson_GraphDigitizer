@@ -1,0 +1,100 @@
+# Verifies every push and pull request with the repo's own gate (npm run verify) and, on main
+# or a manual run, builds the app under /UCSD_GraphEvaluator/ and deploys dist/ to GitHub Pages
+# (https://brianmanderson.github.io/UCSD_GraphEvaluator/). Pages must be set to deploy from
+# "GitHub Actions" in the repository settings. BASE_PATH is read by vite.config.ts; see
+# CLAUDE.md → Commands.
+name: Verify and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  verify:
+    name: Verify (typecheck, lint, tests, benchmarks, e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The whole gate, exactly as the repo defines it. Never loosen a step here: a failure is a
+      # regression to fix, not a threshold to ease.
+      - run: npm run verify
+      - name: Keep Playwright traces of failed e2e tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy:
+    name: Build and deploy to GitHub Pages
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One deployment at a time; a queued one finishes rather than being cancelled mid-flight.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      # The project site lives under /<repo>/; vite.config.ts turns this into Vite's `base`.
+      BASE_PATH: /UCSD_GraphEvaluator/
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build under the Pages subpath
+        run: npm run build
+      - name: Smoke-check the subpath build
+        # The built page must reference its bundle under the prefix, and `vite preview` (which
+        # honours the same base) must serve the app and the vendored Tesseract worker there.
+        run: |
+          set -euo pipefail
+          grep -q 'src="/UCSD_GraphEvaluator/assets/' dist/index.html
+          if grep -Eq '(src|href)="/(src|assets)/' dist/index.html; then
+            echo 'dist/index.html still references root-relative assets' >&2
+            exit 1
+          fi
+          test -f dist/tesseract/worker.min.js
+          test -f dist/tesseract/eng.traineddata.gz
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          PREVIEW_PID=$!
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:4173/UCSD_GraphEvaluator/ && break
+            sleep 1
+          done
+          check() {
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$1")
+            echo "$code $1"
+            [ "$code" = "200" ]
+          }
+          check http://localhost:4173/UCSD_GraphEvaluator/
+          check http://localhost:4173/UCSD_GraphEvaluator/tesseract/worker.min.js
+          kill "$PREVIEW_PID"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
