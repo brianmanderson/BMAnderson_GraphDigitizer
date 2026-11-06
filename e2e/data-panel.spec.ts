@@ -75,7 +75,7 @@ for (const size of [
     await openProject(page, 6, 200);
     expect(await tableRows(page, 'Line 6')).toHaveLength(200);
 
-    for (const name of ['+ Add line', 'Delete selected point', 'Auto-trace line', 'Trace into a new line']) {
+    for (const name of ['+ Add line', 'Delete selected points', 'Auto-trace line', 'Trace into a new line']) {
       await expectFullyShown(page, page.getByRole('button', { name, exact: true }));
     }
     await expectFullyShown(page, page.getByRole('radio', { name: 'Make Line 6 active' }));

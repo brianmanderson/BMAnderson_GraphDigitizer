@@ -19,7 +19,8 @@ implementation — do not copy their branding, layout, or assets.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
    (points with known y values), then type the value for each.
 4. **Digitize** — click to place data points (always, even beside another point); with the
-   "Move points" tool on, click to select and drag to move; select + delete; multiple named,
+   "Move points" tool on, click to select and drag to move; select one or many points (Shift+click,
+   box, a whole line) + delete or nudge them together; multiple named,
    colour-coded **lines** (the UI's word for a dataset: one curve or series).
 5. **Output** — live table of (x, y) per line; export CSV, copy as TSV (pastes into Excel),
    download JSON.
@@ -165,14 +166,36 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   hit-tested or hover-highlighted at all, and the cursor is a crosshair. This replaced Phase 2's
   rule that a press within 9 px of any line's point grabbed it, which made placing a point of one
   line beside another line's point move that point instead. *On* ("move" mode): a click on a point
-  selects it, a drag moves it (one undo step), a click on empty canvas clears the selection, and
-  nothing is placed; the cursor is a grab hand over a point. **Decision — selection in place mode:**
-  a canvas click never selects an existing point (that would make the click near a point do
-  something other than place, which is the bug); in place mode the selection comes from the table
-  (clicking rows) and from the point just placed. The loupe, snap (new points only, so place mode
+  selects just it, Shift+click adds or removes it, a drag on a point moves it — or the whole
+  selection when it is selected (one undo step) — a drag that starts on empty canvas is a
+  rubber-band (marquee) selecting every point of any line inside it (Shift+marquee adds), a click
+  on empty canvas clears the selection, and nothing is placed; the cursor is a grab hand over a
+  point. **Decision — selection in place mode:** a canvas click never selects an existing point
+  (that would make the click near a point do something other than place, which is the bug); in
+  place mode the selection comes from the table (row click, Shift/Ctrl+click, "Select all") and
+  from the point just placed. The loupe, snap (new points only, so place mode
   only), arrow-key nudging, undo and the status bar work in both modes; an open Auto-trace takes
   clicks in either mode. The setting is a session preference like the loupe and snap (below), not
   part of the Project.
+- **Selection (decided after Phase 6)**: in the Data step the selection holds any number of
+  points from any lines, in the order they were selected (`src/ui/selection.ts`); in the Axes
+  step it is a single ref, as before. The last selected point is the *current* one: the table
+  expands its line and scrolls to its row, and the loupe shows it after a nudge; every selected
+  row is highlighted, and on the canvas every selected point gets a ring in its line's colour on a
+  white halo. A table row click selects just that row; Shift/Ctrl/Cmd+click toggles it. Each line's
+  table header has "Select all" (all of that line's points, and the line becomes active).
+  Delete/Backspace or the panel button ("Delete 3 points"; "Delete selected points" and disabled
+  when nothing is selected) removes every selected point as **one** undo step (`delete-points`;
+  a notice offers Undo when it removed more than one). Arrow keys nudge every selected point by
+  the same step, and a drag moves them together (`move-points`); a group stops as a whole at the
+  image edge, so it keeps its shape. **Decision — active line under a mixed selection:** the
+  active line (where new points go) is the line of the point the user picked last by a click —
+  canvas click or Shift+click that adds it, a table row, or "Select all"; a marquee, and a
+  Shift+click that removes a point, leave it unchanged. The selection is UI state only: never in
+  the Project or the autosave (which keeps just `activeDatasetId`). Loading an image or project,
+  changing step, Esc, starting or accepting an Auto-trace and deleting clear it; it is validated
+  against the document on every render, so an undo/redo or a deleted line drops the points that
+  no longer exist.
 - **Calibration UX**: guided order X1 → X2 → Y1 → Y2; after a click the value input takes focus.
   "Move" re-places a ref; Delete on a selected ref clears it. Blank values prompt ("Type the
   known value…"); otherwise the engine's error message is shown verbatim. Date inputs show the
@@ -202,8 +225,8 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   reaches 1/v = 0, and fixed millisecond steps for dates (not calendar-aligned months/years — it
   is a sanity check, not an axis renderer).
 - **Lines** (datasets): always at least one; new ones get the next unused name/colour and become
-  active. Deleting a line is an undo step (no prompt since Phase 3). Selecting another line's
-  point makes that line active.
+  active. Deleting a line is an undo step (no prompt since Phase 3). Picking another line's point
+  makes that line active (Selection, above).
 - **Table**: one section per line; `#` is the placement number and stays with its point
   when sorting by X (rows without an x value sort last). Unrepresentable values (`null`) show as
   "—". Significant figures (default 4) and the date format are Project settings; "Sort by X"
@@ -213,10 +236,11 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   collapses or expands its rows; "Collapse all" / "Expand all" sit with the table options. Lines
   start expanded. Collapsing is UI state only — not in the Project (no format bump) — kept in the
   autosave record beside `activeDatasetId`, and it never changes exports: CSV, TSV and JSON hold
-  every point. Selecting a point on the canvas (or adding one) expands its line and scrolls its
-  row into view; collapsing a line whose point is selected keeps it collapsed.
+  every point. Selecting a point (the last one of a multi-selection) or adding one expands its
+  line and scrolls its row into view; collapsing a line whose point is selected keeps it
+  collapsed.
 - **Panel layout — step controls first (decided after Auto-trace)**: the step's controls (in Data:
-  prompt, every line row, "+ Add line", "Delete selected point", the Auto-trace buttons and the
+  prompt, every line row, "+ Add line", "Delete N points", the Auto-trace buttons and the
   open Auto-trace panel) take their full height and never shrink; the points table gets the rest
   of the panel and scrolls on its own. Fallback for windows too short for both (or the tall Axes
   help panel): the table keeps a minimum of 136 px — its options, the first line's header row and
@@ -238,18 +262,19 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
 - **Loupe** (`src/ui/loupe.ts`): a 180 CSS px square inset in the workspace's top-left corner,
   flipping to the top-right when the point it shows is within 24 px of being covered. It ignores
   the pointer (`pointer-events: none`), so it can never swallow a click. It shows the cursor while
-  a click would place something (Axes with a ref pending, Data step) or grab a marker, the marker
-  being dragged (centred on the marker, not the cursor), and the selection right after a keyboard
-  nudge (until the mouse moves). It copies the decoded source image nearest-neighbour, so pixels
-  stay sharp at any main-view zoom. **Magnification is relative to the main view** (2×–16×,
+  a click would place something (Axes with a ref pending, Data step in place mode) or grab a
+  marker, the marker being dragged (centred on the marker, not the cursor), and the selection's
+  current point right after a keyboard nudge (until the mouse moves). It copies the decoded source
+  image nearest-neighbour, so pixels stay sharp at any main-view zoom. **Magnification is relative to the main view** (2×–16×,
   default 6×: image pixels look six times larger than on the canvas), rounded to a whole number of
   device pixels per image pixel (crisp edges on high-DPI screens) and capped so at least 5 image
   pixels stay visible. A thin translucent crosshair (with a gap, so the line being aligned stays
   visible) marks the exact position; the pixel under it (`Math.round`) is outlined and named in
   the caption. Existing markers and the snap target are drawn in it. `Z` or the toolbar toggles it.
 - **Nudging** (`src/ui/nudge.ts`): arrow keys move the selection 1 image px, Shift 10, Alt 0.1
-  (Alt wins over Shift); refs only in Axes, points only in Data (same rule as dragging); clamped
-  to the image and rounded to 1e-6 px so repeated 0.1 px steps don't drift. Ignored while a form
+  (Alt wins over Shift); refs only in Axes, points only in Data (same rule as dragging) — every
+  selected point together (`nudgedAll`); clamped to the image (a group as a whole) and rounded to
+  1e-6 px so repeated 0.1 px steps don't drift. Ignored while a form
   field has focus. Alt+← is prevented from navigating back.
 - **Snap** (`src/ui/snap.ts`): off by default (`S` or the toolbar). It applies only to *new*
   points in the Data step — never to drags, nudges or refs. Algorithm: background = median colour

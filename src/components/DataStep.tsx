@@ -1,12 +1,12 @@
 import type { ComponentProps } from 'react';
 import type { DocState } from '../state/doc.ts';
-import type { Target } from '../ui/draw.ts';
 import { TracePanel } from './TracePanel.tsx';
 
 interface Props {
   doc: DocState;
   calibrated: boolean;
-  selected: Target | null;
+  /** Points selected (on the canvas or in the table), of any lines. */
+  selectedCount: number;
   onActivate: (datasetId: string) => void;
   onRename: (datasetId: string, name: string) => void;
   onRecolor: (datasetId: string, color: string) => void;
@@ -19,14 +19,14 @@ interface Props {
   trace: Omit<ComponentProps<typeof TracePanel>, 'activeName' | 'activeHasPoints'>;
 }
 
-export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, movePoints, trace }: Props) {
+export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, movePoints, trace }: Props) {
   const active = doc.datasets.find((d) => d.id === doc.activeDatasetId);
   return (
     <section className="step-body" aria-label="Data">
       {movePoints ? (
         <p className="prompt" data-testid="data-prompt">
-          <strong>Move points</strong> is on: click a point to select it, drag to move it, <kbd>Delete</kbd> removes it.{' '}
-          <kbd>M</kbd> places points again.
+          <strong>Move points</strong> is on: click a point to select it (<kbd>Shift</kbd> adds), drag to move the selection,
+          drag across empty space to box-select; <kbd>Delete</kbd> removes. <kbd>M</kbd> places points again.
         </p>
       ) : (
         <p className="prompt" data-testid="data-prompt">
@@ -80,8 +80,8 @@ export function DataStep({ doc, calibrated, selected, onActivate, onRename, onRe
         <button type="button" className="small" onClick={onAdd}>
           + Add line
         </button>
-        <button type="button" className="small" onClick={onDeleteSelected} disabled={selected?.kind !== 'point'}>
-          Delete selected point
+        <button type="button" className="small" onClick={onDeleteSelected} disabled={selectedCount === 0} title="Delete or Backspace">
+          {selectedCount === 0 ? 'Delete selected points' : `Delete ${selectedCount} point${selectedCount === 1 ? '' : 's'}`}
         </button>
       </div>
       <TracePanel {...trace} activeName={active?.name ?? ''} activeHasPoints={(active?.points.length ?? 0) > 0} />

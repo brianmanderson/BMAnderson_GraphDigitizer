@@ -13,10 +13,11 @@ import type { DocState } from '../state/doc.ts';
 import { REF_COLORS, drawWorkspace, findTargetPos, hitTest, type Target } from '../ui/draw.ts';
 import { firstFile, imagePixels } from '../ui/loadImage.ts';
 import { drawLoupe, loupeCell, loupeCorner, loupeOrigin, LOUPE_SIZE, type LoupeMarker } from '../ui/loupe.ts';
+import { pointsInRect, selectedPoints, selectionKeys, targetKey, type SelectHow, type Selection } from '../ui/selection.ts';
 import { findSnapTarget, snapOptions, type SnapTarget } from '../ui/snap.ts';
 import type { Ghost } from '../ui/suggestion.ts';
 import type { TraceGhost } from '../ui/trace.ts';
-import { clampToImage, imageToScreen, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
+import { clampDelta, imageToScreen, isOnImage, panBy, screenToImage, zoomAt, type View } from '../ui/view.ts';
 
 export type Step = 'image' | 'axes' | 'data';
 
@@ -29,14 +30,21 @@ interface Props {
   /** Takes an updater so several input events within one frame compose. */
   onViewChange: Dispatch<SetStateAction<View>>;
   onViewportSize: (width: number, height: number) => void;
-  selected: Target | null;
-  onSelect: (target: Target | null) => void;
+  selection: Selection;
+  /**
+   * A pick on the canvas. `activate`: make the picked point's line active (a click on a point,
+   * not a marquee).
+   */
+  onSelect: (targets: readonly Target[], how: SelectHow, activate: boolean) => void;
   /** The ref a click on empty canvas places, while calibrating. */
   placingRef: RefName | null;
   onPlaceRef: (ref: RefName, px: number, py: number) => void;
   onAddPoint: (px: number, py: number) => void;
-  /** `gesture` is the same for every move of one drag, so the drag is one undo step. */
-  onMoveTarget: (target: Target, px: number, py: number, gesture: number) => void;
+  /**
+   * New positions for the markers being dragged (one ref, or every selected point). `gesture` is
+   * the same for every move of one drag, so the drag is one undo step.
+   */
+  onMoveTargets: (moves: { target: Target; px: number; py: number }[], gesture: number) => void;
   onCursor: (pos: { px: number; py: number } | null) => void;
   loupe: { enabled: boolean; zoom: number };
   /** Show the loupe on the selected marker (it was just nudged with the keyboard). */
@@ -68,7 +76,26 @@ let gestureSeq = 0;
 
 type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
-  | { kind: 'drag'; id: number; target: Target; startX: number; startY: number; dx: number; dy: number; moved: boolean }
+  /**
+   * `target` was pressed; `items` are the markers that move with it (every selected point when it
+   * was already selected) from their positions at the press; `grab` is the image point pressed.
+   * `reselect`: a click without movement then selects just `target` (it was part of a selection).
+   */
+  | {
+      kind: 'drag';
+      id: number;
+      target: Target;
+      items: { target: Target; px: number; py: number }[];
+      grab: { px: number; py: number };
+      startX: number;
+      startY: number;
+      moved: boolean;
+      reselect: boolean;
+    }
+  /** Shift+press on a point (Move points on): toggles it in the selection on release. */
+  | { kind: 'toggle'; target: Target; startX: number; startY: number }
+  /** Press on empty canvas with Move points on: a rubber-band selection (Shift adds to it). */
+  | { kind: 'marquee'; startX: number; startY: number; additive: boolean }
   | { kind: 'click'; startX: number; startY: number };
 
 
@@ -91,6 +118,7 @@ export function Workspace(props: Props) {
   const gesture = useRef<Gesture | null>(null);
   const [gestureKind, setGestureKind] = useState<Gesture['kind'] | null>(null);
   const [dragTarget, setDragTarget] = useState<Target | null>(null);
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   /** Pointer position over the canvas (CSS px), or null when it is elsewhere. */
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const loupeRef = useRef<HTMLCanvasElement>(null);
@@ -117,7 +145,7 @@ export function Workspace(props: Props) {
   const placing = (step === 'axes' && props.placingRef !== null) || placingPoints || tracing;
   let loupeAt: { px: number; py: number } | null = null;
   if (doc && dragTarget) loupeAt = findTargetPos(doc, dragTarget);
-  else if (doc && props.loupeOnSelection && props.selected) loupeAt = findTargetPos(doc, props.selected);
+  else if (doc && props.loupeOnSelection && props.selection.length > 0) loupeAt = findTargetPos(doc, props.selection.at(-1)!);
   else if (pointerOnImage && gestureKind === null && !spaceHeld && (placing || hovered)) loupeAt = pointerAt;
   const loupe =
     props.loupe.enabled && doc && image && loupeAt
@@ -229,12 +257,13 @@ export function Workspace(props: Props) {
       image,
       doc,
       calibration: props.calibration,
-      selected: props.selected,
+      selected: props.selection,
       hovered,
       step,
       snap: snapTarget && { ...snapTarget, color: activeColor },
       ghost: props.ghost ?? null,
       trace: props.traceGhost ?? null,
+      marquee,
     });
   });
 
@@ -251,22 +280,28 @@ export function Workspace(props: Props) {
       gesture.current = { kind: 'pan', lastX: x, lastY: y };
     } else if (e.button === 0) {
       const hit = markersLive ? hitTest(doc, view, x, y, step) : null;
-      if (hit) {
-        props.onSelect(hit);
+      const movingPoints = step === 'data' && markersLive;
+      if (hit && movingPoints && e.shiftKey) {
+        gesture.current = { kind: 'toggle', target: hit, startX: x, startY: y };
+      } else if (hit) {
+        // Pressing a selected point drags the whole selection; any other marker is selected alone.
+        const inSelection = movingPoints && selectionKeys(props.selection).has(targetKey(hit));
+        const moving = inSelection ? selectedPoints(props.selection) : [hit];
+        if (!inSelection) props.onSelect([hit], 'replace', true);
         setDragTarget(hit);
-        const pos = targetPos(doc, hit);
-        const at = screenToImage(view, x, y);
-        // Keep the grab offset so the marker doesn't jump to the cursor.
         gesture.current = {
           kind: 'drag',
           id: ++gestureSeq,
           target: hit,
+          items: moving.map((t) => ({ target: t, ...targetPos(doc, t) })),
+          grab: screenToImage(view, x, y),
           startX: x,
           startY: y,
-          dx: pos.px - at.px,
-          dy: pos.py - at.py,
           moved: false,
+          reselect: inSelection,
         };
+      } else if (movingPoints) {
+        gesture.current = { kind: 'marquee', startX: x, startY: y, additive: e.shiftKey };
       } else {
         gesture.current = { kind: 'click', startX: x, startY: y };
       }
@@ -301,8 +336,14 @@ export function Workspace(props: Props) {
     } else if (g.kind === 'drag') {
       if (!g.moved && Math.hypot(x - g.startX, y - g.startY) < CLICK_SLOP) return;
       g.moved = true;
-      const p = clampToImage(at.px + g.dx, at.py + g.dy, doc.image.width, doc.image.height);
-      props.onMoveTarget(g.target, p.px, p.py, g.id);
+      // Every marker keeps its offset from the cursor; the group stops as a whole at the image edge.
+      const d = clampDelta(g.items, at.px - g.grab.px, at.py - g.grab.py, doc.image.width, doc.image.height);
+      props.onMoveTargets(
+        g.items.map((i) => ({ target: i.target, px: i.px + d.dx, py: i.py + d.dy })),
+        g.id,
+      );
+    } else if (g.kind === 'marquee') {
+      if (Math.hypot(x - g.startX, y - g.startY) >= CLICK_SLOP) setMarquee({ x0: g.startX, y0: g.startY, x1: x, y1: y });
     }
   };
 
@@ -311,21 +352,34 @@ export function Workspace(props: Props) {
     gesture.current = null;
     setGestureKind(null);
     setDragTarget(null);
+    setMarquee(null);
     if (!doc || !g || g.kind === 'pan') return;
     const { x, y } = local(e);
     const at = screenToImage(view, x, y);
+    const clicked = Math.hypot(x - g.startX, y - g.startY) < CLICK_SLOP;
     if (g.kind === 'drag') {
       // A click (not a drag) on another ref still places the pending one: X1 and Y1 usually
       // share the origin pixel.
       const placing = props.placingRef;
       if (!g.moved && step === 'axes' && placing && !(g.target.kind === 'ref' && g.target.ref === placing)) {
         props.onPlaceRef(placing, at.px, at.py);
+      } else if (!g.moved && g.reselect) {
+        props.onSelect([g.target], 'replace', true);
       }
       return;
     }
-    if (Math.hypot(x - g.startX, y - g.startY) >= CLICK_SLOP) return;
+    if (g.kind === 'toggle') {
+      if (clicked) props.onSelect([g.target], 'toggle', true);
+      return;
+    }
+    if (g.kind === 'marquee') {
+      if (!clicked) props.onSelect(pointsInRect(doc, screenToImage(view, g.startX, g.startY), at), g.additive ? 'add' : 'replace', false);
+      else if (!g.additive) props.onSelect([], 'replace', false);
+      return;
+    }
+    if (!clicked) return;
     if (!isOnImage(at.px, at.py, doc.image.width, doc.image.height)) {
-      props.onSelect(null);
+      props.onSelect([], 'replace', false);
       return;
     }
     if (step === 'axes' && props.placingRef) {
@@ -336,14 +390,16 @@ export function Workspace(props: Props) {
       const snapped = pixels ? findSnapTarget(pixels, at.px, at.py, snapOptions(view.scale)) : null;
       props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py);
     } else {
-      props.onSelect(null);
+      props.onSelect([], 'replace', false);
     }
   };
 
   const cursor =
     gestureKind === 'pan' || gestureKind === 'drag'
       ? 'grabbing'
-      : spaceHeld || hovered
+      : gestureKind === 'marquee'
+        ? 'crosshair'
+        : spaceHeld || hovered
         ? 'grab'
         : placing
           ? 'crosshair'
@@ -382,6 +438,7 @@ export function Workspace(props: Props) {
           gesture.current = null;
           setGestureKind(null);
           setDragTarget(null);
+          setMarquee(null);
         }}
         onPointerLeave={() => {
           if (!gesture.current) {

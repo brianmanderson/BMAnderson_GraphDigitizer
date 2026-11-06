@@ -25,7 +25,18 @@ import { runTrace, type TraceRun } from './ui/autoTrace.ts';
 import type { TraceMode } from './auto/trace/types.ts';
 import { ACCEPTED_IMAGE_TYPES, decodeImage, firstFile, imagePixels, isProjectFile, loadImageFile } from './ui/loadImage.ts';
 import { DEFAULT_LOUPE_ZOOM, LOUPE_ZOOMS } from './ui/loupe.ts';
-import { nudgeDirection, nudgeStep, nudged } from './ui/nudge.ts';
+import { nudgeDirection, nudgeStep, nudged, nudgedAll } from './ui/nudge.ts';
+import {
+  EMPTY_SELECTION,
+  applySelect,
+  lastPoint,
+  linePoints,
+  selectedPoints,
+  targetKey,
+  validSelection,
+  type SelectHow,
+  type Selection,
+} from './ui/selection.ts';
 import { acceptAction, ghostOf, initialValues, type AutoState } from './ui/suggestion.ts';
 import {
   DEFAULT_TRACE_SETTINGS,
@@ -61,8 +72,6 @@ function stepFor(doc: DocState): Step {
   const spec = calibrationSpec(doc);
   return spec && calibrateSpec(spec).ok ? 'data' : 'axes';
 }
-
-const targetKey = (t: Target) => (t.kind === 'ref' ? t.ref : `${t.datasetId}/${t.pointId}`);
 
 /** Precision-tool and edit-mode preferences, remembered per browser (not part of the project). */
 interface Prefs {
@@ -114,7 +123,8 @@ export function App() {
   const [decoded, setDecoded] = useState<{ of: DocState['image']; el: HTMLImageElement } | null>(null);
   const [view, setView] = useState<View>(IDENTITY_VIEW);
   const viewport = useRef({ width: 0, height: 0 });
-  const [selectedRaw, setSelected] = useState<Target | null>(null);
+  /** One ref (Axes) or any number of points (Data); see src/ui/selection.ts. */
+  const [selectionRaw, setSelection] = useState<Selection>(EMPTY_SELECTION);
   /** A ref the user chose to (re-)place; otherwise the next unplaced ref is placed. */
   const [chosenRef, setChosenRef] = useState<RefName | null>(null);
   const [focusRef, setFocusRef] = useState<RefName | null>(null);
@@ -143,8 +153,9 @@ export function App() {
   const redo = useCallback(() => historyDispatch({ type: 'redo' }), []);
   const onFocused = useCallback(() => setFocusRef(null), []);
 
-  // A selection whose marker an undo removed is no selection.
-  const selected = selectedRaw && doc && findTargetPos(doc, selectedRaw) ? selectedRaw : null;
+  // Markers an undo, a deleted line or a load removed drop out of the selection.
+  const selection = useMemo(() => (doc ? validSelection(doc, selectionRaw) : EMPTY_SELECTION), [doc, selectionRaw]);
+  const selectedPointCount = useMemo(() => selectedPoints(selection).length, [selection]);
   const image = decoded && doc && decoded.of === doc.image ? decoded.el : null;
   // A suggestion belongs to the image it was made for (a load or an undo across one drops it).
   const auto: AutoState = useMemo(
@@ -241,7 +252,7 @@ export function App() {
     (next: DocState, text: string) => {
       const replacesWork = hasWork(doc);
       dispatch({ type: 'replace-doc', doc: next });
-      setSelected(null);
+      setSelection(EMPTY_SELECTION);
       setChosenRef(null);
       setStep(stepFor(next));
       setNotice({
@@ -377,41 +388,55 @@ export function App() {
     return () => window.removeEventListener('paste', onPaste);
   }, [handleFile]);
 
+  /** Delete the selected ref, or every selected point as one undo step. */
   const deleteSelected = useCallback(() => {
-    if (!selected) return;
-    if (selected.kind === 'point') {
-      dispatch({ type: 'delete-point', datasetId: selected.datasetId, pointId: selected.pointId });
-    } else {
-      dispatch({ type: 'clear-ref', ref: selected.ref });
+    const first = selection[0];
+    if (!first) return;
+    if (first.kind === 'ref') {
+      dispatch({ type: 'clear-ref', ref: first.ref });
       setChosenRef(null);
+    } else {
+      const points = selectedPoints(selection);
+      dispatch({ type: 'delete-points', points: points.map(({ datasetId, pointId }) => ({ datasetId, pointId })) });
+      if (points.length > 1) setNotice({ kind: 'info', text: `Deleted ${points.length} points.`, undoRev: history.rev + 1 });
     }
-    setSelected(null);
-  }, [selected, dispatch]);
+    setSelection(EMPTY_SELECTION);
+  }, [selection, dispatch, history.rev]);
 
   const saveProject = useCallback(() => {
     if (!doc) return;
     downloadText(`${baseName(doc.image.name)}-project.json`, JSON.stringify(toProject(doc), null, 2), 'application/json');
   }, [doc]);
 
-  /** Arrow keys move the selection (refs in Axes, points in Data); returns whether it did. */
+  /**
+   * Arrow keys move the selection (the ref in Axes, every selected point together in Data);
+   * returns whether it did.
+   */
   const nudgeSelected = useCallback(
     (e: KeyboardEvent): boolean => {
       const dir = nudgeDirection(e.key);
-      if (!dir || !doc || !selected) return false;
-      if ((selected.kind === 'ref' ? 'axes' : 'data') !== step) return false;
-      const pos = findTargetPos(doc, selected);
-      if (!pos) return false;
+      const first = selection[0];
+      if (!dir || !doc || !first) return false;
+      if ((first.kind === 'ref' ? 'axes' : 'data') !== step) return false;
       const amount = nudgeStep(e);
-      const p = nudged(pos, dir, amount, doc.image.width, doc.image.height);
+      // Holding a key (or pressing it repeatedly) on one selection is one undo step.
+      const group = `nudge:${selection.map(targetKey).join(',')}:${e.key}:${amount}`;
       setLoupeOnSelection(true);
-      if (p.px === pos.px && p.py === pos.py) return true;
-      // Holding a key (or pressing it repeatedly) is one undo step.
-      const group = `nudge:${targetKey(selected)}:${e.key}:${amount}`;
-      if (selected.kind === 'ref') dispatch({ type: 'place-ref', ref: selected.ref, ...p }, group);
-      else dispatch({ type: 'move-point', datasetId: selected.datasetId, pointId: selected.pointId, ...p }, group);
+      if (first.kind === 'ref') {
+        const pos = findTargetPos(doc, first);
+        if (!pos) return false;
+        const p = nudged(pos, dir, amount, doc.image.width, doc.image.height);
+        if (p.px !== pos.px || p.py !== pos.py) dispatch({ type: 'place-ref', ref: first.ref, ...p }, group);
+        return true;
+      }
+      const points = selectedPoints(selection);
+      const from = points.map((t) => findTargetPos(doc, t) ?? { px: 0, py: 0 });
+      const to = nudgedAll(from, dir, amount, doc.image.width, doc.image.height);
+      const moves = points.map(({ datasetId, pointId }, i) => ({ datasetId, pointId, ...to[i]! }));
+      dispatch({ type: 'move-points', moves }, group);
       return true;
     },
-    [doc, selected, step, dispatch],
+    [doc, selection, step, dispatch],
   );
 
   useEffect(() => {
@@ -440,13 +465,13 @@ export function App() {
       }
       if (e.altKey) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selected) {
+        if (selection.length > 0) {
           e.preventDefault();
           deleteSelected();
         }
       } else if (e.key === 'Escape') {
         setTrace(null);
-        setSelected(null);
+        setSelection(EMPTY_SELECTION);
         setChosenRef(null);
         setLoupeOnSelection(false);
       } else if (e.key === 'f' || e.key === 'F') {
@@ -461,7 +486,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, step, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
+  }, [selection, step, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
 
   const onCursor = useCallback((pos: { px: number; py: number } | null) => {
     setCursor(pos);
@@ -473,7 +498,7 @@ export function App() {
       const isNew = !doc?.refs[ref];
       dispatch({ type: 'place-ref', ref, px, py });
       setChosenRef(null);
-      setSelected({ kind: 'ref', ref });
+      setSelection([{ kind: 'ref', ref }]);
       if (isNew || doc?.refs[ref]?.value.trim() === '') setFocusRef(ref);
     },
     [doc, dispatch],
@@ -489,30 +514,55 @@ export function App() {
       if (!doc) return;
       const point = { id: newId(), px, py };
       dispatch({ type: 'add-point', datasetId: doc.activeDatasetId, point });
-      setSelected({ kind: 'point', datasetId: doc.activeDatasetId, pointId: point.id });
+      setSelection([{ kind: 'point', datasetId: doc.activeDatasetId, pointId: point.id }]);
       expandLine(doc.activeDatasetId);
     },
     [doc, dispatch, expandLine],
   );
 
-  const onMoveTarget = useCallback(
-    (t: Target, px: number, py: number, gesture: number) => {
+  const onMoveTargets = useCallback(
+    (moves: { target: Target; px: number; py: number }[], gesture: number) => {
       const group = `drag:${gesture}`;
-      if (t.kind === 'ref') dispatch({ type: 'place-ref', ref: t.ref, px, py }, group);
-      else dispatch({ type: 'move-point', datasetId: t.datasetId, pointId: t.pointId, px, py }, group);
+      const points = moves.flatMap(({ target: t, px, py }) => {
+        if (t.kind === 'ref') {
+          dispatch({ type: 'place-ref', ref: t.ref, px, py }, group);
+          return [];
+        }
+        return [{ datasetId: t.datasetId, pointId: t.pointId, px, py }];
+      });
+      if (points.length > 0) dispatch({ type: 'move-points', moves: points }, group);
     },
     [dispatch],
   );
 
+  /**
+   * A pick on the canvas or in the table. `activate`: the picked point's line becomes the active
+   * one when the pick leaves it selected (a click or Shift+click, not a marquee).
+   */
   const onSelect = useCallback(
-    (t: Target | null) => {
-      setSelected(t);
+    (targets: readonly Target[], how: SelectHow = 'replace', activate = true) => {
+      const next = applySelect(selection, targets, how);
+      setSelection(next);
       setLoupeOnSelection(false);
-      if (t?.kind === 'point' && doc && t.datasetId !== doc.activeDatasetId) {
-        dispatch({ type: 'set-active-dataset', datasetId: t.datasetId });
+      const picked = targets.length === 1 ? targets[0]! : null;
+      if (activate && picked?.kind === 'point' && next.some((t) => targetKey(t) === targetKey(picked)) && doc && picked.datasetId !== doc.activeDatasetId) {
+        dispatch({ type: 'set-active-dataset', datasetId: picked.datasetId });
       }
-      // A point selected on the canvas shows its row, so its line's list opens.
-      if (t?.kind === 'point') expandLine(t.datasetId);
+      // The current (last selected) point's row is shown, so its line's list opens.
+      const last = lastPoint(next);
+      if (last && targets.some((t) => targetKey(t) === targetKey(last))) expandLine(last.datasetId);
+    },
+    [doc, selection, dispatch, expandLine],
+  );
+
+  /** "Select all" in a line's table header: every point of that line, which becomes active. */
+  const onSelectLine = useCallback(
+    (datasetId: string) => {
+      if (!doc) return;
+      setSelection(linePoints(doc, datasetId));
+      setLoupeOnSelection(false);
+      if (datasetId !== doc.activeDatasetId) dispatch({ type: 'set-active-dataset', datasetId });
+      expandLine(datasetId);
     },
     [doc, dispatch, expandLine],
   );
@@ -626,7 +676,7 @@ export function App() {
   const onTraceStart = (target: TraceTarget, mode: TraceMode = traceSettings.mode) => {
     if (!doc) return;
     setTrace({ of: doc.image, state: { status: 'picking', target, mode } });
-    setSelected(null);
+    setSelection(EMPTY_SELECTION);
   };
 
   const onTraceSeed = useCallback(
@@ -655,6 +705,7 @@ export function App() {
     if (!action) return;
     dispatch(action);
     setTrace(null);
+    setSelection(EMPTY_SELECTION);
     const into = action.type === 'add-dataset' ? `a new line, "${action.dataset.name}"` : `"${doc.datasets.find((d) => d.id === doc.activeDatasetId)?.name}"`;
     setNotice({ kind: 'info', text: `Added ${traceCount} traced point${traceCount === 1 ? '' : 's'} to ${into}.`, undoRev: history.rev + 1 });
   };
@@ -665,7 +716,7 @@ export function App() {
   const goStep = (s: Step) => {
     setStep(s);
     setTrace(null);
-    setSelected(null);
+    setSelection(EMPTY_SELECTION);
     setChosenRef(null);
   };
 
@@ -809,12 +860,12 @@ export function App() {
           view={view}
           onViewChange={setView}
           onViewportSize={onViewportSize}
-          selected={selected}
+          selection={selection}
           onSelect={onSelect}
           placingRef={step === 'axes' ? placingRef : null}
           onPlaceRef={onPlaceRef}
           onAddPoint={onAddPoint}
-          onMoveTarget={onMoveTarget}
+          onMoveTargets={onMoveTargets}
           onCursor={onCursor}
           onFile={(f) => void handleFile(f)}
           onOpenFile={() => fileInput.current?.click()}
@@ -899,7 +950,7 @@ export function App() {
               <DataStep
                 doc={doc}
                 calibrated={!!calibration}
-                selected={selected}
+                selectedCount={selectedPointCount}
                 onActivate={(id) => dispatch({ type: 'set-active-dataset', datasetId: id })}
                 onRename={(id, name) => dispatch({ type: 'rename-dataset', datasetId: id, name }, `rename:${id}`)}
                 onRecolor={(id, color) => dispatch({ type: 'recolor-dataset', datasetId: id, color }, `recolor:${id}`)}
@@ -927,11 +978,12 @@ export function App() {
               doc={doc}
               calibration={calibration}
               options={tableOptions}
-              selected={selected}
+              selection={selection}
               collapsed={collapsed}
               onToggle={onToggleLine}
               onCollapseAll={onCollapseAll}
               onSelect={onSelect}
+              onSelectLine={onSelectLine}
               onOptions={onTableOptions}
               onExportCsv={onExportCsv}
               onCopyTsv={() => void onCopyTsv()}

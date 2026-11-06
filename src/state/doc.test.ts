@@ -80,6 +80,55 @@ describe('docReducer', () => {
     expect(s.datasets[0]!.points).toHaveLength(1);
   });
 
+  const twoLines = () =>
+    apply(
+      newDoc(image, 'd1'),
+      { type: 'add-dataset', dataset: { id: 'd2', name: 'B', color: '#000000', points: [] } },
+      { type: 'add-points', datasetId: 'd1', points: [{ id: 'a', px: 1, py: 1 }, { id: 'b', px: 2, py: 2 }, { id: 'c', px: 3, py: 3 }] },
+      { type: 'add-points', datasetId: 'd2', points: [{ id: 'x', px: 4, py: 4 }, { id: 'y', px: 5, py: 5 }] },
+    );
+
+  it('deletes several points of several datasets in one edit', () => {
+    const s = twoLines();
+    const t = docReducer(s, {
+      type: 'delete-points',
+      points: [
+        { datasetId: 'd1', pointId: 'a' },
+        { datasetId: 'd2', pointId: 'y' },
+        { datasetId: 'd1', pointId: 'c' },
+      ],
+    });
+    expect(t.datasets.map((d) => d.points.map((p) => p.id))).toEqual([['b'], ['x']]);
+    // A point id only counts in its own dataset; nothing matching (or nothing at all) is no edit.
+    expect(docReducer(s, { type: 'delete-points', points: [{ datasetId: 'd2', pointId: 'a' }] })).toBe(s);
+    expect(docReducer(s, { type: 'delete-points', points: [] })).toBe(s);
+  });
+
+  it('moves several points of several datasets in one edit, ignoring non-finite positions', () => {
+    const s = twoLines();
+    const t = docReducer(s, {
+      type: 'move-points',
+      moves: [
+        { datasetId: 'd1', pointId: 'b', px: 12.5, py: 20 },
+        { datasetId: 'd2', pointId: 'x', px: 14, py: 24.25 },
+        { datasetId: 'd2', pointId: 'y', px: NaN, py: 1 },
+      ],
+    });
+    expect(t.datasets[0]!.points).toEqual([
+      { id: 'a', px: 1, py: 1 },
+      { id: 'b', px: 12.5, py: 20 },
+      { id: 'c', px: 3, py: 3 },
+    ]);
+    expect(t.datasets[1]!.points).toEqual([
+      { id: 'x', px: 14, py: 24.25 },
+      { id: 'y', px: 5, py: 5 },
+    ]);
+    expect(t.datasets[0]!.points[0]).toBe(s.datasets[0]!.points[0]);
+    // Moving to where they already are, or moving unknown points, changes nothing.
+    expect(docReducer(s, { type: 'move-points', moves: [{ datasetId: 'd1', pointId: 'a', px: 1, py: 1 }] })).toBe(s);
+    expect(docReducer(s, { type: 'move-points', moves: [{ datasetId: 'd1', pointId: 'x', px: 9, py: 9 }] })).toBe(s);
+  });
+
   it('adds several points to one dataset in one edit, dropping non-finite ones', () => {
     const s = newDoc(image, 'd1');
     expect(docReducer(s, { type: 'add-points', datasetId: 'd1', points: [] })).toBe(s);

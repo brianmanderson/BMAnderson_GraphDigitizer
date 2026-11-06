@@ -114,3 +114,181 @@ test('move mode: the same press drags the existing point, in one undo step', asy
   await expect(moveTool(page)).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('graph-digitizer:prefs') ?? '{}').movePoints)).toBe(false);
 });
+
+/** Line 1: a, b, c along y = 200; Line 2: x, y along y = 300 and z far away. */
+const LINES: Pt[][] = [
+  [
+    { id: 'a', px: 200, py: 200 },
+    { id: 'b', px: 300, py: 200 },
+    { id: 'c', px: 400, py: 200 },
+  ],
+  [
+    { id: 'x', px: 250, py: 300 },
+    { id: 'y', px: 350, py: 300 },
+    { id: 'z', px: 600, py: 500 },
+  ],
+];
+
+const selectedRows = (page: Page) => page.locator('tbody tr[aria-selected="true"]');
+const undo = (page: Page) => page.getByRole('group', { name: 'History' }).getByRole('button', { name: 'Undo' });
+
+async function shiftClickImage(page: Page, px: number, py: number) {
+  const p = await imageToClient(page, px, py);
+  await page.keyboard.down('Shift');
+  await page.mouse.click(p.x, p.y);
+  await page.keyboard.up('Shift');
+}
+
+async function dragImage(page: Page, from: { px: number; py: number }, to: { px: number; py: number }, shift = false) {
+  const a = await imageToClient(page, from.px, from.py);
+  const b = await imageToClient(page, to.px, to.py);
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+  if (shift) await page.keyboard.up('Shift');
+}
+
+test('Shift+click three points across two lines, Delete removes all three, one Ctrl+Z brings them back', async ({ page }) => {
+  await openProject(page, LINES);
+  await moveTool(page).click();
+  await shiftClickImage(page, 200, 200);
+  await shiftClickImage(page, 400, 200);
+  await shiftClickImage(page, 350, 300);
+  await expect(selectedRows(page)).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Delete 3 points' })).toBeEnabled();
+  // The line of the point clicked last is the active one.
+  await expect(page.getByLabel('Make Line 2 active')).toBeChecked();
+  // Shift+click again removes a point, and adds it back.
+  await shiftClickImage(page, 400, 200);
+  await expect(selectedRows(page)).toHaveCount(2);
+  await shiftClickImage(page, 400, 200);
+  await expect(selectedRows(page)).toHaveCount(3);
+
+  await page.keyboard.press('Delete');
+  await expect.poll(() => pixels(page, 'Line 1')).toEqual([[300, 200]]);
+  expect(await pixels(page, 'Line 2')).toEqual([
+    [250, 300],
+    [600, 500],
+  ]);
+  await expect(page.getByRole('button', { name: 'Delete selected points' })).toBeDisabled();
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => pixels(page, 'Line 1')).toHaveLength(3);
+  expect(await pixels(page, 'Line 2')).toHaveLength(3);
+  // That was the only step: the project as opened is the oldest state (nothing more to undo).
+  await expect(undo(page)).toBeDisabled();
+});
+
+test('marquee select (Shift adds), drag and nudge the selection together, then delete it in one step', async ({ page }) => {
+  await openProject(page, LINES);
+  await moveTool(page).click();
+  // A box over b, x and y (a and c are outside it), started on empty canvas.
+  await dragImage(page, { px: 230, py: 170 }, { px: 370, py: 320 });
+  await expect(selectedRows(page)).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Delete 3 points' })).toBeVisible();
+  await dragImage(page, { px: 580, py: 480 }, { px: 620, py: 520 }, true);
+  await expect(selectedRows(page)).toHaveCount(4);
+
+  // Dragging one selected point moves all four by the same amount, as one undo step.
+  await dragImage(page, { px: 300, py: 200 }, { px: 320, py: 210 });
+  await expect.poll(() => pixels(page, 'Line 1')).not.toContainEqual([300, 200]);
+  const [, b] = await pixels(page, 'Line 1');
+  const dx = b![0]! - 300;
+  const dy = b![1]! - 200;
+  expect(Math.abs(dx - 20)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(dy - 10)).toBeLessThanOrEqual(0.5);
+  expect((await pixels(page, 'Line 1'))[0]).toEqual([200, 200]);
+  const line2 = await pixels(page, 'Line 2');
+  LINES[1]!.forEach((p, i) => {
+    expect(line2[i]![0]).toBeCloseTo(p.px + dx, 1);
+    expect(line2[i]![1]).toBeCloseTo(p.py + dy, 1);
+  });
+  await undo(page).click();
+  await expect.poll(() => pixels(page, 'Line 2')).toEqual(LINES[1]!.map((p) => [p.px, p.py]));
+  await expect(selectedRows(page)).toHaveCount(4);
+
+  // Arrow keys nudge the whole selection; repeated presses are one undo step.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => pixels(page, 'Line 2')).toEqual([
+    [252, 300],
+    [352, 300],
+    [602, 500],
+  ]);
+  expect(await pixels(page, 'Line 1')).toEqual([
+    [200, 200],
+    [302, 200],
+    [400, 200],
+  ]);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => pixels(page, 'Line 2')).toEqual(LINES[1]!.map((p) => [p.px, p.py]));
+
+  await page.keyboard.press('Delete');
+  await expect.poll(() => pixels(page, 'Line 2')).toEqual([]);
+  expect(await pixels(page, 'Line 1')).toEqual([
+    [200, 200],
+    [400, 200],
+  ]);
+  await expect(page.getByTestId('notice')).toContainText('Deleted 4 points.');
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => pixels(page, 'Line 2')).toHaveLength(3);
+  expect(await pixels(page, 'Line 1')).toHaveLength(3);
+
+  // Esc clears the selection; so does a click on empty canvas.
+  await dragImage(page, { px: 180, py: 180 }, { px: 420, py: 220 });
+  await expect(selectedRows(page)).toHaveCount(3);
+  await page.keyboard.press('Escape');
+  await expect(selectedRows(page)).toHaveCount(0);
+  await dragImage(page, { px: 180, py: 180 }, { px: 420, py: 220 });
+  await expect(selectedRows(page)).toHaveCount(3);
+  const empty = await imageToClient(page, 500, 100);
+  await page.mouse.click(empty.x, empty.y);
+  await expect(selectedRows(page)).toHaveCount(0);
+});
+
+test('place mode: select from the table (Shift+click, Select all), delete; placing selects the new point', async ({ page }) => {
+  await openProject(page, LINES);
+  const line1 = page.getByTestId('table-Line 1').locator('tbody tr');
+  const line2 = page.getByTestId('table-Line 2').locator('tbody tr');
+  await line1.nth(0).click();
+  await line2.nth(1).click({ modifiers: ['Shift'] });
+  await expect(selectedRows(page)).toHaveCount(2);
+  await expect(page.getByLabel('Make Line 2 active')).toBeChecked();
+  await page.getByRole('button', { name: 'Delete 2 points' }).click();
+  await expect.poll(() => pixels(page, 'Line 1')).toEqual([
+    [300, 200],
+    [400, 200],
+  ]);
+  expect(await pixels(page, 'Line 2')).toEqual([
+    [250, 300],
+    [600, 500],
+  ]);
+  await undo(page).click();
+  await expect.poll(() => pixels(page, 'Line 1')).toHaveLength(3);
+
+  // "Select all" of a line selects its points and makes it active; arrows move them all.
+  await page.getByLabel('Make Line 2 active').check();
+  await page.getByRole('button', { name: 'Select all points of Line 1' }).click();
+  await expect(selectedRows(page)).toHaveCount(3);
+  await expect(page.getByLabel('Make Line 1 active')).toBeChecked();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(() => pixels(page, 'Line 1')).toEqual([
+    [200, 201],
+    [300, 201],
+    [400, 201],
+  ]);
+
+  // A click on the canvas places a point (right beside b) and selects only it.
+  const at = await imageToClient(page, 300, 201);
+  await page.mouse.click(at.x + 3, at.y);
+  await expect.poll(() => pixels(page, 'Line 1')).toHaveLength(4);
+  await expect(selectedRows(page)).toHaveCount(1);
+  await expect(page.getByTestId('table-Line 1').locator('tbody tr').nth(3)).toHaveAttribute('aria-selected', 'true');
+  expect((await pixels(page, 'Line 1')).slice(0, 3)).toEqual([
+    [200, 201],
+    [300, 201],
+    [400, 201],
+  ]);
+});

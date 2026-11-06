@@ -598,6 +598,19 @@ kbd {
   font-size: 13px;
   margin: 4px 0 2px;
 }
+.line-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.line-header .line-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.line-header .select-line {
+  flex: none;
+  font-weight: 400;
+}
 /* A line's disclosure header: colour dot, "Line 1 (66)", chevron. */
 button.line-toggle {
   display: flex;
