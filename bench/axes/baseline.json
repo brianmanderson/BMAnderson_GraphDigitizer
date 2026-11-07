@@ -6,9 +6,9 @@
   "yFound": 0.953125,
   "medianAxisError": 0.022,
   "boxFound": 0.953125,
-  "tickRecall": 0.8545994065281899,
-  "minorRecall": 0.6768707482993197,
-  "tickPrecision": 0.9863407620416966,
+  "tickRecall": 0.8585858585858586,
+  "minorRecall": 0.6945337620578779,
+  "tickPrecision": 0.9871447902571042,
   "falseTicksOnBareAxes": 0,
   "meanMs": 0
  },
@@ -78,6 +78,19 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
+  "errorbars": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.281,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": 1,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
   "four-series": {
    "images": 1,
    "axesFound": 1,
@@ -87,6 +100,19 @@
    "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "frame": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.281,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": 1,
    "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
@@ -200,11 +226,11 @@
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.034,
+   "medianAxisError": 0.05,
    "boxFound": 1,
    "tickRecall": 1,
-   "minorRecall": null,
-   "tickPrecision": 0.7916666666666666,
+   "minorRecall": 1,
+   "tickPrecision": 0.9259259259259259,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -273,29 +299,16 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
-  "low-dpi": {
-   "images": 1,
-   "axesFound": 1,
-   "xFound": 1,
-   "yFound": 1,
-   "medianAxisError": 0.034,
-   "boxFound": 1,
-   "tickRecall": null,
-   "minorRecall": null,
-   "tickPrecision": null,
-   "falseTicksOnBareAxes": 0,
-   "meanMs": 0
-  },
   "minor-ticks": {
-   "images": 9,
+   "images": 10,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.02,
+   "medianAxisError": 0.024,
    "boxFound": 1,
-   "tickRecall": 0.9626168224299065,
-   "minorRecall": 0.7978142076502732,
-   "tickPrecision": 0.9850374064837906,
+   "tickRecall": 0.9682539682539683,
+   "minorRecall": 0.8294930875576036,
+   "tickPrecision": 0.9877049180327869,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -325,19 +338,6 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
-  "no-tickmarks": {
-   "images": 1,
-   "axesFound": 1,
-   "xFound": 1,
-   "yFound": 1,
-   "medianAxisError": 0.034,
-   "boxFound": 1,
-   "tickRecall": null,
-   "minorRecall": null,
-   "tickPrecision": null,
-   "falseTicksOnBareAxes": 0,
-   "meanMs": 0
-  },
   "png": {
    "images": 43,
    "axesFound": 0.9302325581395349,
@@ -345,9 +345,9 @@
    "yFound": 0.9302325581395349,
    "medianAxisError": 0.008,
    "boxFound": 0.9302325581395349,
-   "tickRecall": 0.8086021505376344,
-   "minorRecall": 0.7710487444608567,
-   "tickPrecision": 0.9933628318584071,
+   "tickRecall": 0.8161157024793388,
+   "minorRecall": 0.7919463087248322,
+   "tickPrecision": 0.9939455095862765,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -356,11 +356,11 @@
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.034,
+   "medianAxisError": 0.05,
    "boxFound": 1,
    "tickRecall": 1,
-   "minorRecall": null,
-   "tickPrecision": 0.7916666666666666,
+   "minorRecall": 1,
+   "tickPrecision": 0.9259259259259259,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -408,11 +408,11 @@
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.034,
+   "medianAxisError": 0.281,
    "boxFound": 1,
-   "tickRecall": null,
-   "minorRecall": null,
-   "tickPrecision": null,
+   "tickRecall": 1,
+   "minorRecall": 1,
+   "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -587,13 +587,13 @@
   }
  },
  "calibOverall": {
-  "calibrated": 0.65625,
-  "correct": 0.65625,
+  "calibrated": 0.6640625,
+  "correct": 0.6640625,
   "wrong": 0,
   "wrongHigh": 0,
-  "scaleAccuracy": 0.9797979797979798,
-  "medianErrorPct": 0.131,
-  "autoImages": 0.484375,
+  "scaleAccuracy": 0.98,
+  "medianErrorPct": 0.126,
+  "autoImages": 0.5,
   "knownMaxError": 0.001,
   "meanOcrMs": 0
  },
@@ -653,6 +653,17 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
+  "errorbars": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.082,
+   "autoImages": 1,
+   "knownMaxError": null,
+   "meanOcrMs": 0
+  },
   "four-series": {
    "calibrated": 1,
    "correct": 1,
@@ -662,6 +673,17 @@
    "medianErrorPct": 0.048,
    "autoImages": 1,
    "knownMaxError": 0.001,
+   "meanOcrMs": 0
+  },
+  "frame": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.082,
+   "autoImages": 1,
+   "knownMaxError": null,
    "meanOcrMs": 0
   },
   "frame-not-at-zero": {
@@ -753,13 +775,13 @@
    "meanOcrMs": 0
   },
   "journal": {
-   "calibrated": 0.875,
-   "correct": 0.875,
+   "calibrated": 1,
+   "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.048,
-   "autoImages": 0.75,
+   "medianErrorPct": 0.053,
+   "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
@@ -818,25 +840,14 @@
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
-  "low-dpi": {
-   "calibrated": 0.5,
-   "correct": 0.5,
-   "wrong": 0,
-   "wrongHigh": 0,
-   "scaleAccuracy": 1,
-   "medianErrorPct": 0.111,
-   "autoImages": 0,
-   "knownMaxError": null,
-   "meanOcrMs": 0
-  },
   "minor-ticks": {
-   "calibrated": 0.7777777777777778,
-   "correct": 0.7777777777777778,
+   "calibrated": 0.8,
+   "correct": 0.8,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.115,
-   "autoImages": 0.7777777777777778,
+   "medianErrorPct": 0.102,
+   "autoImages": 0.8,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -862,36 +873,25 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
-  "no-tickmarks": {
-   "calibrated": 0.5,
-   "correct": 0.5,
-   "wrong": 0,
-   "wrongHigh": 0,
-   "scaleAccuracy": 1,
-   "medianErrorPct": 0.111,
-   "autoImages": 0,
-   "knownMaxError": null,
-   "meanOcrMs": 0
-  },
   "png": {
-   "calibrated": 0.6395348837209303,
-   "correct": 0.6395348837209303,
+   "calibrated": 0.6511627906976745,
+   "correct": 0.6511627906976745,
    "wrong": 0,
    "wrongHigh": 0,
-   "scaleAccuracy": 0.96875,
+   "scaleAccuracy": 0.9692307692307692,
    "medianErrorPct": 0.144,
-   "autoImages": 0.46511627906976744,
+   "autoImages": 0.4883720930232558,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
   "real": {
-   "calibrated": 0.875,
-   "correct": 0.875,
+   "calibrated": 1,
+   "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.048,
-   "autoImages": 0.75,
+   "medianErrorPct": 0.053,
+   "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
@@ -929,13 +929,13 @@
    "meanOcrMs": 0
   },
   "scatter": {
-   "calibrated": 0.5,
-   "correct": 0.5,
+   "calibrated": 1,
+   "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.111,
-   "autoImages": 0,
+   "medianErrorPct": 0.082,
+   "autoImages": 1,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2548,22 +2548,23 @@
    "yCalib": "ok high linear 0.25%",
    "known": "0.819 0.793 0.770 0.778 0.755"
   },
-  "scatter-filled-open-kim": {
+  "scatter-errorbars-glowa": {
    "tags": [
     "real",
     "journal",
     "scatter",
-    "no-tickmarks",
-    "low-dpi",
+    "frame",
+    "minor-ticks",
+    "errorbars",
     "png"
    ],
-   "xError": 0.03,
-   "yError": 0.037,
-   "boxError": 0.102,
-   "xTicks": "bare:0",
-   "yTicks": "bare:0",
-   "xCalib": "ok high linear 0.11%",
-   "yCalib": "low -",
+   "xError": 0.259,
+   "yError": 0.302,
+   "boxError": 0.398,
+   "xTicks": "10/10M 36/36m 46/46det",
+   "yTicks": "9/9M 32/32m 41/41det",
+   "xCalib": "ok high linear 0.05%",
+   "yCalib": "ok high linear 0.08%",
    "known": ""
   }
  }

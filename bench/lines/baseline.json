@@ -1,15 +1,15 @@
 {
  "overall": {
   "traces": 220,
-  "kindAccuracy": 0.9591,
+  "kindAccuracy": 0.9682,
   "coverage": 0.9295,
   "medianError": 0.0268,
   "p95Error": 0.9016,
   "wrongRate": 0.0229,
   "cornerRecall": 0.5705,
-  "markerRecall": 0.8016,
-  "markerPrecision": 0.8116,
-  "wrongGroupRate": 0.0702,
+  "markerRecall": 0.8147,
+  "markerPrecision": 0.8136,
+  "wrongGroupRate": 0.0694,
   "styleAccuracy": 0.9657,
   "meanMs": 0
  },
@@ -44,15 +44,15 @@
   },
   "color:black": {
    "traces": 34,
-   "kindAccuracy": 0.8529,
+   "kindAccuracy": 0.9118,
    "coverage": 0.9096,
    "medianError": 0.0161,
    "p95Error": 0.5153,
    "wrongRate": 0.05,
    "cornerRecall": 0.4719,
-   "markerRecall": 0.5962,
-   "markerPrecision": 0.7323,
-   "wrongGroupRate": 0.1732,
+   "markerRecall": 0.6558,
+   "markerPrecision": 0.7481,
+   "wrongGroupRate": 0.163,
    "styleAccuracy": 0.95,
    "meanMs": 0
   },
@@ -128,14 +128,14 @@
   },
   "errorbars": {
    "traces": 2,
-   "kindAccuracy": 0,
+   "kindAccuracy": 1,
    "coverage": null,
    "medianError": null,
    "p95Error": null,
    "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": 0,
-   "markerPrecision": 0,
+   "markerRecall": 1,
+   "markerPrecision": 1,
    "wrongGroupRate": 0,
    "styleAccuracy": null,
    "meanMs": 0
@@ -170,14 +170,14 @@
   },
   "find-points": {
    "traces": 2,
-   "kindAccuracy": 0,
+   "kindAccuracy": 1,
    "coverage": null,
    "medianError": null,
    "p95Error": null,
    "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": 0,
-   "markerPrecision": 0,
+   "markerRecall": 1,
+   "markerPrecision": 1,
    "wrongGroupRate": 0,
    "styleAccuracy": null,
    "meanMs": 0
@@ -322,20 +322,6 @@
    "styleAccuracy": 0.9841,
    "meanMs": 0
   },
-  "low-dpi": {
-   "traces": 2,
-   "kindAccuracy": 0,
-   "coverage": null,
-   "medianError": null,
-   "p95Error": null,
-   "wrongRate": null,
-   "cornerRecall": null,
-   "markerRecall": 0,
-   "markerPrecision": 0,
-   "wrongGroupRate": 0,
-   "styleAccuracy": null,
-   "meanMs": 0
-  },
   "lw:thick": {
    "traces": 140,
    "kindAccuracy": 1,
@@ -450,15 +436,15 @@
   },
   "png": {
    "traces": 151,
-   "kindAccuracy": 0.9603,
+   "kindAccuracy": 0.9735,
    "coverage": 0.9575,
    "medianError": 0.0191,
    "p95Error": 0.8364,
    "wrongRate": 0.0168,
    "cornerRecall": 0.5654,
-   "markerRecall": 0.814,
-   "markerPrecision": 0.797,
-   "wrongGroupRate": 0.0569,
+   "markerRecall": 0.8327,
+   "markerPrecision": 0.8,
+   "wrongGroupRate": 0.0561,
    "styleAccuracy": 0.9664,
    "meanMs": 0
   },
@@ -478,14 +464,14 @@
   },
   "real": {
    "traces": 10,
-   "kindAccuracy": 0.8,
+   "kindAccuracy": 1,
    "coverage": 0.87,
    "medianError": 0.122,
    "p95Error": 4.5455,
    "wrongRate": 0.125,
    "cornerRecall": null,
-   "markerRecall": 0,
-   "markerPrecision": 0,
+   "markerRecall": 1,
+   "markerPrecision": 1,
    "wrongGroupRate": 0,
    "styleAccuracy": 0.75,
    "meanMs": 0
@@ -688,15 +674,15 @@
   },
   "series:scatter": {
    "traces": 45,
-   "kindAccuracy": 0.8,
+   "kindAccuracy": 0.8444,
    "coverage": null,
    "medianError": null,
    "p95Error": null,
    "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": 0.8016,
-   "markerPrecision": 0.8116,
-   "wrongGroupRate": 0.0702,
+   "markerRecall": 0.8147,
+   "markerPrecision": 0.8136,
+   "wrongGroupRate": 0.0694,
    "styleAccuracy": null,
    "meanMs": 0
   },
@@ -796,6 +782,20 @@
    "markerPrecision": 0.9213,
    "wrongGroupRate": 0.0079,
    "styleAccuracy": 1,
+   "meanMs": 0
+  },
+  "two-colours": {
+   "traces": 2,
+   "kindAccuracy": 1,
+   "coverage": null,
+   "medianError": null,
+   "p95Error": null,
+   "wrongRate": null,
+   "cornerRecall": null,
+   "markerRecall": 1,
+   "markerPrecision": 1,
+   "wrongGroupRate": 0,
+   "styleAccuracy": null,
    "meanMs": 0
   }
  },
@@ -2960,24 +2960,24 @@
    "points": 25,
    "style": "dashed"
   },
-  "scatter-filled-open-kim/0:6X_Accumulation (filled)": {
-   "kind": "curve",
+  "scatter-errorbars-glowa/0:1 Fx (oxygen), red circles": {
+   "kind": "markers",
    "coverage": null,
    "medianError": null,
    "wrong": false,
    "corners": "",
-   "markers": "0/5 of 0",
-   "points": 25,
+   "markers": "4/4 of 4",
+   "points": 4,
    "style": ""
   },
-  "scatter-filled-open-kim/1:6X_Normal (open)": {
-   "kind": "curve",
+  "scatter-errorbars-glowa/1:2 Fx (oxygen), blue squares": {
+   "kind": "markers",
    "coverage": null,
    "medianError": null,
    "wrong": false,
    "corners": "",
-   "markers": "0/5 of 0",
-   "points": 24,
+   "markers": "4/4 of 4",
+   "points": 4,
    "style": ""
   },
   "synthetic-linear/line": {
