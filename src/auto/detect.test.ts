@@ -1,13 +1,13 @@
 /**
  * Axis detection on synthetic RGBA images drawn here with exact, known geometry (antialiased by
- * supersampling), plus the real Kaplan–Meier figure. The corpus-wide numbers live in
+ * supersampling), plus a real Kaplan–Meier figure. The corpus-wide numbers live in
  * `npm run bench:axes`; these tests pin the behaviours the detector must never lose.
  */
 
 import { readFileSync } from 'node:fs';
-import jpeg from 'jpeg-js';
+import pngjs from 'pngjs';
 import { describe, expect, it } from 'vitest';
-import truth from '../../fixtures/real/km-pericardial-effusion.json';
+import truth from '../../fixtures/real/km-pericardial-pao.json';
 import { detectAxes } from './detect.ts';
 import type { AxisDetection, Point, RgbaImage } from './types.ts';
 
@@ -292,17 +292,17 @@ describe('detectAxes on drawn charts', () => {
   });
 });
 
-describe('detectAxes on the real Kaplan–Meier figure', () => {
-  const buf = readFileSync(new URL('../../fixtures/real/km-pericardial-effusion.jpg', import.meta.url));
-  const img = jpeg.decode(buf, { useTArray: true, formatAsRGBA: true });
+describe('detectAxes on the real Kaplan–Meier figure (km-pericardial-pao, provenance in fixtures/real/PROVENANCE.md)', () => {
+  const buf = readFileSync(new URL('../../fixtures/real/km-pericardial-pao.png', import.meta.url));
+  const img = pngjs.PNG.sync.read(buf);
   const det = detectAxes({ width: img.width, height: img.height, data: img.data });
 
-  it('finds both axis lines despite the darker rotated title and caption', () => {
+  it('finds both axis lines despite the rotated title, the axis title and the risk table below', () => {
     expect(Math.abs((det.xAxis?.line.offset ?? 0) - truth.xAxis.axisLineRow)).toBeLessThan(0.5);
     expect(Math.abs((det.yAxis?.line.offset ?? 0) - truth.yAxis.axisLineCol)).toBeLessThan(0.5);
   });
 
-  it('finds the faint tick marks on both axes at the labelled positions', () => {
+  it('finds the tick marks on both axes at the labelled positions, none at the zero lines inside', () => {
     const xs = det.xAxis?.ticks.ticks.map((t) => t.point.x) ?? [];
     const ys = det.yAxis?.ticks.ticks.map((t) => t.point.y) ?? [];
     expect(xs).toHaveLength(truth.xAxis.ticks.length);

@@ -9,21 +9,21 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { clickImage, fixturePath, openApp, placeByHand, readAutosave, tableRows } from './helpers.ts';
 
-/** The real KM figure (850 × 666) calibrated from its labelled ticks: x 0–100, y 0–1. */
+/** The real KM figure (Ikawa fig. 1a, 967 × 725) calibrated from its labelled ticks: x 0–84, y 0–1. */
 function project(lines: number, pointsPerLine: number) {
-  const dataUrl = `data:image/png;base64,${readFileSync(fixturePath('real/km-cns-lymphoma.png')).toString('base64')}`;
+  const dataUrl = `data:image/png;base64,${readFileSync(fixturePath('real/km-sas-frame-ikawa.png')).toString('base64')}`;
   const colors = ['#d6336c', '#1971c2', '#2f9e44', '#f08c00', '#7048e8', '#0c8599', '#e8590c'];
   return {
     version: 2,
-    image: { dataUrl, width: 850, height: 666, name: 'km-cns-lymphoma.png' },
+    image: { dataUrl, width: 967, height: 725, name: 'km-sas-frame-ikawa.png' },
     calibration: {
       xScale: 'linear',
       yScale: 'linear',
       refs: {
-        X1: { px: 128, py: 455, value: 0 },
-        X2: { px: 815, py: 455, value: 100 },
-        Y1: { px: 90.5, py: 401, value: 0 },
-        Y2: { px: 90.5, py: 78, value: 1 },
+        X1: { px: 215.08, py: 575.99, value: 0 },
+        X2: { px: 922.73, py: 575.99, value: 84 },
+        Y1: { px: 187.15, py: 564.52, value: 0 },
+        Y2: { px: 187.15, py: 61.38, value: 1 },
       },
     },
     datasets: Array.from({ length: lines }, (_, l) => ({

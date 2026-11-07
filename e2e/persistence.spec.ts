@@ -143,7 +143,7 @@ test('autosave restores everything after a reload; a saved project file reopens'
     })
     .toBe('Effusion:2,Other:1');
   await page.reload();
-  await expect(page.getByTestId('notice')).toContainText('Restored km-pericardial-effusion.jpg from your last session');
+  await expect(page.getByTestId('notice')).toContainText('Restored km-pericardial-pao.png from your last session');
   // Restored into the Data step, with the active line and every value as before.
   await expect(page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: /Data/ })).toHaveAttribute('aria-current', 'step');
   await expect(page.getByLabel('Make Other active')).toBeChecked();
@@ -157,20 +157,20 @@ test('autosave restores everything after a reload; a saved project file reopens'
 
   // Save project → a .json with the image embedded, version 2.
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Save project' }).click()]);
-  expect(download.suggestedFilename()).toBe('km-pericardial-effusion-project.json');
+  expect(download.suggestedFilename()).toBe('km-pericardial-pao-project.json');
   const file = test.info().outputPath(download.suggestedFilename());
   await download.saveAs(file);
   const saved = JSON.parse(readFileSync(file, 'utf8')) as SavedProject;
   expect(saved.version).toBe(2);
-  expect(saved.image).toMatchObject({ name: 'km-pericardial-effusion.jpg', width: 709, height: 424 });
-  expect(saved.image.dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+  expect(saved.image).toMatchObject({ name: 'km-pericardial-pao.png', width: 710, height: 691 });
+  expect(saved.image.dataUrl).toMatch(/^data:image\/png;base64,/);
   expect(saved.datasets.map((d) => d.name)).toEqual(['Effusion', 'Other']);
 
   // Replace it with another image, then open the saved file: everything comes back.
   await loadViaPicker(page, 'synthetic/synthetic-linear.png');
   await expect(page.getByTestId('table-Effusion')).toHaveCount(0);
   await page.getByTestId('project-input').setInputFiles(file);
-  await expect(page.getByTestId('notice')).toContainText('Opened km-pericardial-effusion-project.json');
+  await expect(page.getByTestId('notice')).toContainText('Opened km-pericardial-pao-project.json');
   await page.getByLabel('Pixel columns').check();
   expect(await tableRows(page, 'Effusion')).toEqual(effusion);
   expect(await tableRows(page, 'Other')).toEqual(other);

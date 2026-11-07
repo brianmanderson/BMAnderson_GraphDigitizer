@@ -123,7 +123,7 @@ Re-calibrating or changing a scale type must update the table instantly without 
 
 **Pixel convention (decided in Phase 2).** Integer coordinates are pixel *centres*: pixel column
 `i` spans `[i − ½, i + ½)`, so the image's outer edges are at −½ and `width − ½`. This matches
-how `fixtures/real/*.json` labels pixels (column 134 = the axis line's column) and makes "the
+how `fixtures/real/*.json` labels pixels (an axis line drawn on one pixel column is labelled with that integer column) and makes "the
 pixel under the cursor" `Math.round(px)` for the Phase 3 loupe. A uniform shift would cancel in
 the affine fit anyway; the convention only matters for display and fixtures.
 
@@ -407,12 +407,25 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   charts 62.5 % recall), the tick at a corner (inside the other axis), log axes with two decades
   and invisible minors (no ticks), box corners at free axis ends off by half the line width when
   lines have projecting caps.
-- **KM label correction**: pixel analysis in Phase 4 found very faint 3-px x tick marks (grey
-  ~170–200) at every label of `fixtures/real/km-pericardial-effusion.jpg`, which had been labelled
+- **Release corpus (2026-11-07)**: the two real figures of Phase 4 and the scatter of Phase 6
+  were not CC BY and were replaced before the public release (`fixtures/real/PROVENANCE.md`:
+  sources, licences, crop boxes, attribution; git history kept). The real figures are now
+  `km-pericardial-pao` (Pao 2020 fig. 1c: L-shaped black axes with the zero lines *inside*
+  them, outward ticks, grey + black series, number-at-risk table under the axis title),
+  `km-sas-frame-ikawa` (Ikawa 2022 fig. 1a: SAS closed grey frame not at zero, four
+  blue/red solid/dashed series, risk table under the axis title), `km-same-colour-styles`
+  (Takata 2018 fig. 1) and `scatter-filled-open-kim` (Kim 2020 fig. 2a: Excel-style frame with
+  *no tick marks*, labels only, pixel-doubled render). Detection on them: every axis and box
+  found (line error ≤ 0.07 px; Pao's free-ended box 1.0 px), 4/4 + 5/5, 8/8 + 11/11 and 5/5 + 5/5
+  ticks, no false ticks, none on the Kim figure's bare axes (`bare` 0). Overall (64 images):
+  axes 95.3 %, tick recall 85.5 %, precision 98.6 % (Takata's unlabelled 10-month minors count
+  against precision, as before). Rebaselined for the corpus change, not for a detector change.
+- **KM label correction** (history): pixel analysis in Phase 4 found very faint 3-px x tick marks (grey
+  ~170–200) at every label of the then-fixture `km-pericardial-effusion.jpg` (removed in the release corpus), which had been labelled
   "no x tick marks"; the label now says `tickMarks: true` (positions unchanged, within 1 px).
   The labels-only case is covered by five synthetic charts (`x-no-tickmarks`).
 - **"Axis line" means the line the tick marks hang on**, not where the value 0 is. In a closed
-  frame whose zero sits inside it (`km-cns-lymphoma`), the detected X/Y axes are the bottom and
+  frame whose zero sits inside it (`km-sas-frame-ikawa`), the detected X/Y axes are the bottom and
   left frame lines; that is correct, and Phase 5 must calibrate from tick positions + labels,
   never assume the axis line is value 0. Labels encode this the same way (`axisLineRow/Col`).
 
@@ -441,7 +454,7 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   half the text height; Y words grow from the axis side, and a much taller glyph sticking out
   above and below (an axis-title letter) starts a new word. **Matching**: with ≥ 2 major ticks,
   X = the row with most words centred on ticks; Y = per tick the axis-nearest word of the level
-  row, within 3 text heights of the axis (the CNS number-at-risk row labels fail both tests).
+  row, within 3 text heights of the axis (the number-at-risk tables of the Pao and Ikawa figures fail these tests).
   Without tick marks: the X row nearest the axis with ≥ 3 words, or the right-aligned Y words;
   positions are then label centres (looser tolerance).
 - **OCR**: crops are the word box upscaled bilinearly to a 28 px body height (best of 24/28/32/40
@@ -507,6 +520,15 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   (no axis lines), low-DPI and JPEG labels that OCR misreads (dpi:low 44 % correct), log axes
   whose exponents are 2–4 px tall (x:log10 50 %), date axes labelled with day numbers or without a
   year, offset notes too small to read, axes whose ticks were not detected.
+- **Release corpus (2026-11-07)**: with the replaced real figures (see Axis detection → Release
+  corpus) 65.6 % of axes correct, 0 wrong, 48.4 % end to end; the three KM figures fully
+  correct at high confidence (Pao 0.03 / 0.02 % held-out error, Ikawa 0.04 / 0.05 % with one
+  misread "0.8" tolerated, Takata as before), every known value within 0.0009 (Pao plateaus
+  0.680 / 0.574 / 0.479 / 0.148 / 0.063 / 0.029 / 0 → 0.6803 / 0.5737 / 0.4790 / 0.1481 / 0.0627
+  / 0.0291 / 0.0009; Ikawa 0.105 / 0.075 / 0.299 / 0.279 / 0.228 / 0.196 / 0.096 / 0.059 / 0.337
+  → 0.1047 / 0.0744 / 0.2991 / 0.2785 / 0.2277 / 0.1960 / 0.0963 / 0.0590 / 0.3374). The Kim
+  scatter's x axis (labels only, no tick marks) is read at high confidence (0.11 %); its y axis
+  is **declined** (no labels matched without ticks) — a known failure, not a wrong suggestion.
 
 ## Auto-trace (line tracing engine)
 
@@ -542,7 +564,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   JPEG chroma subsampling washes out. Pixels of another colour are marked as possible occluders.
 - **Region** (`region.ts`): the plot box (or image). An axis/frame line along a box edge is
   removed only when it has the series' colour (a black curve on black axes); a coloured curve may
-  run along a black axis (the pericardial KM curve sits on y = 0) and keeps those pixels.
+  run along a black axis (a KM curve that sits on y = 0 along the x axis) and keeps those pixels.
 - **Curves** (`curve.ts`): column-by-column walk from the seed's run (vertical stretch of "on"
   pixels), right, then left primed with the right walk's columns (slope known from the start),
   then right again primed with the left. Next run = touching (8-connected) or within a window of
@@ -666,14 +688,22 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
-  Real figures (`bench/lines/real/manifest.json`): the three KM fixtures' `knownValues` plateaus as
-  partial truth (`km-same-colour-styles.jpg` = Takata fig. 1: black solid TFT and dashed FFT,
-  plateaus measured to ±1 px, line styles in the label's `styles`), `scatter-filled-open-errorbars.png`
-  (`Graph.png`: black filled vs open circles with error bars, caps, a dashed reference line,
-  overlapping pairs, legend; full marker truth per group in the label's `markerSeries`, centres
-  from circle fits to the outer edge, ±0.5 px; category `find-points`), and
+  Real figures (`bench/lines/real/manifest.json`; all CC BY, provenance in
+  `fixtures/real/PROVENANCE.md`): the three KM fixtures' `knownValues` plateaus as partial truth
+  (`km-pericardial-pao.png` = Pao 2020 fig. 1c: black and grey series, 3 + 4 plateaus;
+  `km-sas-frame-ikawa.png` = Ikawa 2022 fig. 1a: blue and red, each solid and dashed, 9 plateaus
+  of four series, line styles in the label's `styles`; `km-same-colour-styles.jpg` = Takata 2018
+  fig. 1: black solid TFT and dashed FFT; all plateaus measured to ±1 px),
+  `scatter-filled-open-kim.png` (Kim 2020 fig. 2a: black filled vs open circles of ~8 px in a
+  pixel-doubled render, joined by solid/dashed lines, small error bars, a red reference line,
+  legend; full marker truth per group in the label's `markerSeries`, centres from
+  darkness-weighted centroids of the marker cores, ±1 px, the two groups coinciding at 1, 5 and
+  10 Gy; category `find-points`), and
   `fixtures/synthetic/synthetic-linear.png` (Chromium-rendered polyline with
   pink markers on its five data points; full truth from its `points`, category `fixture`).
+  The previous real figures (a CC BY-NC KM figure, a subscription SAS KM figure and the
+  subscription `Graph.png` scatter) were removed for licensing on 2026-11-07; the Phase 6
+  numbers quoted below for them are history.
   Corner recall also counts the data points of kink polylines (every vertex is a marker). The plot box passed is `detectAxes`'s (once per image), mode `auto`, 25 points.
   **Metrics**: kind accuracy; coverage (% of the true x-range traced within 3 px); median / p95
   centreline error of traced points; wrong-series rate (> 20 % of a trace's points nearer another
@@ -729,10 +759,27 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   the blob match or becomes a curve; filled circles and filled squares of ≲ 13 px in JPEG are
   told apart only partly (their corners are a pixel or two); clumps of 3+ overlapping markers of
   one kind lose some; a filled marker half hidden under an open one is found ~3 px off centre, or
-  only from some seeds when little more than a crescent of it shows (`Graph.png` x ≈ 52); an open
+  only from some seeds when little more than a crescent of it shows (the former `Graph.png` fixture, x ≈ 52); an open
   marker merged with a filled one is found ~2 px toward it, and a click on its ring where the two
   merge (not inside it) may cut the filled shape and return that group; a
   marker of the axes' colour sitting on an axis or frame line is removed with it (`l85/s0`).
+- **Release corpus (2026-11-07; 220 traces)**: kind 95.9 %, coverage 92.9 %, median error
+  0.03 px / p95 0.90 px, wrong series 2.3 %, corner recall 57.0 %, markers 80.2 % / 81.2 %,
+  style 96.6 %; the synthetic corpus is unchanged (its numbers moved only by the real figures
+  leaving and joining their categories). Real figures: Pao black and grey series 100 % / 99.6 %
+  coverage, error 0.00 px, styles right; Ikawa blue solid 100 % and red solid 94.6 % (error
+  0.3 px, labels ±1 px), red dashed 100 % (error 0.14 px); Takata as before (100 %, 0.03–0.05
+  px). **Known failures added with this corpus** (documented, not fixed — none has a general
+  fix): (1) Ikawa's blue dashed series runs 4 px under the blue solid one with no white between
+  them, so its dashes belong to the solid stroke and the dashed trace ends after 1.8 % of its
+  range, following the solid (the same-colour merged-stretch failure above; `wrong` for `km`
+  12.5 %); (2) Ikawa's red dashed series has SAS short dashes (~6 px on a 3-px line, gap ~6 px):
+  pieces no longer than 2.5 line widths read as *dotted*, so its style is wrong (`km` style
+  75 %) while the trace itself is complete; (3) the Kim scatter's ~8 px markers are no thicker
+  than the solid/dashed/red lines through them, so no marker template is cut and mode `auto`
+  traces a curve instead (kind 0/2, markers 0/5 for both groups; `find-points` category 0 %);
+  in markers mode ("Find points") the clicked marker and a few others are found, the legend
+  samples among them — and the two groups cannot be separated at all where they coincide.
 
 ## Auto-trace — UI
 
@@ -803,6 +850,18 @@ possible later phase.
 beside each image). Use them in e2e tests (Phase 2+), the axis benchmark (Phase 4+, listed in
 `bench/axes/real/manifest.json`) and the line-tracing benchmark (their `knownValues` plateaus,
 listed in `bench/lines/real/manifest.json`). Label from measured pixels, including whether tick marks exist.
+
+**Licensing (decided 2026-11-07)**: only figures published under CC BY may be in the public
+repository, each with its source, DOI, PMC id, figure/panel and crop box, licence wording and
+URL, attribution, date obtained and labeller recorded in
+[`fixtures/real/PROVENANCE.md`](../fixtures/real/PROVENANCE.md). The current four:
+`km-pericardial-pao.png` (Pao 2020 fig. 1c, KM-style cumulative incidence, black + grey, zero
+lines inside L-shaped axes), `km-sas-frame-ikawa.png` (Ikawa 2022 fig. 1a, SAS closed frame not
+at zero, four series in two colours × two styles, censor ticks, risk table below),
+`km-same-colour-styles.jpg` (Takata 2018 fig. 1, black solid vs dashed) and
+`scatter-filled-open-kim.png` (Kim 2020 fig. 2a, filled vs open circles with error bars, labels
+without tick marks). Three earlier figures (CC BY-NC or subscription) were removed from the
+tree on that date — listed in the same file — without rewriting git history.
 
 `fixtures/synthetic/` holds generated charts with exact geometry (linear scatter; date × log10)
 and their ground truth, written by `npm run fixtures:synthetic`

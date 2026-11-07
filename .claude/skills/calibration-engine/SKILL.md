@@ -57,8 +57,9 @@ Add it to `SCALE_TYPES`, `SCALE_LABELS`, `DOMAIN_RULES`, `isInDomain`, `forward`
   shear, non-square, flipped x/y, transposed); all 25 scale pairs round-trip; log10 ≡ ln;
   every error kind; date axes across DST changes and leap days.
 - `projectFile.test.ts` — current/v1 files, newer-version refusal, every damaged-field message.
-- `fixture-km.test.ts` — the real Kaplan–Meier figure in `fixtures/real/`: other ticks within
-  1% of axis range, plateau row 295 ≈ 0.162.
+- `fixture-km.test.ts` — the real Kaplan–Meier figure in `fixtures/real/` (`km-pericardial-pao`,
+  zero lines inside the axes): other ticks within 1% of axis range, plateau row 186 ≈ 0.680, the
+  data origin maps back to the labelled 0 ticks (not the axis-line corner).
 
 Tolerances are tight on purpose (1e-9 relative values, 1e-6 px). If one fails, the engine is
 wrong — find the bug; do not loosen the tolerance.
