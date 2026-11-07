@@ -104,10 +104,14 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   hand call `placeByHand(page)` (e2e/helpers.ts) after entering Data or adding a line;
   `e2e/auto-trace.spec.ts` guards the default.
 
-## Crop (Image step)
+## Crop (toolbar and Image step)
 
 - Crop mode is App state `{ of: doc.image, rect }` tagged with the image like `AutoState` (never
   in `DocState`, the autosave or the prefs); `goStep`, `replaceDoc`, Esc and Cancel clear it.
+  Both "Crop…" buttons (toolbar `File` group, beside Open image…; the Image step) call
+  `toggleCrop`, which enters crop mode on the Image step (`goStep('image')` first when elsewhere,
+  then `setCrop`) or leaves it when already in it. Keep the toolbar one: loading an image moves
+  straight to Axes, so the Image step's button alone is never seen.
   Workspace gets `crop={ rect, onRect }` and turns a left-drag into `onRect(cropFromDrag(…))`
   (`src/ui/crop.ts`: every pixel the drag touched, whole px, clamped, ≥ 2 × 2); the panel's
   fields (`CropPanel.tsx`) go through `setCropField`, starting from `fullCrop` until a rectangle
@@ -141,8 +145,10 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `Edit` (`Move points` toggle, `aria-pressed`, disabled outside Data). Shortcuts (`M`, `Z`, `S`)
   are ignored while a form control has focus — specs click the button or blur first.
 - Crop: `image-current` (the "Current: name, W × H px" line), `crop-panel`, `crop-left`, `crop-top`,
-  `crop-width`, `crop-height`, `crop-size`, `crop-apply`, `crop-cancel`; the "Crop…" button has
-  `aria-pressed`. `e2e/crop.spec.ts` drives the crop through the fields and with a mouse drag.
+  `crop-width`, `crop-height`, `crop-size`, `crop-apply`, `crop-cancel`; both "Crop…" buttons
+  carry `aria-pressed` — scope a locator to the toolbar group `File` or the Image step region
+  (`section[aria-label="Image"]`), or it matches two. `e2e/crop.spec.ts` drives the crop through
+  the fields, with a mouse drag, and from the toolbar on the Axes and Data steps.
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,

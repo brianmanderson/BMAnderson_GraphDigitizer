@@ -14,8 +14,9 @@ implementation — do not copy their branding, layout, or assets.
 ## Core user workflow
 
 1. **Load image** — file picker, drag-and-drop, or paste from clipboard (PNG/JPG/GIF/WebP/BMP).
-   A figure with several panels can be **cropped** to the one to digitize (Image step, "Crop…";
-   see Crop under Digitizing UI) — at any point of the work, since refs and points move with it.
+   A figure with several panels can be **cropped** to the one to digitize ("Crop…" in the toolbar
+   or in the Image step; see Crop under Digitizing UI) — at any point of the work, since refs and
+   points move with it.
 2. **Choose axis scales** — independently for X and Y: `linear`, `log10`, `ln`, `reciprocal`,
    `date/time`.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
@@ -157,9 +158,13 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   browser decodes is accepted except SVG (vector input is a non-goal); others are rejected with
   a message naming the file. Loading starts a fresh document (settings are kept); since Phase 3
   it is an undo step instead of asking first (see below).
-- **Crop (decided after the Pages deploy)**: the Image step offers "Crop…" whenever an image is
-  loaded — at any stage of the work, calibrated or not — under the line "Figure with several
-  panels? Crop to the one you want." Pressing it enters *crop mode* (the button shows
+- **Crop (decided after the Pages deploy)**: "Crop…" is offered whenever an image is loaded — at
+  any stage of the work, calibrated or not — in the toolbar beside "Open image…" (on every step)
+  and in the Image step under the line "Figure with several panels? Crop to the one you want."
+  (The toolbar button was added once the feature was live: loading an image moves straight to the
+  Axes step, so a button only in the Image step was never seen.) Pressing either enters *crop
+  mode* on the Image step — the toolbar one switches to it first — and pressing either again
+  leaves it; the two buttons are one control in two places, pressed together (both show
   `aria-pressed`): a left-drag on the canvas draws the crop rectangle (whole image pixels — every
   pixel the drag touched — clamped to the image; a press-and-release under the click slop draws
   nothing; a new drag replaces it), the image outside the rectangle is dimmed (a fixed translucent
