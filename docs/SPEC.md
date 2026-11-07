@@ -414,12 +414,14 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   them, outward ticks, grey + black series, number-at-risk table under the axis title),
   `km-sas-frame-ikawa` (Ikawa 2022 fig. 1a: SAS closed grey frame not at zero, four
   blue/red solid/dashed series, risk table under the axis title), `km-same-colour-styles`
-  (Takata 2018 fig. 1) and `scatter-filled-open-kim` (Kim 2020 fig. 2a: Excel-style frame with
-  *no tick marks*, labels only, pixel-doubled render). Detection on them: every axis and box
-  found (line error ≤ 0.07 px; Pao's free-ended box 1.0 px), 4/4 + 5/5, 8/8 + 11/11 and 5/5 + 5/5
-  ticks, no false ticks, none on the Kim figure's bare axes (`bare` 0). Overall (64 images):
-  axes 95.3 %, tick recall 85.5 %, precision 98.6 % (Takata's unlabelled 10-month minors count
-  against precision, as before). Rebaselined for the corpus change, not for a detector change.
+  (Takata 2018 fig. 1) and `scatter-errorbars-glowa` (Glowa 2024 fig. 3a: closed frame with
+  outward major and minor ticks on all four sides, the corner majors hidden in the frame; the
+  panel downscaled by 2/3 to 960 px wide). Detection on them: every axis and box found (line
+  error ≤ 0.3 px; Pao's free-ended box 1.0 px), 4/4 + 5/5, 8/8 + 11/11, 5/5 + 5/5 and 10/10 +
+  9/9 majors with 36/36 + 32/32 minors, no false ticks (`bare` 0). Overall (64 images): axes
+  95.3 %, tick recall 85.9 %, minor recall 69.5 %, precision 98.7 % (Takata's unlabelled
+  10-month minors count against precision, as before). Rebaselined for the corpus change, not
+  for a detector change.
 - **KM label correction** (history): pixel analysis in Phase 4 found very faint 3-px x tick marks (grey
   ~170–200) at every label of the then-fixture `km-pericardial-effusion.jpg` (removed in the release corpus), which had been labelled
   "no x tick marks"; the label now says `tickMarks: true` (positions unchanged, within 1 px).
@@ -521,14 +523,14 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   whose exponents are 2–4 px tall (x:log10 50 %), date axes labelled with day numbers or without a
   year, offset notes too small to read, axes whose ticks were not detected.
 - **Release corpus (2026-11-07)**: with the replaced real figures (see Axis detection → Release
-  corpus) 65.6 % of axes correct, 0 wrong, 48.4 % end to end; the three KM figures fully
+  corpus) 66.4 % of axes correct, 0 wrong, 50.0 % of images end to end; the three KM figures fully
   correct at high confidence (Pao 0.03 / 0.02 % held-out error, Ikawa 0.04 / 0.05 % with one
   misread "0.8" tolerated, Takata as before), every known value within 0.0009 (Pao plateaus
   0.680 / 0.574 / 0.479 / 0.148 / 0.063 / 0.029 / 0 → 0.6803 / 0.5737 / 0.4790 / 0.1481 / 0.0627
   / 0.0291 / 0.0009; Ikawa 0.105 / 0.075 / 0.299 / 0.279 / 0.228 / 0.196 / 0.096 / 0.059 / 0.337
-  → 0.1047 / 0.0744 / 0.2991 / 0.2785 / 0.2277 / 0.1960 / 0.0963 / 0.0590 / 0.3374). The Kim
-  scatter's x axis (labels only, no tick marks) is read at high confidence (0.11 %); its y axis
-  is **declined** (no labels matched without ticks) — a known failure, not a wrong suggestion.
+  → 0.1047 / 0.0744 / 0.2991 / 0.2785 / 0.2277 / 0.1960 / 0.0963 / 0.0590 / 0.3374); the Glowa
+  scatter both axes high (0.05 / 0.08 %, all ten and nine labels read including the corner
+  majors). Every real figure is calibrated end to end.
 
 ## Auto-trace (line tracing engine)
 
@@ -694,11 +696,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   `km-sas-frame-ikawa.png` = Ikawa 2022 fig. 1a: blue and red, each solid and dashed, 9 plateaus
   of four series, line styles in the label's `styles`; `km-same-colour-styles.jpg` = Takata 2018
   fig. 1: black solid TFT and dashed FFT; all plateaus measured to ±1 px),
-  `scatter-filled-open-kim.png` (Kim 2020 fig. 2a: black filled vs open circles of ~8 px in a
-  pixel-doubled render, joined by solid/dashed lines, small error bars, a red reference line,
-  legend; full marker truth per group in the label's `markerSeries`, centres from
-  darkness-weighted centroids of the marker cores, ±1 px, the two groups coinciding at 1, 5 and
-  10 Gy; category `find-points`), and
+  `scatter-errorbars-glowa.png` (Glowa 2024 fig. 3a, downscaled by 2/3: red filled circles and
+  blue filled squares of 12–14 px with horizontal and vertical error bars, caps and fit curves
+  of their own colour, grey circles and squares of the same shapes on and under them, legend;
+  full marker truth per coloured group in the label's `markerSeries`, centres from the centroid
+  of each marker after a morphological opening removes the bars, ±0.5 px; category
+  `find-points`), and
   `fixtures/synthetic/synthetic-linear.png` (Chromium-rendered polyline with
   pink markers on its five data points; full truth from its `points`, category `fixture`).
   The previous real figures (a CC BY-NC KM figure, a subscription SAS KM figure and the
@@ -763,23 +766,25 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   marker merged with a filled one is found ~2 px toward it, and a click on its ring where the two
   merge (not inside it) may cut the filled shape and return that group; a
   marker of the axes' colour sitting on an axis or frame line is removed with it (`l85/s0`).
-- **Release corpus (2026-11-07; 220 traces)**: kind 95.9 %, coverage 92.9 %, median error
-  0.03 px / p95 0.90 px, wrong series 2.3 %, corner recall 57.0 %, markers 80.2 % / 81.2 %,
+- **Release corpus (2026-11-07; 220 traces)**: kind 96.8 %, coverage 92.9 %, median error
+  0.03 px / p95 0.90 px, wrong series 2.3 %, corner recall 57.0 %, markers 81.5 % / 81.4 %,
   style 96.6 %; the synthetic corpus is unchanged (its numbers moved only by the real figures
   leaving and joining their categories). Real figures: Pao black and grey series 100 % / 99.6 %
   coverage, error 0.00 px, styles right; Ikawa blue solid 100 % and red solid 94.6 % (error
   0.3 px, labels ±1 px), red dashed 100 % (error 0.14 px); Takata as before (100 %, 0.03–0.05
-  px). **Known failures added with this corpus** (documented, not fixed — none has a general
-  fix): (1) Ikawa's blue dashed series runs 4 px under the blue solid one with no white between
-  them, so its dashes belong to the solid stroke and the dashed trace ends after 1.8 % of its
-  range, following the solid (the same-colour merged-stretch failure above; `wrong` for `km`
-  12.5 %); (2) Ikawa's red dashed series has SAS short dashes (~6 px on a 3-px line, gap ~6 px):
-  pieces no longer than 2.5 line widths read as *dotted*, so its style is wrong (`km` style
-  75 %) while the trace itself is complete; (3) the Kim scatter's ~8 px markers are no thicker
-  than the solid/dashed/red lines through them, so no marker template is cut and mode `auto`
-  traces a curve instead (kind 0/2, markers 0/5 for both groups; `find-points` category 0 %);
-  in markers mode ("Find points") the clicked marker and a few others are found, the legend
-  samples among them — and the two groups cannot be separated at all where they coincide.
+  px); the Glowa scatter 4/4 red circles and 4/4 blue squares from the 141 keV/µm seeds, no
+  grey marker and no legend sample among them (recall and precision 100 %; from the 26 keV/µm
+  red seed the circle half hidden under a grey one at 66 is missed, 3/4). **Known failures
+  added with this corpus** (documented, not fixed — none has a general fix): (1) Ikawa's blue
+  dashed series runs 4 px under the blue solid one with no white between them, so its dashes
+  belong to the solid stroke and the dashed trace ends after 1.8 % of its range, following the
+  solid (the same-colour merged-stretch failure above; `wrong` for `km` 12.5 %); (2) Ikawa's
+  red dashed series has SAS short dashes (~6 px on a 3-px line, gap ~6 px): pieces no longer
+  than 2.5 line widths read as *dotted*, so its style is wrong (`km` style 75 %) while the
+  trace itself is complete. A pixel-doubled 8-px-marker scatter (Kim 2020 fig. 2a) was tried
+  as the find-points fixture and withdrawn: markers no thicker than the lines through them
+  give no template (0/5 markers, mode `auto` traces a curve), which is the existing "≲ 10 px
+  at low DPI" failure, not a new one.
 
 ## Auto-trace — UI
 
@@ -859,9 +864,11 @@ URL, attribution, date obtained and labeller recorded in
 lines inside L-shaped axes), `km-sas-frame-ikawa.png` (Ikawa 2022 fig. 1a, SAS closed frame not
 at zero, four series in two colours × two styles, censor ticks, risk table below),
 `km-same-colour-styles.jpg` (Takata 2018 fig. 1, black solid vs dashed) and
-`scatter-filled-open-kim.png` (Kim 2020 fig. 2a, filled vs open circles with error bars, labels
-without tick marks). Three earlier figures (CC BY-NC or subscription) were removed from the
-tree on that date — listed in the same file — without rewriting git history.
+`scatter-errorbars-glowa.png` (Glowa 2024 fig. 3a, red circles and blue squares with
+horizontal and vertical error bars, minor ticks, grey same-shape distractors; the only
+resampled fixture — downscaled by 2/3, recorded in the provenance). Three earlier figures
+(CC BY-NC or subscription) were removed from the tree on that date — listed in the same file —
+without rewriting git history.
 
 `fixtures/synthetic/` holds generated charts with exact geometry (linear scatter; date × log10)
 and their ground truth, written by `npm run fixtures:synthetic`

@@ -14,8 +14,8 @@
       "tags": ["journal", "km", "same-colour", "jpeg"]
     },
     {
-      "truth": "../../../fixtures/real/scatter-filled-open-kim.json",
-      "tags": ["journal", "scatter", "no-tickmarks", "low-dpi", "png"]
+      "truth": "../../../fixtures/real/scatter-errorbars-glowa.json",
+      "tags": ["journal", "scatter", "frame", "minor-ticks", "errorbars", "png"]
     }
   ]
 }

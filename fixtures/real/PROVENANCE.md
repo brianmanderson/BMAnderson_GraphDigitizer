@@ -68,32 +68,34 @@ top-left); crop boxes are given in the source image's pixels as `x0–x1, y0–y
 - **Labelled by**: pixel analysis in the Phase 6 Claude Code session, 2026-11-06; truth in
   `km-same-colour-styles.json` (axis lines, 5 + 5 ticks, 5 plateaus of two series, line styles).
 
-## scatter-filled-open-kim.png (915 × 690, PNG)
+## scatter-errorbars-glowa.png (960 × 674, PNG)
 
-- **Source**: Kim DW, Sung J, Son J, Shin H-B, et al. Sensitivity of radio-photoluminescence
-  glass dosimeters to accumulated doses. *PLoS ONE* 2020;15:e0234829.
-- **DOI**: 10.1371/journal.pone.0234829 — **PMC**: PMC7714242
-- **Figure / panel / crop**: Fig 2, panel **(a)** (6 MV: 6X_Accumulation filled circles with a
-  solid line, 6X_Normal open circles with a dashed line, red reference line); crop `0–915, 0–690`
-  of the publisher's figure `pone.0234829.g002.png` (1835 × 1388, four panels), whole pixels.
-  The publisher's render is pixel-doubled (every row and column repeats), so the markers are
-  about 8 px across.
-- **Licence**: CC BY 4.0 — "This is an open access article distributed under the terms of the
-  Creative Commons Attribution License, which permits unrestricted use, distribution, and
-  reproduction in any medium, provided the original author and source are credited." —
-  http://creativecommons.org/licenses/by/4.0/
-- **Attribution**: Kim DW, Sung J, Son J, Shin H-B, et al. (2020). Sensitivity of
-  radio-photoluminescence glass dosimeters to accumulated doses. PLoS ONE 15:e0234829.
-  https://doi.org/10.1371/journal.pone.0234829. CC BY 4.0. Cropped to panel (a).
-- **Obtained**: 2026-11-07 from the publisher (PLOS).
+- **Source**: Glowa C, et al. Relative biological effectiveness of oxygen ion beams in the rat
+  spinal cord: Dependence on linear energy transfer and dose and comparison with model
+  predictions. *Physics and Imaging in Radiation Oncology* 2024;30:100581.
+- **DOI**: 10.1016/j.phro.2024.100581 — **PMC**: PMC11070926
+- **Figure / panel / crop**: Fig. 3, panel **a** (RBE vs LET: red filled circles = 1 Fx oxygen,
+  blue filled squares = 2 Fx oxygen, grey circles/squares = carbon literature data, with
+  horizontal and vertical error bars and 2nd-order fits); crop `0–1440, 0–1011` of the
+  publisher's large JPEG `1-s2.0-S2405631624000514-gr3_lrg.jpg` (3066 × 2182, four panels),
+  then **downscaled by exactly 2/3 (Lanczos) to 960 × 674** so the markers are 12–14 px, a
+  journal-page size, and saved as PNG. Not a whole-pixel copy of the source: this is a derived
+  (resampled) image of the panel.
+- **Licence**: CC BY 4.0 — "This is an open access article under the CC BY license
+  (http://creativecommons.org/licenses/by/4.0/)." — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Glowa C, et al. (2024). Relative biological effectiveness of oxygen ion beams
+  in the rat spinal cord: Dependence on linear energy transfer and dose and comparison with
+  model predictions. Physics and Imaging in Radiation Oncology 30:100581.
+  https://doi.org/10.1016/j.phro.2024.100581. CC BY 4.0. Cropped to panel a and downscaled.
+- **Obtained**: 2026-11-07 from the publisher (Elsevier, ars.els-cdn.com) by the supervisor's
+  provenance trace (`evidence/corpus/scatter-date/raw/scat03/FILES.md` records the download
+  and the file's SHA-256).
 - **Labelled by**: pixel analysis (Pillow) in the release-hygiene Claude Code session,
-  2026-11-07; truth in `scatter-filled-open-kim.json` (frame lines, 6 + 7 label centres — the
-  axes have no tick marks — and 5 + 5 marker centres, ±1 px). Independent data truth exists in
-  the article's supplement (S1 Data, `pone.0234829.s001.xlsx`, sheet "Group1,2": detector
-  readings at 1, 5, 10, 50, 100 Gy; the plotted points are the means of three detectors, the
-  bars their SD): 6X_Normal 1.024, 4.928, 10.137, 48.093, 104.033 Gy; 6X_Accumulation 1.018,
-  4.950, 10.236, 49.337, 118.670 Gy. The two groups coincide at 1, 5 and 10 Gy and overlap at
-  50 Gy, so only the 100 Gy pair is resolvable in the pixels.
+  2026-11-07; truth in `scatter-errorbars-glowa.json` (frame lines, 10 + 9 major and 36 + 32
+  minor ticks, 4 + 4 marker centres ±0.5 px, legend samples). Independent data truth: the
+  article's Table 2 gives RBE ± SE at LET 26, 66, 98 and 141 keV/µm — 1 Fx 1.43, 1.71, 1.82,
+  1.56; 2 Fx 1.58, 2.01, 2.21, 1.99 — which the labelled centres reproduce through the ticks
+  within 0.01 RBE / 0.5 keV/µm. The horizontal bars' half-widths are not tabulated.
 
 ## Removed (release hygiene, 2026-11-07)
 
@@ -106,7 +108,12 @@ commits of this repository's history, which is a development record, not a redis
 | --- | --- | --- | --- |
 | `km-pericardial-effusion.jpg` + `.json` | Takeuchi et al. 2020, Fig. 1 (cumulative incidence of pericardial effusion) | CC BY-NC (non-commercial clause: not CC BY) | `km-pericardial-pao.png` |
 | `km-cns-lymphoma.png` + `.json` | Curry et al. 2023 (SAS Kaplan–Meier plot) | Subscription article, no reuse licence | `km-sas-frame-ikawa.png` |
-| `scatter-filled-open-errorbars.png` + `.json` (`Graph.png`) | Moiseenko et al. 2012 (filled vs open circles with error bars) | Subscription article, no reuse licence | `scatter-filled-open-kim.png` |
+| `scatter-filled-open-errorbars.png` + `.json` (`Graph.png`) | Moiseenko et al. 2012 (filled vs open circles with error bars) | Subscription article, no reuse licence | `scatter-errorbars-glowa.png` |
+
+A fourth CC BY candidate for the scatter case, Kim et al. 2020 (PLoS ONE, doi
+10.1371/journal.pone.0234829, Fig 2a), was tried first and withdrawn the same day — not for
+licensing, but because its pixel-doubled 8-px markers coincide at four of five points, which
+turned the find-points check into a documented failure; it is not in the tree.
 
 The benchmark baselines (`bench/axes/baseline.json`, `bench/lines/baseline.json`) were
 re-recorded for the new corpus in the same change; the previous per-figure numbers are kept in

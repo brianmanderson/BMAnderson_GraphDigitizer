@@ -4,7 +4,7 @@
     { "truth": "../../../fixtures/real/km-pericardial-pao.json", "tags": ["km", "png", "grey-series"] },
     { "truth": "../../../fixtures/real/km-sas-frame-ikawa.json", "tags": ["km", "png", "four-series", "same-colour"] },
     { "truth": "../../../fixtures/real/km-same-colour-styles.json", "tags": ["km", "jpeg", "same-colour"] },
-    { "truth": "../../../fixtures/real/scatter-filled-open-kim.json", "tags": ["png", "find-points", "errorbars", "low-dpi"] },
+    { "truth": "../../../fixtures/real/scatter-errorbars-glowa.json", "tags": ["png", "find-points", "errorbars", "two-colours"] },
     {
       "truth": "../../../fixtures/synthetic/synthetic-linear.json",
       "source": "fixture",

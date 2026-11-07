@@ -1,0 +1,539 @@
+{
+  "image": "scatter-errorbars-glowa.png",
+  "description": "RBE vs LET scatter: red filled circles (1 Fx oxygen) and blue filled squares (2 Fx oxygen), each with horizontal AND vertical error bars with caps and a 2nd-order fit curve of its own colour; grey circles and squares (carbon literature data) with grey bars and connecting lines overlap them; a legend box with one sample of each inside the frame (top left). Journal figure (Glowa et al. 2024, Phys Imaging Radiat Oncol 30:100581, Fig. 3 panel a): the panel (crop x 0-1440, y 0-1011 of the publisher's 3066x2182 JPEG) downscaled by 2/3 with Lanczos to 960x674 PNG so the markers are 12-14 px, a journal-page size. Closed box frame with outward major ticks every 20 keV/um and 0.2 RBE and minor ticks every 4 keV/um and 0.04 RBE (mirrored on the top and right frame lines); the corner majors (0, 180, 1.0, 2.6) have no mark of their own. Marker centres from the centroid of each marker's ink after a morphological opening that removes the 2-px bars and curves (+/- 0.5 px); the grey carbon markers are not labelled (two of them hide under the red circles at 66 and 99 keV/um, two merge at 16). Positions are image pixels, origin top-left, integer = pixel centre. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": {
+    "left": 122.15,
+    "right": 918.29,
+    "top": 13.43,
+    "bottom": 570.73
+  },
+  "plotBox": [
+    [
+      122.15,
+      13.43
+    ],
+    [
+      918.29,
+      13.43
+    ],
+    [
+      918.29,
+      570.73
+    ],
+    [
+      122.15,
+      570.73
+    ]
+  ],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 570.73,
+    "tickMarks": true,
+    "notes": "Bottom frame line (black, 2 px); outward major ticks (rows 573-579) at 20, 40, ..., 160 and minor ticks (rows 573-576) every 4 keV/um; x = 0 and 180 are the frame corners, carried by the frame lines. Labels 0-180 every 20 (rows 596-616), centred on the marks within 1 px.",
+    "ticks": [
+      {
+        "value": 0,
+        "px": 122.15
+      },
+      {
+        "value": 4,
+        "px": 140.12,
+        "minor": true
+      },
+      {
+        "value": 8,
+        "px": 158.06,
+        "minor": true
+      },
+      {
+        "value": 12,
+        "px": 175.71,
+        "minor": true
+      },
+      {
+        "value": 16,
+        "px": 193.43,
+        "minor": true
+      },
+      {
+        "value": 20,
+        "px": 210.59
+      },
+      {
+        "value": 24,
+        "px": 228.57,
+        "minor": true
+      },
+      {
+        "value": 28,
+        "px": 246.17,
+        "minor": true
+      },
+      {
+        "value": 32,
+        "px": 263.8,
+        "minor": true
+      },
+      {
+        "value": 36,
+        "px": 281.42,
+        "minor": true
+      },
+      {
+        "value": 40,
+        "px": 299.51
+      },
+      {
+        "value": 44,
+        "px": 317.2,
+        "minor": true
+      },
+      {
+        "value": 48,
+        "px": 335.1,
+        "minor": true
+      },
+      {
+        "value": 52,
+        "px": 352.79,
+        "minor": true
+      },
+      {
+        "value": 56,
+        "px": 370.12,
+        "minor": true
+      },
+      {
+        "value": 60,
+        "px": 387.45
+      },
+      {
+        "value": 64,
+        "px": 405.45,
+        "minor": true
+      },
+      {
+        "value": 68,
+        "px": 423.16,
+        "minor": true
+      },
+      {
+        "value": 72,
+        "px": 440.87,
+        "minor": true
+      },
+      {
+        "value": 76,
+        "px": 458.82,
+        "minor": true
+      },
+      {
+        "value": 80,
+        "px": 476.6
+      },
+      {
+        "value": 84,
+        "px": 493.84,
+        "minor": true
+      },
+      {
+        "value": 88,
+        "px": 511.21,
+        "minor": true
+      },
+      {
+        "value": 92,
+        "px": 528.9,
+        "minor": true
+      },
+      {
+        "value": 96,
+        "px": 546.83,
+        "minor": true
+      },
+      {
+        "value": 100,
+        "px": 564.6
+      },
+      {
+        "value": 104,
+        "px": 582.17,
+        "minor": true
+      },
+      {
+        "value": 108,
+        "px": 600.2,
+        "minor": true
+      },
+      {
+        "value": 112,
+        "px": 617.69,
+        "minor": true
+      },
+      {
+        "value": 116,
+        "px": 635.06,
+        "minor": true
+      },
+      {
+        "value": 120,
+        "px": 653.09
+      },
+      {
+        "value": 124,
+        "px": 670.63,
+        "minor": true
+      },
+      {
+        "value": 128,
+        "px": 688.27,
+        "minor": true
+      },
+      {
+        "value": 132,
+        "px": 706.03,
+        "minor": true
+      },
+      {
+        "value": 136,
+        "px": 723.87,
+        "minor": true
+      },
+      {
+        "value": 140,
+        "px": 741.3
+      },
+      {
+        "value": 144,
+        "px": 758.84,
+        "minor": true
+      },
+      {
+        "value": 148,
+        "px": 776.81,
+        "minor": true
+      },
+      {
+        "value": 152,
+        "px": 794.44,
+        "minor": true
+      },
+      {
+        "value": 156,
+        "px": 812.04,
+        "minor": true
+      },
+      {
+        "value": 160,
+        "px": 829.62
+      },
+      {
+        "value": 164,
+        "px": 847.56,
+        "minor": true
+      },
+      {
+        "value": 168,
+        "px": 864.97,
+        "minor": true
+      },
+      {
+        "value": 172,
+        "px": 882.63,
+        "minor": true
+      },
+      {
+        "value": 176,
+        "px": 900.26,
+        "minor": true
+      },
+      {
+        "value": 180,
+        "px": 918.29
+      }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 122.15,
+    "tickMarks": true,
+    "notes": "Left frame line (black, 2 px); outward major ticks (columns 114-120) at 1.2, 1.4, ..., 2.4 and minor ticks (columns 117-120) every 0.04 RBE; y = 1.0 and 2.6 are the frame corners. Labels 1.0-2.6 every 0.2 (columns 45-110), centred on the marks within 1 px.",
+    "ticks": [
+      {
+        "value": 1.0,
+        "py": 570.73
+      },
+      {
+        "value": 1.04,
+        "py": 556.07,
+        "minor": true
+      },
+      {
+        "value": 1.08,
+        "py": 542.41,
+        "minor": true
+      },
+      {
+        "value": 1.12,
+        "py": 528.48,
+        "minor": true
+      },
+      {
+        "value": 1.16,
+        "py": 514.51,
+        "minor": true
+      },
+      {
+        "value": 1.2,
+        "py": 500.89
+      },
+      {
+        "value": 1.24,
+        "py": 486.65,
+        "minor": true
+      },
+      {
+        "value": 1.28,
+        "py": 472.75,
+        "minor": true
+      },
+      {
+        "value": 1.32,
+        "py": 458.74,
+        "minor": true
+      },
+      {
+        "value": 1.36,
+        "py": 445.09,
+        "minor": true
+      },
+      {
+        "value": 1.4,
+        "py": 431.36
+      },
+      {
+        "value": 1.44,
+        "py": 416.93,
+        "minor": true
+      },
+      {
+        "value": 1.48,
+        "py": 403.01,
+        "minor": true
+      },
+      {
+        "value": 1.52,
+        "py": 389.37,
+        "minor": true
+      },
+      {
+        "value": 1.56,
+        "py": 375.57,
+        "minor": true
+      },
+      {
+        "value": 1.6,
+        "py": 361.7
+      },
+      {
+        "value": 1.64,
+        "py": 347.32,
+        "minor": true
+      },
+      {
+        "value": 1.68,
+        "py": 333.64,
+        "minor": true
+      },
+      {
+        "value": 1.72,
+        "py": 319.87,
+        "minor": true
+      },
+      {
+        "value": 1.76,
+        "py": 305.92,
+        "minor": true
+      },
+      {
+        "value": 1.8,
+        "py": 291.95
+      },
+      {
+        "value": 1.84,
+        "py": 278.14,
+        "minor": true
+      },
+      {
+        "value": 1.88,
+        "py": 263.87,
+        "minor": true
+      },
+      {
+        "value": 1.92,
+        "py": 250.12,
+        "minor": true
+      },
+      {
+        "value": 1.96,
+        "py": 236.16,
+        "minor": true
+      },
+      {
+        "value": 2.0,
+        "py": 222.23
+      },
+      {
+        "value": 2.04,
+        "py": 208.49,
+        "minor": true
+      },
+      {
+        "value": 2.08,
+        "py": 194.68,
+        "minor": true
+      },
+      {
+        "value": 2.12,
+        "py": 180.51,
+        "minor": true
+      },
+      {
+        "value": 2.16,
+        "py": 166.56,
+        "minor": true
+      },
+      {
+        "value": 2.2,
+        "py": 152.74
+      },
+      {
+        "value": 2.24,
+        "py": 138.89,
+        "minor": true
+      },
+      {
+        "value": 2.28,
+        "py": 124.7,
+        "minor": true
+      },
+      {
+        "value": 2.32,
+        "py": 110.76,
+        "minor": true
+      },
+      {
+        "value": 2.36,
+        "py": 96.96,
+        "minor": true
+      },
+      {
+        "value": 2.4,
+        "py": 83.08
+      },
+      {
+        "value": 2.44,
+        "py": 69.25,
+        "minor": true
+      },
+      {
+        "value": 2.48,
+        "py": 55.42,
+        "minor": true
+      },
+      {
+        "value": 2.52,
+        "py": 41.14,
+        "minor": true
+      },
+      {
+        "value": 2.56,
+        "py": 27.29,
+        "minor": true
+      },
+      {
+        "value": 2.6,
+        "py": 13.43
+      }
+    ]
+  },
+  "markerSeries": [
+    {
+      "series": "1 Fx (oxygen), red circles",
+      "markerSizePx": 14,
+      "seed": [
+        743,
+        376
+      ],
+      "markers": [
+        [
+          236.8,
+          421.35
+        ],
+        [
+          414.75,
+          324.65
+        ],
+        [
+          558.0,
+          284.5
+        ],
+        [
+          743.3,
+          376.25
+        ]
+      ]
+    },
+    {
+      "series": "2 Fx (oxygen), blue squares",
+      "markerSizePx": 13,
+      "seed": [
+        743,
+        224
+      ],
+      "markers": [
+        [
+          236.6,
+          368.0
+        ],
+        [
+          415.0,
+          218.0
+        ],
+        [
+          558.3,
+          149.9
+        ],
+        [
+          743.4,
+          224.0
+        ]
+      ]
+    }
+  ],
+  "legendSamples": [
+    [
+      175.6,
+      55.66
+    ],
+    [
+      176.0,
+      78.07
+    ],
+    [
+      175.6,
+      99.5
+    ],
+    [
+      175.5,
+      122.0
+    ]
+  ],
+  "pitfalls": [
+    "Every marker is joined to horizontal and vertical error bars with caps and to a fit curve of its own colour; the bars at 141 keV/um span 75 px.",
+    "Grey carbon markers of the same two shapes sit on and under the coloured ones: a grey circle under the red circle at 66 keV/um (half hidden) and at 99 (almost fully hidden), a grey square touching the blue square's bar at 66 and the top of the blue bar at 99; they are not labelled and must not be returned for a red or blue click.",
+    "The two coloured series are told apart by colour and shape; both have four markers at the same LETs (26, 66, 98, 141 keV/um).",
+    "The legend box holds one sample of each marker (red circle, blue square, grey circle, grey square) beside its label: not data.",
+    "Minor ticks every 4 keV/um / 0.04 RBE on all four frame lines; the major at each frame corner is hidden in the frame."
+  ]
+}

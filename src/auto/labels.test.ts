@@ -1,5 +1,5 @@
 /**
- * Finding tick labels on two real figures (no OCR here: positions, layout and the traps).
+ * Finding tick labels on three real figures (no OCR here: positions, layout and the traps).
  * End-to-end accuracy with OCR is measured by `npm run bench:axes`. Figures and provenance:
  * fixtures/real/PROVENANCE.md.
  */
@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import jpeg from 'jpeg-js';
 import pngjs from 'pngjs';
 import { describe, expect, it } from 'vitest';
+import glowa from '../../fixtures/real/scatter-errorbars-glowa.json';
 import ikawa from '../../fixtures/real/km-sas-frame-ikawa.json';
 import pao from '../../fixtures/real/km-pericardial-pao.json';
 import { darknessMap } from './darkness.ts';
@@ -100,5 +101,24 @@ describe('findLabels on km-sas-frame-ikawa (closed frame not at zero, risk table
 
   it('sees the decimal point of each Y label ("1.0" … "0.0")', () => {
     for (const l of f.y.labels) expect(l.marks.points).toHaveLength(1);
+  });
+});
+
+describe('findLabels on scatter-errorbars-glowa (closed frame with minor ticks, corner majors in the frame)', () => {
+  const f = labelsOf('scatter-errorbars-glowa.png');
+  const majors = (ticks: { minor?: boolean }[]) => ticks.filter((t) => !t.minor);
+
+  it('matches the ten X and nine Y labels to the major ticks, including the ones at the frame corners', () => {
+    const xs = majors(glowa.xAxis.ticks) as { px: number }[];
+    expect(f.x.labels).toHaveLength(xs.length);
+    f.x.labels.forEach((l, i) => expect(Math.abs(l.point.x - (xs[i]?.px ?? NaN))).toBeLessThanOrEqual(1.5));
+    const ys = [...(majors(glowa.yAxis.ticks) as { py: number }[])].sort((a, b) => a.py - b.py);
+    expect(f.y.labels).toHaveLength(ys.length);
+    f.y.labels.forEach((l, i) => expect(Math.abs(l.point.y - (ys[i]?.py ?? NaN))).toBeLessThanOrEqual(1.5));
+  });
+
+  it('sees the decimal point of each Y label ("1.0" … "2.6") and none on X', () => {
+    for (const l of f.y.labels) expect(l.marks.points).toHaveLength(1);
+    for (const l of f.x.labels) expect(l.marks.points).toEqual([]);
   });
 });
