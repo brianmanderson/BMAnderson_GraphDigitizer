@@ -41,6 +41,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  privacy:
+    name: Privacy check (no request leaves the app's origin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Builds, serves dist/ and drives a full session in headless Chromium while recording every
+      # request from the page and its workers over CDP (README → What the app fetches). Not part
+      # of `npm run verify`; the report is kept whether it passed or not.
+      - run: npm run privacy:check
+      - name: Keep the privacy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacy-report
+          path: privacy-report.json
+          if-no-files-found: ignore
+          retention-days: 90
+
   deploy:
     name: Build and deploy to GitHub Pages
     needs: verify
