@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { fixturePath, goToStep, imageToClient, openApp, tableRows } from './helpers.ts';
+import { fixturePath, goToStep, imageToClient, openApp, placeByHand, tableRows } from './helpers.ts';
 
 type Pt = { id: string; px: number; py: number };
 
@@ -37,6 +37,7 @@ async function openProject(page: Page, lines: Pt[][]) {
   const buffer = Buffer.from(JSON.stringify(project(lines)));
   await page.getByTestId('project-input').setInputFiles({ name: 'modes.json', mimeType: 'application/json', buffer });
   await expect(page.getByTestId('notice')).toContainText('Opened modes.json');
+  await placeByHand(page);
   await page.getByLabel('Pixel columns').check();
 }
 

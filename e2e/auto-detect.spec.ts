@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { clickImage, dropFile, openApp, readFixtureJson, tableRows } from './helpers.ts';
+import { clickImage, dropFile, openApp, placeByHand, readFixtureJson, tableRows } from './helpers.ts';
 
 interface RealTruth {
   knownValues: { x: [number, number]; y: number; py?: number }[];
@@ -55,6 +55,7 @@ test('auto-detect on the pericardial-effusion figure: review, accept, plateau re
   await expect(page.getByLabel('X2 value', { exact: true })).toHaveValue('120');
   await expect(page.getByLabel('X scale')).toHaveValue('linear');
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
 
   const plateau = readFixtureJson<RealTruth>('real/km-pericardial-effusion.json').knownValues[0]!;
   await clickImage(page, 400, plateau.py!);
@@ -90,12 +91,14 @@ test('auto-detect on the CNS-lymphoma figure (frame not at zero, table in the pl
   await page.getByRole('button', { name: 'Accept suggestion' }).click();
   await expect(page.getByTestId('calibration-ok')).toBeVisible();
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
 
   const known = readFixtureJson<RealTruth>('real/km-cns-lymphoma.json').knownValues;
   const blue = known[0]!;
   const red = known[3]!;
   await clickImage(page, 403, blue.py!);
   await page.getByRole('button', { name: '+ Add line' }).click();
+  await placeByHand(page);
   await clickImage(page, 403, red.py!);
   const [[, , y1]] = (await tableRows(page, 'Line 1')) as [string[]];
   const [[, , y2]] = (await tableRows(page, 'Line 2')) as [string[]];

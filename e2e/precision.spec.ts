@@ -8,6 +8,7 @@ import {
   loadViaPicker,
   loupeState,
   openApp,
+  placeByHand,
   readFixtureJson,
   tableRows,
   type SyntheticTruth,
@@ -25,6 +26,7 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   await openApp(page);
   await loadAndCalibrateKm(page);
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   await page.getByLabel('Pixel columns').check();
   const loupe = page.getByTestId('loupe');
   await expect(loupe).toHaveCount(0);

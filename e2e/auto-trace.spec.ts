@@ -2,11 +2,13 @@
  * Auto-trace in the Data step on the synthetic linear chart (a blue polyline through pink
  * markers): one click proposes ghost points, nothing is applied before Accept, Accept adds them
  * as one undo step and they then behave like ordinary points. Counts are read from the panel, not
- * hard-coded, so the spec does not depend on the tracer's exact output.
+ * hard-coded, so the spec does not depend on the tracer's exact output. Auto-trace is the Data
+ * step's default tool: it is open on entering the step and after "+ Add line".
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { calibrate, clickImage, goToStep, loadViaPicker, openApp, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
+import { calibrate, clickImage, goToStep, loadViaPicker, openApp, placeByHand, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
+import { TRACE_PROMPT } from '../src/ui/trace.ts';
 
 const truth = readFixtureJson<SyntheticTruth>('synthetic/synthetic-linear.json');
 const tick = <T extends { value: number | string }>(ticks: T[], value: number) => ticks.find((t) => t.value === value)!;
@@ -45,11 +47,48 @@ test('auto-trace needs a calibration', async ({ page }) => {
   await openApp(page);
   await loadViaPicker(page, 'synthetic/synthetic-linear.png');
   await goToStep(page, 'Data');
+  // Uncalibrated, it does not open by itself either.
+  await expect(page.getByTestId('trace-panel')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Auto-trace line' })).toBeDisabled();
+});
+
+test('auto-trace is the default tool: open on entering Data and after "+ Add line"; Discard places by hand', async ({ page }) => {
+  await loadCalibrated(page);
+  // Open (picking, into the active line) without clicking "Auto-trace line".
+  await expect(page.getByRole('button', { name: 'Auto-trace line' })).toHaveCount(0);
+  await expect(page.getByTestId('trace-panel')).toContainText('Auto-trace into Line 1');
+  await expect(page.getByTestId('trace-prompt')).toHaveText(TRACE_PROMPT);
+  await expect(page.getByTestId('data-prompt')).toContainText('Auto-trace is on');
+  // The first click picks the series: nothing is placed.
+  await clickImage(page, ON_LINE.px, ON_LINE.py);
+  await expect(page.getByTestId('trace-count')).toBeVisible();
+  expect(await tableRows(page)).toEqual([]);
+
+  // Discard: clicks place points again, and nothing reopens it.
+  await placeByHand(page);
+  await expect(page.getByTestId('data-prompt')).toContainText('Click on the chart to add a point');
+  await clickImage(page, 300, 300);
+  await expect.poll(async () => (await tableRows(page)).length).toBe(1);
+  await expect(page.getByTestId('trace-panel')).toHaveCount(0);
+
+  // "+ Add line" opens it for the new line.
+  await page.getByRole('button', { name: '+ Add line' }).click();
+  await expect(page.getByTestId('trace-panel')).toContainText('Auto-trace into Line 2');
+  await expect(page.getByTestId('trace-prompt')).toHaveText(TRACE_PROMPT);
+  await clickImage(page, ON_LINE.px, ON_LINE.py);
+  await expect(page.getByTestId('trace-count')).toBeVisible();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect(page.getByTestId('notice')).toContainText('traced points to "Line 2"');
+  // Accepting closes it; it opens again on re-entering the step.
+  await expect(page.getByTestId('trace-panel')).toHaveCount(0);
+  await goToStep(page, 'Axes');
+  await goToStep(page, 'Data');
+  await expect(page.getByTestId('trace-panel')).toContainText('Auto-trace into Line 2');
 });
 
 test('auto-trace: ghost points → discard changes nothing → accept is one undo step', async ({ page }) => {
   await loadCalibrated(page);
+  await placeByHand(page);
   // One manual point first, so the trace is appended to existing data.
   await clickImage(page, 300, 300);
   await expect.poll(async () => (await tableRows(page)).length).toBe(1);
@@ -112,6 +151,7 @@ test('auto-trace: ghost points → discard changes nothing → accept is one und
 
 test('trace into a new line: offered once the active line has points, takes the series colour', async ({ page }) => {
   await loadCalibrated(page);
+  await placeByHand(page);
   await expect(page.getByRole('button', { name: 'Trace into a new line' })).toHaveCount(0);
   await clickImage(page, 300, 300);
   const count = await traceAt(page, ON_LINE, 'Trace into a new line');
@@ -133,7 +173,7 @@ test('trace into a new line: offered once the active line has points, takes the 
 
 test('Escape cancels picking without adding a point', async ({ page }) => {
   await loadCalibrated(page);
-  await page.getByRole('button', { name: 'Auto-trace line' }).click();
+  // Picking is open by default on entering the step.
   await expect(page.getByTestId('trace-prompt')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('trace-panel')).toHaveCount(0);

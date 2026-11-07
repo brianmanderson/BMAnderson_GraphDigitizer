@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { clickImage, fixturePath, openApp, readAutosave, tableRows } from './helpers.ts';
+import { clickImage, fixturePath, openApp, placeByHand, readAutosave, tableRows } from './helpers.ts';
 
 /** The real KM figure (850 × 666) calibrated from its labelled ticks: x 0–100, y 0–1. */
 function project(lines: number, pointsPerLine: number) {
@@ -43,6 +43,7 @@ async function openProject(page: Page, lines: number, pointsPerLine: number) {
   await page.getByTestId('project-input').setInputFiles({ name: 'long-lines.json', mimeType: 'application/json', buffer });
   await expect(page.getByTestId('notice')).toContainText('Opened long-lines.json');
   await expect(page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: /Data/ })).toHaveAttribute('aria-current', 'step');
+  await placeByHand(page);
 }
 
 const lineToggle = (page: Page, name: string) => page.getByRole('button', { name: new RegExp(`^${name} \\(\\d+\\)$`) });

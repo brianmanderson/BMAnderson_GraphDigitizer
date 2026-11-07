@@ -97,6 +97,12 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   skipped, snap is off. The ghost is `traceGhostOf(doc, trace)` → `drawWorkspace({ …, trace })`.
 - Accepting = `dispatch(acceptTraceAction(…))` → `add-points` or `add-dataset` (one undo step).
   Never without the user pressing "Accept".
+- It is the Data step's **default tool**: App's `defaultTrace(doc, mode)` opens it (picking, into
+  the active line) from `goStep('data')`, `replaceDoc`, the autosave restore and `addDataset`,
+  only when the document is calibrated; DataStep's prompt then says so. Discard/Esc close it and
+  nothing reopens it until the step is entered or a line added again. Specs that place points by
+  hand call `placeByHand(page)` (e2e/helpers.ts) after entering Data or adding a line;
+  `e2e/auto-trace.spec.ts` guards the default.
 
 ## Side panel and table
 

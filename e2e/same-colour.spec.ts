@@ -7,7 +7,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { calibrate, clickImage, dropFile, goToStep, openApp, readFixtureJson, tableRows } from './helpers.ts';
+import { calibrate, clickImage, dropFile, goToStep, openApp, placeByHand, readFixtureJson, tableRows } from './helpers.ts';
 
 interface Label {
   xAxis: { axisLineRow: number; ticks: { value: number; px: number }[] };
@@ -31,6 +31,7 @@ async function loadCalibrated(page: Page) {
     Y2: { px: col, py: tick(label.yAxis.ticks, 1).py, value: '1' },
   });
   await goToStep(page, 'Data');
+  await placeByHand(page);
 }
 
 async function traceAt(page: Page, at: { px: number; py: number }, button: string) {

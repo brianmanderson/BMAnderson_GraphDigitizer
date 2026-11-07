@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { calibrate, clickImage, dropFile, imageToClient, openApp, readFixtureJson, tableRows } from './helpers.ts';
+import { calibrate, clickImage, dropFile, imageToClient, openApp, placeByHand, readFixtureJson, tableRows } from './helpers.ts';
 
 interface KmTruth {
   xAxis: { axisLineRow: number; ticks: { value: number; px: number }[] };
@@ -25,6 +25,7 @@ test('real Kaplan–Meier figure: plateau reads 16.2%, zoom and pan keep points 
     Y2: { px: col, py: tick(truth.yAxis.ticks, 1).py, value: '1' },
   });
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
 
   const plateau = truth.knownValues[0]!;
   await clickImage(page, 400, plateau.py!);

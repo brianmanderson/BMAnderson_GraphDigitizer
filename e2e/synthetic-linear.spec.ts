@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { calibrate, clickImage, loadViaPicker, openApp, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
+import { calibrate, clickImage, loadViaPicker, openApp, placeByHand, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
 
 const truth = readFixtureJson<SyntheticTruth>('synthetic/synthetic-linear.json');
 const tick = <T extends { value: number | string }>(ticks: T[], value: number) => ticks.find((t) => t.value === value)!;
@@ -33,6 +33,7 @@ test('linear chart: load → calibrate → place points → table, edit and expo
   await expect(page.getByTestId('calibration-ok')).toBeVisible();
 
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   for (const p of truth.points) await clickImage(page, p.px, p.py);
 
   const rows = await tableRows(page);
