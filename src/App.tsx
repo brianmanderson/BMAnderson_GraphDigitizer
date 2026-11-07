@@ -769,6 +769,20 @@ export function App() {
   /** A drag on the canvas in crop mode (re)draws the rectangle. */
   const onCropRect = useCallback((rect: CropRect) => setCrop((c) => (c ? { ...c, rect } : c)), []);
 
+  /**
+   * "Crop…" (toolbar and Image step): enters crop mode on the Image step — from any step, since
+   * loading an image moves straight to Axes — or leaves it when pressed again.
+   */
+  const toggleCrop = () => {
+    if (crop) {
+      setCrop(null);
+      return;
+    }
+    if (!doc || !image) return;
+    if (step !== 'image') goStep('image');
+    setCrop({ of: doc.image, rect: null });
+  };
+
   /** An edit in the crop panel: the rectangle starts from the whole image when none exists yet. */
   const onCropField = (field: CropField, value: number) => {
     if (!doc) return;
@@ -805,9 +819,19 @@ export function App() {
     <div className="app">
       <header className="toolbar">
         <h1>Graph Digitizer</h1>
-        <div className="tool-group">
+        <div className="tool-group" role="group" aria-label="File">
           <button type="button" onClick={() => fileInput.current?.click()}>
             Open image…
+          </button>
+          <button
+            type="button"
+            className="toggle"
+            aria-pressed={crop !== null}
+            disabled={!image}
+            onClick={toggleCrop}
+            title="Crop the image to one panel (opens the Image step); refs and points move with it (undoable)"
+          >
+            Crop…
           </button>
           <button type="button" onClick={() => projectInput.current?.click()} title="Open a saved project (Ctrl+O)">
             Open project…
@@ -1011,7 +1035,7 @@ export function App() {
                         className="toggle"
                         aria-pressed={crop !== null}
                         disabled={!image}
-                        onClick={() => setCrop(crop ? null : { of: doc.image, rect: null })}
+                        onClick={toggleCrop}
                         title="Crop the image to a rectangle; refs and points move with it (undoable)"
                       >
                         Crop…

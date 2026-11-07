@@ -1,6 +1,6 @@
 /**
- * Cropping the image to one panel (Image step, "Crop…"): the crop replaces the image as one undo
- * step and existing refs and points move with it (docs/SPEC.md → Crop).
+ * Cropping the image to one panel ("Crop…" in the toolbar or the Image step): the crop replaces
+ * the image as one undo step and existing refs and points move with it (docs/SPEC.md → Crop).
  */
 
 import { readFileSync } from 'node:fs';
@@ -31,7 +31,11 @@ const y100 = tick(truth.yAxis.ticks, 100).py;
 const X_TOL = 0.03;
 const Y_TOL = 0.3;
 
-const cropButton = (page: Page) => page.getByRole('button', { name: 'Crop…' });
+/** The Image step's "Crop…"; the toolbar has one too (`toolbarCrop`), so each is scoped to its container. */
+const cropButton = (page: Page) => page.getByRole('region', { name: 'Image', exact: true }).getByRole('button', { name: 'Crop…' });
+const toolbarCrop = (page: Page) => page.getByRole('group', { name: 'File' }).getByRole('button', { name: 'Crop…' });
+const stepTab = (page: Page, step: 'Image' | 'Axes' | 'Data') =>
+  page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: new RegExp(step) });
 const current = (page: Page) => page.getByTestId('image-current');
 const field = (page: Page, name: 'left' | 'top' | 'width' | 'height') => page.getByTestId(`crop-${name}`);
 const fieldValues = async (page: Page) => ({
@@ -239,4 +243,46 @@ test('a drag draws the rectangle (a new drag replaces it, a click and a pan do n
   await goToStep(page, 'Axes');
   await goToStep(page, 'Image');
   await expect(cropButton(page)).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('the toolbar Crop… opens the Image step in crop mode from any step; pressing it again cancels', async ({ page }) => {
+  await openApp(page);
+  await expect(toolbarCrop(page)).toBeDisabled();
+  await loadViaPicker(page, 'synthetic/synthetic-linear.png');
+  // Loading moves straight to Axes, where the Image step's own button is out of sight.
+  await expect(stepTab(page, 'Axes')).toHaveAttribute('aria-current', 'step');
+  await expect(cropButton(page)).toHaveCount(0);
+  await toolbarCrop(page).click();
+  await expect(stepTab(page, 'Image')).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByTestId('crop-panel')).toBeVisible();
+  await expect(toolbarCrop(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect(cropButton(page)).toHaveAttribute('aria-pressed', 'true');
+  await toolbarCrop(page).click();
+  await expect(page.getByTestId('crop-panel')).toHaveCount(0);
+  await expect(toolbarCrop(page)).toHaveAttribute('aria-pressed', 'false');
+  await expect(cropButton(page)).toHaveAttribute('aria-pressed', 'false');
+  await expect(stepTab(page, 'Image')).toHaveAttribute('aria-current', 'step');
+
+  // From the Data step of a calibrated chart: the crop applies as it does from the Image step,
+  // and the refs move with it, so the calibration survives.
+  await goToStep(page, 'Axes');
+  await calibrate(page, {
+    X1: { px: col, py: row, value: '0' },
+    X2: { px: x10, py: row, value: '10' },
+    Y1: { px: col, py: row, value: '0' },
+    Y2: { px: col, py: y100, value: '100' },
+  });
+  await goToStep(page, 'Data');
+  await toolbarCrop(page).click();
+  await expect(stepTab(page, 'Image')).toHaveAttribute('aria-current', 'step');
+  await field(page, 'left').fill('20');
+  await field(page, 'top').fill('10');
+  await expect(page.getByTestId('crop-size')).toContainText('Result: 620 × 470 px');
+  await page.getByTestId('crop-apply').click();
+  await expect(page.getByTestId('notice')).toContainText('Cropped to 620 × 470 px.');
+  await expect(page.getByTestId('notice')).not.toContainText('removed');
+  await expect(current(page)).toContainText('620 × 470 px');
+  await expect(toolbarCrop(page)).toHaveAttribute('aria-pressed', 'false');
+  await goToStep(page, 'Axes');
+  await expect(page.getByTestId('calibration-ok')).toBeVisible();
 });
