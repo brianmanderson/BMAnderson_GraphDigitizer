@@ -127,6 +127,15 @@ export async function goToStep(page: Page, step: 'Image' | 'Axes' | 'Data') {
   await page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: new RegExp(step) }).click();
 }
 
+/**
+ * Entering the Data step (and "+ Add line") opens Auto-trace by default, so a click on the chart
+ * would pick a series: close it to place points by hand.
+ */
+export async function placeByHand(page: Page) {
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(page.getByTestId('trace-panel')).toHaveCount(0);
+}
+
 /** The loupe's state from its data attributes (see Workspace.tsx). */
 export async function loupeState(page: Page) {
   return page.getByTestId('loupe').evaluate((el) => {

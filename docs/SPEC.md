@@ -20,7 +20,9 @@ implementation — do not copy their branding, layout, or assets.
    `date/time`.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
    (points with known y values), then type the value for each.
-4. **Digitize** — click to place data points (always, even beside another point); with the
+4. **Digitize** — the Data step opens with **Auto-trace line** on (again after "+ Add line"):
+   a click on a plotted series proposes its points, to accept or discard. Discarded (or Esc), a
+   click places a data point by hand (always, even beside another point); with the
    "Move points" tool on, click to select and drag to move; select one or many points (Shift+click,
    box, a whole line) + delete or nudge them together; multiple named,
    colour-coded **lines** (the UI's word for a dataset: one curve or series).
@@ -738,6 +740,13 @@ this is the UI half. The contract between them is `src/auto/trace/types.ts` (`Tr
   or markers to trace" over the canvas; the next click on the image is the seed (the loupe works
   as when placing points; snap does not apply). While a trace is open, clicks re-seed it and
   markers are not grabbed; Escape, Discard or leaving the step closes it.
+- **Default tool (decided 2026-11-06)**: "Auto-trace line" opens by itself — picking, into the
+  active line, in the session's mode — whenever the Data step is entered (the step tab, "Continue
+  to Data", or a restored or opened project that lands there) and after "+ Add line" (for the new
+  line, dropping any trace under review), provided the axes are calibrated, as for the button.
+  The Data prompt says it is on and how to leave it: Discard or Escape returns to placing by hand,
+  and nothing reopens it until the step is entered or a line is added again; accepting a trace
+  closes it as before. Uncalibrated, the step behaves as it did (the buttons stay disabled).
 - **Off the main thread**: the auto worker (`src/workers/auto.worker.ts`, message `trace`) runs
   `detectAxes` for the plot box (its four corners, or null) and then the tracer, one worker per
   run; a new seed or setting terminates the previous run. The tracer is imported only through

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { calibrate, clickImage, loadViaPicker, openApp, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
+import { calibrate, clickImage, loadViaPicker, openApp, placeByHand, readFixtureJson, tableRows, type SyntheticTruth } from './helpers.ts';
 
 const truth = readFixtureJson<SyntheticTruth>('synthetic/synthetic-date-log.json');
 const DAY = 86_400_000;
@@ -35,6 +35,7 @@ test('date X and log10 Y: dates parsed in UTC, values within tolerance', async (
   await expect(page.getByTestId('calibration-ok')).toBeVisible();
 
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   for (const p of truth.points) await clickImage(page, p.px, p.py);
 
   const rows = await tableRows(page);

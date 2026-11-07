@@ -8,6 +8,7 @@ import {
   loadAndCalibrateKm,
   loadViaPicker,
   openApp,
+  placeByHand,
   readAutosave,
   readFixtureJson,
   tableRows,
@@ -79,9 +80,11 @@ test('undo/redo covers refs, scales, points and lines; deleting and replacing of
 
   // Points and lines.
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   await clickImage(page, linear.points[0]!.px, linear.points[0]!.py);
   await clickImage(page, linear.points[1]!.px, linear.points[1]!.py);
   await page.getByRole('button', { name: '+ Add line' }).click();
+  await placeByHand(page);
   await clickImage(page, linear.points[2]!.px, linear.points[2]!.py);
   expect(await tableRows(page, 'Line 2')).toHaveLength(1);
 
@@ -109,6 +112,7 @@ test('undo/redo covers refs, scales, points and lines; deleting and replacing of
   // An Undo offer goes stale once something else changes the history.
   await page.keyboard.press('Control+z');
   await goToStep(page, 'Data');
+  await placeByHand(page);
   await page.getByRole('button', { name: 'Delete Line 2' }).click();
   await clickImage(page, 300, 300);
   await expect(notice.getByRole('button', { name: 'Undo' })).toHaveCount(0);
@@ -118,10 +122,12 @@ test('autosave restores everything after a reload; a saved project file reopens'
   await openApp(page);
   await loadAndCalibrateKm(page);
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   await clickImage(page, 400, 295);
   await clickImage(page, 300, 300);
   await page.getByLabel('Line name').fill('Effusion');
   await page.getByRole('button', { name: '+ Add line' }).click();
+  await placeByHand(page);
   await page.getByLabel('Line name').nth(1).fill('Other');
   await clickImage(page, 200, 320);
   await page.getByLabel('Pixel columns').check();
@@ -141,6 +147,8 @@ test('autosave restores everything after a reload; a saved project file reopens'
   // Restored into the Data step, with the active line and every value as before.
   await expect(page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: /Data/ })).toHaveAttribute('aria-current', 'step');
   await expect(page.getByLabel('Make Other active')).toBeChecked();
+  // Auto-trace, the Data step's default tool, is open for the restored active line.
+  await expect(page.getByTestId('trace-panel')).toContainText('Auto-trace into Other');
   await page.getByLabel('Pixel columns').check();
   expect(await tableRows(page, 'Effusion')).toEqual(effusion);
   expect(await tableRows(page, 'Other')).toEqual(other);

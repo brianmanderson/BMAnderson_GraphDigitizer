@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { calibrate, clickImage, dropFile, goToStep, openApp, readFixtureJson, tableRows } from './helpers.ts';
+import { calibrate, clickImage, dropFile, goToStep, openApp, placeByHand, readFixtureJson, tableRows } from './helpers.ts';
 import { FIND_PROMPT } from '../src/ui/trace.ts';
 
 interface Label {
@@ -42,6 +42,7 @@ async function loadCalibrated(page: Page) {
     Y2: { px: col, py: y120.py, value: '120' },
   });
   await goToStep(page, 'Data');
+  await placeByHand(page);
 }
 
 async function findAt(page: Page, at: [number, number], button: string): Promise<number> {

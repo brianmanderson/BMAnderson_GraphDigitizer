@@ -70,10 +70,21 @@ const STEPS: { id: Step; label: string }[] = [
   { id: 'data', label: 'Data' },
 ];
 
-/** The step to show for a restored or opened document: Data once the axes are calibrated. */
-function stepFor(doc: DocState): Step {
+const isCalibrated = (doc: DocState): boolean => {
   const spec = calibrationSpec(doc);
-  return spec && calibrateSpec(spec).ok ? 'data' : 'axes';
+  return !!spec && calibrateSpec(spec).ok;
+};
+
+/** The step to show for a restored or opened document: Data once the axes are calibrated. */
+const stepFor = (doc: DocState): Step => (isCalibrated(doc) ? 'data' : 'axes');
+
+/**
+ * "Auto-trace line" is the Data step's default tool: it opens by itself — picking, into the active
+ * line, in the session's mode — on entering the step and after "+ Add line", once the axes are
+ * calibrated (as for the button; SPEC → Auto-trace UI). Discard or Esc returns to placing by hand.
+ */
+function defaultTrace(doc: DocState | null, mode: TraceMode): { of: DocState['image']; state: TraceState } | null {
+  return doc && isCalibrated(doc) ? { of: doc.image, state: { status: 'picking', target: 'active', mode } } : null;
 }
 
 /** Precision-tool and edit-mode preferences, remembered per browser (not part of the project). */
@@ -274,13 +285,14 @@ export function App() {
       setChosenRef(null);
       setCrop(null);
       setStep(stepFor(next));
+      setTrace(defaultTrace(next, traceSettings.mode));
       setNotice({
         kind: 'info',
         text: replacesWork ? `${text} Undo brings back the previous work.` : text,
         ...(replacesWork && { undoRev: history.rev + 1 }),
       });
     },
-    [doc, dispatch, history.rev],
+    [doc, dispatch, history.rev, traceSettings.mode],
   );
 
   const openProject = useCallback(
@@ -330,9 +342,11 @@ export function App() {
   // Autosave: restore the last session once on start, then save after every change (debounced).
   const docRef = useRef(doc);
   const collapsedRef = useRef(collapsed);
+  const traceSettingsRef = useRef(traceSettings);
   useLayoutEffect(() => {
     docRef.current = doc;
     collapsedRef.current = collapsed;
+    traceSettingsRef.current = traceSettings;
   });
   const restoreDone = useRef(false);
   useEffect(() => {
@@ -349,6 +363,7 @@ export function App() {
         const restored = fromProject(parsed.project, active);
         historyDispatch({ type: 'reset', doc: restored });
         setStep(stepFor(restored));
+        setTrace(defaultTrace(restored, traceSettingsRef.current.mode));
         if (Array.isArray(rec?.collapsed)) setCollapsed(new Set(rec.collapsed.filter((id): id is string => typeof id === 'string')));
         const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
         setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
@@ -648,6 +663,12 @@ export function App() {
   const addDataset = () => {
     if (!doc) return;
     dispatch({ type: 'add-dataset', dataset: { id: newId(), ...nextDatasetDefaults(doc), points: [] } });
+    // The new line is the active one: Auto-trace opens for it (dropping a trace under review).
+    const trace = defaultTrace(doc, traceSettings.mode);
+    if (trace) {
+      setTrace(trace);
+      setSelection(EMPTY_SELECTION);
+    }
   };
 
   const deleteDataset = (id: string) => {
@@ -739,7 +760,7 @@ export function App() {
 
   const goStep = (s: Step) => {
     setStep(s);
-    setTrace(null);
+    setTrace(s === 'data' ? defaultTrace(doc, traceSettings.mode) : null);
     setCrop(null);
     setSelection(EMPTY_SELECTION);
     setChosenRef(null);

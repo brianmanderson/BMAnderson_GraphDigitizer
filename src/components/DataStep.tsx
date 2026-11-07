@@ -15,15 +15,22 @@ interface Props {
   onDeleteSelected: () => void;
   /** The "Move points" tool is on: clicks select and drags move instead of placing. */
   movePoints: boolean;
-  /** The Auto-trace panel's props (it is shown under the lines, beside the active one's controls). */
+  /** The Auto-trace panel's props (shown under the lines); an open trace also changes the prompt. */
   trace: Omit<ComponentProps<typeof TracePanel>, 'activeName' | 'activeHasPoints'>;
 }
 
 export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, movePoints, trace }: Props) {
   const active = doc.datasets.find((d) => d.id === doc.activeDatasetId);
+  const open = trace.trace;
   return (
     <section className="step-body" aria-label="Data">
-      {movePoints ? (
+      {open ? (
+        <p className="prompt" data-testid="data-prompt">
+          <strong>{open.mode === 'markers' ? 'Find points' : 'Auto-trace'}</strong> is on:{' '}
+          {open.mode === 'markers' ? 'click one marker to find every marker like it' : 'click a plotted series to trace it'} into{' '}
+          {open.target === 'new' ? 'a new line' : <strong>{active?.name}</strong>}. To place points by hand, discard it (<kbd>Esc</kbd>).
+        </p>
+      ) : movePoints ? (
         <p className="prompt" data-testid="data-prompt">
           <strong>Move points</strong> is on: click a point to select it (<kbd>Shift</kbd> adds), drag to move the selection,
           drag across empty space to box-select; <kbd>Delete</kbd> removes. <kbd>M</kbd> places points again.

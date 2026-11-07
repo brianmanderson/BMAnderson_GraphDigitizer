@@ -12,6 +12,7 @@ import {
   imageToClient,
   loadViaPicker,
   openApp,
+  placeByHand,
   readFixtureJson,
   tableRows,
   type SavedProject,
@@ -86,6 +87,7 @@ test('crop through the panel, then calibrate and digitize on the crop; the cropp
     Y2: { px: col - crop.left, py: y100 - crop.top, value: '100' },
   });
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   for (const p of truth.points) await clickImage(page, p.px - crop.left, p.py - crop.top);
   await page.getByLabel('Pixel columns').check();
   const rows = await tableRows(page);
@@ -126,6 +128,7 @@ test('existing refs and points move with the crop; those outside are dropped and
     Y2: { px: col, py: y100, value: '100' },
   });
   await page.getByRole('button', { name: 'Continue to Data' }).click();
+  await placeByHand(page);
   for (const p of truth.points) await clickImage(page, p.px, p.py);
   // A stray point near the right edge, outside the crop below.
   await clickImage(page, 610, 200);
