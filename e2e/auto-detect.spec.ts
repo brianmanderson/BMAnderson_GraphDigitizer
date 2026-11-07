@@ -33,11 +33,11 @@ async function autoDetect(page: Page) {
 }
 
 /** The "at (x, y) px" positions the panel prints for an axis's suggested refs (1 then 2). */
-async function refPositions(page: Page, axis: 'x' | 'y'): Promise<[number, number][]> {
+async function refPositions(page: Page, axis: 'x' | 'y'): Promise<[[number, number], [number, number]]> {
   const text = (await page.getByTestId(`auto-${axis}`).textContent()) ?? '';
   const found = [...text.matchAll(/at \((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\) px/g)].map((m) => [Number(m[1]), Number(m[2])] as [number, number]);
   if (found.length !== 2) throw new Error(`expected two ref positions in ${JSON.stringify(text)}`);
-  return found;
+  return [found[0]!, found[1]!];
 }
 
 test('auto-detect on the Pao figure (zero lines inside the axes): review, accept, plateau reads its value', async ({ page }) => {
