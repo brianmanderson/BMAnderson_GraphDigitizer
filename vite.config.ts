@@ -58,7 +58,7 @@ export default defineConfig({
   plugins: [react(), tesseractAssets()],
   worker: { format: 'es' },
   test: {
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'bench/**/*.test.ts'],
     environment: 'node',
     // A DST-observing zone, so date tests prove the engine ignores the host time zone.
     env: { TZ: 'America/New_York' },

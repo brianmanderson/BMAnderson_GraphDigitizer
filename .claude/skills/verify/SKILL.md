@@ -24,18 +24,29 @@ test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the co
   "Cannot find name 'document'" error in src/core means DOM code crept into the engine — move it
   out, don't add the DOM lib.
 - `lint` runs with `--max-warnings 0`; warnings fail the gate too.
-- `test` is `vitest run` over `src/**/*.test.ts` (engine, detector, reducer, UI helpers). Focus
-  with `npx vitest run src/core/dates.test.ts` or `-t "<name>"`.
+- `test` is `vitest run` over `src/**/*.test.ts` (engine, detector, reducer, UI helpers) and
+  `bench/**/*.test.ts` (benchmark scoring in data units, the summary writer). Focus with
+  `npx vitest run src/core/dates.test.ts` or `-t "<name>"`.
 - `bench:axes` (~8 s) runs `src/auto` — detection and auto-calibration with Tesseract.js OCR (4
   Node workers, language data from node_modules, no network) — over `bench/axes/` and exits 1 when
   any gated metric, overall or in any category, is worse than `bench/axes/baseline.json`; it lists
   per-image changes. Use `-- --verbose` for per-image lines, `-- --only c12,km` to focus.
+  The calibration table splits every axis into `calib` (medium/high suggestion) and `declined`
+  (none; `calib + declined = 100 %`), with `correct + wrong = calib`; only the gated columns
+  (`correct`, `wrong`, `w-high`, `scale`, `auto`, `known`) can fail the run.
   Regressions and baseline updates: load `axis-detection` (detection table) or
   `auto-calibration` (calibration table).
 - `bench:lines` (~15 s) runs `traceLine` from the truth seed of every series in `bench/lines/`
   and exits 1 when any gated metric (kind, coverage, centreline error, wrong series, corners,
   markers), overall or per category, is worse than `bench/lines/baseline.json`. Same flags as
   bench:axes (`--verbose`, `--only l31,km`, `--update`). Load `line-tracing` for regressions.
+  A second `values` table (not gated) gives the same errors in data units and as % of the labelled
+  axis range for the real figures and fixtures (whose labels carry axis ticks), per category and
+  per figure (`figure:<id>` rows); data units show `–` where a row pools several figures, and
+  synthetic charts (no axis values in their truth) have no rows there.
+- `-- --summary <path>` on either benchmark also writes every row of its tables as `<path>.csv`
+  and `<path>.json` (`bench/summary.ts`): the console numbers unrounded, ratios in percent, a
+  unit in every column heading. Works with `--only`; never touches `last-run.json` or a baseline.
 - `test:e2e` is `playwright test` (Chromium, 1366×768) over `e2e/*.spec.ts`. First time on a
   machine: `npx playwright install chromium`. It starts `npm run dev` on port **5174** (reusing
   one already there), so a dev server on 5173 doesn't interfere. Focus with
