@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { Calibration, RefName } from '../core/index.ts';
 import type { DocState } from '../state/doc.ts';
+import { cropFromDrag, type CropRect } from '../ui/crop.ts';
 import { REF_COLORS, drawWorkspace, findTargetPos, hitTest, type Target } from '../ui/draw.ts';
 import { firstFile, imagePixels } from '../ui/loadImage.ts';
 import { drawLoupe, loupeCell, loupeCorner, loupeOrigin, LOUPE_SIZE, type LoupeMarker } from '../ui/loupe.ts';
@@ -66,6 +67,12 @@ interface Props {
   tracePrompt?: string | null;
   onTraceSeed?: (px: number, py: number) => void;
   traceGhost?: TraceGhost | null;
+  /**
+   * Crop mode (Image step): a left-drag draws the crop rectangle (`onRect`, whole image pixels,
+   * clamped to the image), `rect` is drawn with the rest of the image dimmed, and markers are
+   * not hit-tested. Pan and zoom work as usual.
+   */
+  crop?: { rect: CropRect | null; onRect: (rect: CropRect) => void } | null;
   onFile: (file: File) => void;
   onOpenFile: () => void;
 }
@@ -96,6 +103,8 @@ type Gesture =
   | { kind: 'toggle'; target: Target; startX: number; startY: number }
   /** Press on empty canvas with Move points on: a rubber-band selection (Shift adds to it). */
   | { kind: 'marquee'; startX: number; startY: number; additive: boolean }
+  /** Press in crop mode: drawing the crop rectangle from `start` (image px). */
+  | { kind: 'crop'; startX: number; startY: number; start: { px: number; py: number } }
   | { kind: 'click'; startX: number; startY: number };
 
 
@@ -124,6 +133,7 @@ export function Workspace(props: Props) {
   const loupeRef = useRef<HTMLCanvasElement>(null);
 
   const tracing = step === 'data' && !!props.tracing;
+  const cropping = step === 'image' && !!props.crop;
   /** Data-step placing: clicks add points and markers are not live (no hover, no grab). */
   const placingPoints = step === 'data' && !tracing && !props.movePoints;
   /** Markers that can be hovered and grabbed: refs in Axes, points with the Move tool on. */
@@ -264,6 +274,7 @@ export function Workspace(props: Props) {
       ghost: props.ghost ?? null,
       trace: props.traceGhost ?? null,
       marquee,
+      crop: cropping ? (props.crop?.rect ?? null) : null,
     });
   });
 
@@ -278,6 +289,8 @@ export function Workspace(props: Props) {
     if (e.button === 1 || (e.button === 0 && spaceHeld)) {
       e.preventDefault();
       gesture.current = { kind: 'pan', lastX: x, lastY: y };
+    } else if (e.button === 0 && cropping) {
+      gesture.current = { kind: 'crop', startX: x, startY: y, start: screenToImage(view, x, y) };
     } else if (e.button === 0) {
       const hit = markersLive ? hitTest(doc, view, x, y, step) : null;
       const movingPoints = step === 'data' && markersLive;
@@ -344,6 +357,11 @@ export function Workspace(props: Props) {
       );
     } else if (g.kind === 'marquee') {
       if (Math.hypot(x - g.startX, y - g.startY) >= CLICK_SLOP) setMarquee({ x0: g.startX, y0: g.startY, x1: x, y1: y });
+    } else if (g.kind === 'crop') {
+      // The rectangle follows the drag; a press-and-release under the slop draws nothing.
+      if (Math.hypot(x - g.startX, y - g.startY) < CLICK_SLOP) return;
+      const rect = cropFromDrag(g.start, at, doc.image.width, doc.image.height);
+      if (rect) props.crop?.onRect(rect);
     }
   };
 
@@ -353,7 +371,7 @@ export function Workspace(props: Props) {
     setGestureKind(null);
     setDragTarget(null);
     setMarquee(null);
-    if (!doc || !g || g.kind === 'pan') return;
+    if (!doc || !g || g.kind === 'pan' || g.kind === 'crop') return;
     const { x, y } = local(e);
     const at = screenToImage(view, x, y);
     const clicked = Math.hypot(x - g.startX, y - g.startY) < CLICK_SLOP;
@@ -397,11 +415,11 @@ export function Workspace(props: Props) {
   const cursor =
     gestureKind === 'pan' || gestureKind === 'drag'
       ? 'grabbing'
-      : gestureKind === 'marquee'
+      : gestureKind === 'marquee' || gestureKind === 'crop'
         ? 'crosshair'
         : spaceHeld || hovered
         ? 'grab'
-        : placing
+        : placing || cropping
           ? 'crosshair'
           : 'default';
 

@@ -47,6 +47,8 @@ export interface DrawInput {
   trace?: TraceGhost | null;
   /** A rubber-band selection being dragged (screen CSS px corners). */
   marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** The crop being chosen (Image step, crop mode): whole-pixel columns x0…x1−1, rows y0…y1−1. */
+  crop?: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
 export function drawWorkspace(input: DrawInput): void {
@@ -97,6 +99,7 @@ export function drawWorkspace(input: DrawInput): void {
   if (input.trace && input.step === 'data') drawTraceGhost(ctx, view, input.trace);
   if (input.snap) drawSnap(ctx, view, input.snap);
   if (input.marquee) drawMarquee(ctx, input.marquee);
+  if (input.crop) drawCrop(ctx, view, iw, ih, input.crop);
 }
 
 /** The rubber band: a dashed dark outline over a white one, faintly filled, on any chart. */
@@ -108,6 +111,32 @@ function drawMarquee(ctx: CanvasRenderingContext2D, m: NonNullable<DrawInput['ma
   ctx.save();
   ctx.fillStyle = 'rgba(28, 126, 214, 0.08)';
   ctx.fillRect(x, y, w, h);
+  ctx.restore();
+  dashedOutline(ctx, x, y, w, h);
+}
+
+/**
+ * The crop being chosen: the image outside it dimmed (a fixed translucent dark, since the canvas
+ * is not themed) and its outline drawn like the marquee. The rectangle's edges lie on pixel
+ * edges (x0 − ½ … x1 − ½ in image coordinates).
+ */
+function drawCrop(ctx: CanvasRenderingContext2D, view: View, iw: number, ih: number, c: NonNullable<DrawInput['crop']>) {
+  const a = imageToScreen(view, c.x0 - 0.5, c.y0 - 0.5);
+  const b = imageToScreen(view, c.x1 - 0.5, c.y1 - 0.5);
+  const img = imageToScreen(view, -0.5, -0.5);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(img.x, img.y, iw * view.scale, ih * view.scale);
+  ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fill('evenodd');
+  ctx.restore();
+  dashedOutline(ctx, a.x, a.y, b.x - a.x, b.y - a.y);
+}
+
+/** A dashed dark outline over a white one, so it reads on any chart. */
+function dashedOutline(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(255,255,255,0.9)';
   ctx.strokeRect(x, y, w, h);
