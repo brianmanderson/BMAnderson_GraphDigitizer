@@ -3,6 +3,7 @@ import { calibrateSpec } from '../core/index.ts';
 import {
   appReducer,
   calibrationSpec,
+  cropLosses,
   docReducer,
   fromProject,
   hasWork,
@@ -191,6 +192,84 @@ describe('docReducer', () => {
     const next = nextDatasetDefaults(s);
     expect(next.name).toBe('Line 2');
     expect(next.color).not.toBe(s.datasets[0]!.color);
+  });
+
+  describe('crop', () => {
+    const cropped = { dataUrl: 'data:image/png;base64,AAA', width: 100, height: 60, name: 'chart.png' };
+    /** Calibrated 200 × 100 image with points; a crop of columns 50…149 and rows 20…79 keeps some. */
+    const withWork = () =>
+      apply(
+        calibrated(newDoc(image, 'd1')),
+        { type: 'add-dataset', dataset: { id: 'd2', name: 'B', color: '#000000', points: [] } },
+        {
+          type: 'add-points',
+          datasetId: 'd1',
+          points: [
+            { id: 'in', px: 100.25, py: 50.5 },
+            { id: 'left-of', px: 49.49, py: 50 },
+            { id: 'above', px: 100, py: 19.49 },
+          ],
+        },
+        { type: 'add-points', datasetId: 'd2', points: [{ id: 'edge', px: 149.5, py: 79.5 }, { id: 'right-of', px: 149.51, py: 50 }] },
+        { type: 'set-active-dataset', datasetId: 'd1' },
+      );
+    const crop = (s: DocState) => docReducer(s, { type: 'crop', image: cropped, x0: 50, y0: 20 });
+
+    it('replaces the image and moves every ref and point by (−x0, −y0)', () => {
+      const s = withWork();
+      const t = crop(s);
+      expect(t.image).toBe(cropped);
+      // X1 (10, 90) and Y1 (10, 90) fall outside; X2 (190, 90) too; Y2 (10, 10) too — only the
+      // point data shows the translation here, the refs are checked below.
+      expect(t.datasets[0]!.points.find((p) => p.id === 'in')).toEqual({ id: 'in', px: 50.25, py: 30.5 });
+      expect(t.activeDatasetId).toBe('d1');
+      expect(t.settings).toBe(s.settings);
+      expect(t.xScale).toBe(s.xScale);
+    });
+
+    it('keeps refs that land on the new image, moved, and drops the others', () => {
+      let s = apply(
+        newDoc(image, 'd1'),
+        { type: 'place-ref', ref: 'X1', px: 49.5, py: 79.5 },
+        { type: 'set-ref-value', ref: 'X1', value: '0' },
+        { type: 'place-ref', ref: 'X2', px: 149.5, py: 79.5 },
+        { type: 'set-ref-value', ref: 'X2', value: '10' },
+        { type: 'place-ref', ref: 'Y1', px: 49.5, py: 79.5 },
+        { type: 'place-ref', ref: 'Y2', px: 49.5, py: 19.4 },
+      );
+      s = crop(s);
+      // The crop's edges are at x0 − ½ and x1 − ½: a ref exactly on one stays (at the new edge).
+      expect(s.refs).toEqual({
+        X1: { px: -0.5, py: 59.5, value: '0' },
+        X2: { px: 99.5, py: 59.5, value: '10' },
+        Y1: { px: -0.5, py: 59.5, value: '' },
+      });
+      expect(nextUnplacedRef(s.refs)).toBe('Y2');
+      expect(calibrationSpec(s)).toBeNull();
+    });
+
+    it('drops points outside the crop, half-pixel edges included, in every dataset', () => {
+      const t = crop(withWork());
+      expect(t.datasets[0]!.points.map((p) => p.id)).toEqual(['in']);
+      expect(t.datasets[1]!.points).toEqual([{ id: 'edge', px: 99.5, py: 59.5 }]);
+      expect(t.datasets.map((d) => d.id)).toEqual(['d1', 'd2']);
+    });
+
+    it('counts what a crop would drop', () => {
+      const s = withWork();
+      expect(cropLosses(s, 50, 20, 100, 60)).toEqual({ refs: 4, points: 3 });
+      expect(cropLosses(s, 0, 0, 200, 100)).toEqual({ refs: 0, points: 0 });
+      expect(cropLosses(newDoc(image, 'd1'), 50, 20, 100, 60)).toEqual({ refs: 0, points: 0 });
+    });
+
+    it('ignores an invalid crop (non-finite offset, missing or empty image)', () => {
+      const s = withWork();
+      expect(docReducer(s, { type: 'crop', image: cropped, x0: NaN, y0: 20 })).toBe(s);
+      expect(docReducer(s, { type: 'crop', image: cropped, x0: 50, y0: Infinity })).toBe(s);
+      expect(docReducer(s, { type: 'crop', image: { ...cropped, width: 0 }, x0: 50, y0: 20 })).toBe(s);
+      expect(docReducer(s, { type: 'crop', image: { ...cropped, height: NaN }, x0: 50, y0: 20 })).toBe(s);
+      expect(docReducer(s, { type: 'crop', image: undefined as unknown as typeof cropped, x0: 50, y0: 20 })).toBe(s);
+    });
   });
 
   it('appReducer replaces the whole document and ignores edits before an image exists', () => {

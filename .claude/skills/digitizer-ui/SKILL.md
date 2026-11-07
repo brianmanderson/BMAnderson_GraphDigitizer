@@ -104,6 +104,20 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   hand call `placeByHand(page)` (e2e/helpers.ts) after entering Data or adding a line;
   `e2e/auto-trace.spec.ts` guards the default.
 
+## Crop (Image step)
+
+- Crop mode is App state `{ of: doc.image, rect }` tagged with the image like `AutoState` (never
+  in `DocState`, the autosave or the prefs); `goStep`, `replaceDoc`, Esc and Cancel clear it.
+  Workspace gets `crop={ rect, onRect }` and turns a left-drag into `onRect(cropFromDrag(…))`
+  (`src/ui/crop.ts`: every pixel the drag touched, whole px, clamped, ≥ 2 × 2); the panel's
+  fields (`CropPanel.tsx`) go through `setCropField`, starting from `fullCrop` until a rectangle
+  exists. The canvas draws it via `drawWorkspace({ …, crop })` (dim outside, dashed outline).
+- Apply = `cropImage(image, doc.image, rect)` (canvas → PNG data URL, same name) then
+  `dispatch({ type: 'crop', image, x0, y0 })`: one undo step, no group key. The reducer translates
+  refs and points by (−x0, −y0) and drops those outside the new image (closed box, like
+  `isOnImage`); `cropLosses` counts them for the notice. The `docImage` effect re-decodes and
+  re-fits on its own. Never keep the original image in the Project (no schema change).
+
 ## Side panel and table
 
 - `.panel` is a flex column: step tabs · `.step-scroll` (the step's controls, `flex: 0 1 auto`) ·
@@ -126,6 +140,9 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   group), `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select) and
   `Edit` (`Move points` toggle, `aria-pressed`, disabled outside Data). Shortcuts (`M`, `Z`, `S`)
   are ignored while a form control has focus — specs click the button or blur first.
+- Crop: `image-current` (the "Current: name, W × H px" line), `crop-panel`, `crop-left`, `crop-top`,
+  `crop-width`, `crop-height`, `crop-size`, `crop-apply`, `crop-cancel`; the "Crop…" button has
+  `aria-pressed`. `e2e/crop.spec.ts` drives the crop through the fields and with a mouse drag.
 - `data-testid`: `workspace`, `file-input`, `notice`, `axes-prompt`, `calibration-ok`,
   `calibration-error`, `calibration-pending`, `date-hint`, `zoom-level`, `table-<line name>`,
   `auto-suggestion`, `auto-running`, `auto-error`, `auto-x`/`auto-y`, `auto-badge-x`/`-y`,

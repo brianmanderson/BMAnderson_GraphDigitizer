@@ -42,6 +42,22 @@ describe('historyReducer', () => {
     expect(run(dragged, { type: 'undo' }).present).toBe(h.present);
   });
 
+  it('cropping the image is one undo step that brings the full image and its work back', () => {
+    const h = run(loaded(), addPoint('p1', 10, 20), addPoint('p2', 150, 60));
+    const cropped = run(h, edit({ type: 'crop', image: other, x0: 5, y0: 10 }));
+    expect(cropped.present!.image).toBe(other);
+    expect(points(cropped)).toEqual([[5, 10]]);
+    expect(cropped.past).toHaveLength(h.past.length + 1);
+    const undone = run(cropped, { type: 'undo' });
+    expect(undone.present).toBe(h.present);
+    expect(undone.present!.image).toBe(image);
+    expect(points(undone)).toEqual([
+      [10, 20],
+      [150, 60],
+    ]);
+    expect(run(undone, { type: 'redo' }).present).toBe(cropped.present);
+  });
+
   it('has nothing to undo after the first image', () => {
     const h = loaded();
     expect(h.present?.image.name).toBe('chart.png');
