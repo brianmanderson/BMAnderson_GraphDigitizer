@@ -77,7 +77,13 @@ export type DocAction =
   | { type: 'recolor-dataset'; datasetId: string; color: string }
   | { type: 'delete-dataset'; datasetId: string }
   | { type: 'set-active-dataset'; datasetId: string }
-  | { type: 'set-settings'; settings: Partial<ProjectSettings> };
+  | { type: 'set-settings'; settings: Partial<ProjectSettings> }
+  /**
+   * Replace the image with a crop of it (Image step, "Crop…"): `image` is the cropped image and
+   * (x0, y0) the column and row of the old image where it starts. Every ref and point moves by
+   * (−x0, −y0); those that land outside the new image are dropped.
+   */
+  | { type: 'crop'; image: ProjectImage; x0: number; y0: number };
 
 /** A fresh document for a newly loaded image: no calibration, one empty dataset. */
 export function newDoc(image: ProjectImage, firstDatasetId: string, settings?: ProjectSettings): DocState {
@@ -226,7 +232,42 @@ export function docReducer(state: DocState, action: DocAction): DocState {
         : state;
     case 'set-settings':
       return { ...state, settings: { ...state.settings, ...action.settings } };
+    case 'crop': {
+      const { image, x0, y0 } = action;
+      if (!image || !Number.isFinite(x0) || !Number.isFinite(y0) || !(image.width >= 1) || !(image.height >= 1)) return state;
+      const keep = (px: number, py: number) => onImage(px - x0, py - y0, image.width, image.height);
+      const refs: DocState['refs'] = {};
+      for (const name of REF_NAMES) {
+        const r = state.refs[name];
+        if (r && keep(r.px, r.py)) refs[name] = { ...r, px: r.px - x0, py: r.py - y0 };
+      }
+      const datasets = state.datasets.map((d) => ({
+        ...d,
+        points: d.points.flatMap((p) => (keep(p.px, p.py) ? [{ ...p, px: p.px - x0, py: p.py - y0 }] : [])),
+      }));
+      return { ...state, image, refs, datasets };
+    }
   }
+}
+
+/** True when (px, py) lies on an image of the given size, its outer edges (−½, size − ½) included. */
+const onImage = (px: number, py: number, width: number, height: number) =>
+  px >= -0.5 && py >= -0.5 && px <= width - 0.5 && py <= height - 0.5;
+
+/**
+ * How many refs and points a crop starting at (x0, y0) with the given size would drop (for the
+ * notice after cropping; the reducer's `crop` case applies the same rule).
+ */
+export function cropLosses(state: DocState, x0: number, y0: number, width: number, height: number): { refs: number; points: number } {
+  const keep = (px: number, py: number) => onImage(px - x0, py - y0, width, height);
+  let refs = 0;
+  for (const name of REF_NAMES) {
+    const r = state.refs[name];
+    if (r && !keep(r.px, r.py)) refs++;
+  }
+  let points = 0;
+  for (const d of state.datasets) for (const p of d.points) if (!keep(p.px, p.py)) points++;
+  return { refs, points };
 }
 
 /** The app's top-level state: no document until an image is loaded. */

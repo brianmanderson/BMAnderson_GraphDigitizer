@@ -14,6 +14,8 @@ implementation — do not copy their branding, layout, or assets.
 ## Core user workflow
 
 1. **Load image** — file picker, drag-and-drop, or paste from clipboard (PNG/JPG/GIF/WebP/BMP).
+   A figure with several panels can be **cropped** to the one to digitize (Image step, "Crop…";
+   see Crop under Digitizing UI) — at any point of the work, since refs and points move with it.
 2. **Choose axis scales** — independently for X and Y: `linear`, `log10`, `ln`, `reciprocal`,
    `date/time`.
 3. **Calibrate** — click 4 reference points: X1, X2 (points with known x values) and Y1, Y2
@@ -109,7 +111,9 @@ reads untrusted JSON (opened files and autosaves): it runs the migrations from t
 up to `PROJECT_VERSION` (1 → 2 is the identity), validates every field and names the first
 damaged one (`datasets[0].points[3].px must be a finite number`), drops unknown fields, falls
 back to default settings, and refuses files from a newer version. Any future schema change bumps
-`PROJECT_VERSION` and adds a migration plus a test.
+`PROJECT_VERSION` and adds a migration plus a test. **Cropping changes no schema**: a crop
+replaces `image` with the cut-out (a PNG data URL of the crop's size, same `name`) and translates
+the refs and points; the original image is not kept in the Project (Crop, below).
 
 Points are stored in **image pixel coordinates (sub-pixel floats)**; values are always derived.
 Re-calibrating or changing a scale type must update the table instantly without moving points.
@@ -151,6 +155,37 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   browser decodes is accepted except SVG (vector input is a non-goal); others are rejected with
   a message naming the file. Loading starts a fresh document (settings are kept); since Phase 3
   it is an undo step instead of asking first (see below).
+- **Crop (decided after the Pages deploy)**: the Image step offers "Crop…" whenever an image is
+  loaded — at any stage of the work, calibrated or not — under the line "Figure with several
+  panels? Crop to the one you want." Pressing it enters *crop mode* (the button shows
+  `aria-pressed`): a left-drag on the canvas draws the crop rectangle (whole image pixels — every
+  pixel the drag touched — clamped to the image; a press-and-release under the click slop draws
+  nothing; a new drag replaces it), the image outside the rectangle is dimmed (a fixed translucent
+  dark, since the canvas is not themed) and its outline is drawn like the marquee; middle-drag /
+  Space+drag pan and wheel zoom keep working, refs and points are not hit-tested, and the cursor
+  is a crosshair. The panel shows Left, Top, Width and Height (image px) bound to the rectangle:
+  editing them moves or resizes it (clamped inside the image and to at least 2 × 2 px) and a drag
+  updates them; they start from the whole image until a rectangle exists. Below them the resulting
+  size, "Apply crop" (primary; also Enter, from the inputs too; disabled until a rectangle exists)
+  and "Cancel" (also Esc). Crop mode is UI state only — never in the Project, the autosave or the
+  prefs — and changing step, loading an image or project, or Esc cancels it. **Decision — the crop
+  replaces the image, as one undo step.** The rectangle covers columns `x0 … x1 − 1` and rows
+  `y0 … y1 − 1` (`x1 > x0`, `y1 > y0`), so in the pixel convention its edges are at `x0 − ½` and
+  `x1 − ½`, a point at `px` becomes `px − x0`, and pixel centres stay on pixel centres. It is cut
+  out of the decoded image on a canvas (`src/ui/crop.ts`) and re-encoded as a PNG data URL —
+  lossless, so a PNG source is cropped exactly and a JPEG source gets no further loss — into a new
+  image of the crop's size with the same `name` (exports keep their names). The `crop` action
+  (`src/state/doc.ts`) translates every ref and point by (−x0, −y0) and drops those that land
+  outside the new image (outside `[−½, width − ½] × [−½, height − ½]`, the same closed box the
+  rest of the UI treats as "on the image"; a dropped ref makes the calibration incomplete, which
+  the Axes step already handles); the active line and the settings are unchanged, and an invalid
+  action (non-finite offsets, missing image) changes nothing. The original image is not kept in
+  the Project (no schema change): Ctrl+Z brings it and its work back in-session; after a reload
+  only the crop remains (the autosave caveat under Undo notices). After Apply the view re-fits and
+  pending auto-detect / auto-trace suggestions are dropped (they belong to the old image); the user
+  stays on the Image step, whose "Current: … W × H px" line shows the new size, and a notice says
+  `Cropped to 640 × 480 px.` — with ` 3 points and 1 ref outside the crop were removed.` appended
+  when that happened — and offers Undo while the crop is still the newest step.
 - **View**: `screen = image · scale + offset` (`src/ui/view.ts`), zoom 5 %–6400 % about the
   cursor (wheel) or the centre (buttons), pan with middle-drag or Space+drag, `F`/Fit. Image
   smoothing is off from 3× so pixel edges show. The view never touches stored coordinates.
@@ -292,9 +327,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   settings), and repeated presses of one nudge key+modifier. Switching the active dataset is not a
   step. Loading an image and opening a project are steps. The history is not persisted;
   restoring an autosave starts a fresh one.
-- **Prompts → Undo notices**: replacing work (load/open over refs or points) and deleting a
-  dataset no longer ask; a notice says what happened and offers Undo, shown only while that
-  action is still the newest step. Caveat: the autosave then holds the new state, so after a
+- **Prompts → Undo notices**: replacing work (load/open over refs or points), deleting a
+  dataset and cropping the image (Crop, above) never ask; a notice says what happened and offers
+  Undo, shown only while that action is still the newest step. Caveat: the autosave then holds the new state, so after a
   reload the replaced work is gone unless it was saved as a project file.
 - **Autosave** (`src/ui/autosave.ts`): IndexedDB database `graph-digitizer`, store `autosave`,
   key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, savedAt }` (`collapsed`:

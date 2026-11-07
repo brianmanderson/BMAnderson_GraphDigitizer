@@ -810,6 +810,31 @@ button.toggle[aria-pressed='true'] {
   border-top: 1px solid var(--border);
 }
 
+/* ---------- Image step: crop ---------- */
+
+.crop-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+}
+.crop-panel p {
+  margin: 0;
+}
+.crop-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+.field input[type='number'] {
+  font-size: 14px;
+  color: var(--text);
+  width: 100%;
+}
+
 /* ---------- Axes step: help panel and Auto-detect call to action ---------- */
 
 .axes-head {

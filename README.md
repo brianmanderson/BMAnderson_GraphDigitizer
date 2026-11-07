@@ -1,9 +1,10 @@
 # Graph Digitizer
 
-Turn a chart image into numbers. Load a figure (drag, paste or open a file), calibrate each axis
-from two known points — linear, log, reciprocal or date/time, by hand or with **Auto-detect
-axes** (tick-label OCR) — place points on one or more lines, or click a plotted series to trace
-it, and export the table as CSV, TSV or a project file you can reopen later.
+Turn a chart image into numbers. Load a figure (drag, paste or open a file), crop it to one
+panel if it has several, calibrate each axis from two known points — linear, log, reciprocal or
+date/time, by hand or with **Auto-detect axes** (tick-label OCR) — place points on one or more
+lines, or click a plotted series to trace it, and export the table as CSV, TSV or a project file
+you can reopen later.
 
 **Use it here:** https://brianmanderson.github.io/UCSD_GraphEvaluator/
 

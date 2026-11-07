@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { calibrateSpec, parseProject, parseProjectText, type Project, type RefName } from './core/index.ts';
 import { AxesStep } from './components/AxesStep.tsx';
+import { CropPanel } from './components/CropPanel.tsx';
 import { DataStep } from './components/DataStep.tsx';
 import { DataTable } from './components/DataTable.tsx';
 import { ThemeToggle } from './components/ThemeToggle.tsx';
 import { Workspace, type Step } from './components/Workspace.tsx';
 import {
   calibrationSpec,
+  cropLosses,
   fromProject,
   hasWork,
   newDoc,
@@ -18,6 +20,7 @@ import {
 } from './state/doc.ts';
 import { EMPTY_HISTORY, canRedo, canUndo, historyReducer } from './state/history.ts';
 import { readAutosave, writeAutosave } from './ui/autosave.ts';
+import { cropImage, fullCrop, setCropField, type CropField, type CropRect } from './ui/crop.ts';
 import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
 import { runAutoDetect, type AutoRun } from './ui/autoDetect.ts';
@@ -115,6 +118,15 @@ function HandIcon() {
 
 const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** " 3 points and 1 ref outside the crop were removed." — or nothing when the crop kept everything. */
+function removedByCrop(lost: { refs: number; points: number }): string {
+  const parts = [lost.points > 0 && plural(lost.points, 'point'), lost.refs > 0 && plural(lost.refs, 'ref')].filter((p) => p !== false);
+  if (parts.length === 0) return '';
+  return ` ${parts.join(' and ')} outside the crop ${lost.points + lost.refs === 1 ? 'was' : 'were'} removed.`;
+}
+
 export function App() {
   const [history, historyDispatch] = useReducer(historyReducer, EMPTY_HISTORY);
   const doc = history.present;
@@ -143,6 +155,11 @@ export function App() {
   /** Auto-trace for the current image, Data step only: never applied until the user accepts it. */
   const [traceRaw, setTrace] = useState<{ of: DocState['image']; state: TraceState } | null>(null);
   const [traceSettings, setTraceSettings] = useState<TraceSettings>(DEFAULT_TRACE_SETTINGS);
+  /**
+   * Crop mode (Image step), for the current image: the rectangle chosen so far, or null until one
+   * is dragged or typed. UI state only — never in the document, the autosave or the prefs.
+   */
+  const [cropRaw, setCrop] = useState<{ of: DocState['image']; rect: CropRect | null } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
 
@@ -164,6 +181,7 @@ export function App() {
   );
   const ghost = useMemo(() => ghostOf(auto), [auto]);
   const trace = traceRaw && doc && traceRaw.of === doc.image && step === 'data' ? traceRaw.state : null;
+  const crop = cropRaw && doc && cropRaw.of === doc.image && step === 'image' ? cropRaw : null;
   const traceGhost = useMemo(() => (doc ? traceGhostOf(doc, trace) : null), [doc, trace]);
 
   const spec = useMemo(() => (doc ? calibrationSpec(doc) : null), [doc]);
@@ -254,6 +272,7 @@ export function App() {
       dispatch({ type: 'replace-doc', doc: next });
       setSelection(EMPTY_SELECTION);
       setChosenRef(null);
+      setCrop(null);
       setStep(stepFor(next));
       setNotice({
         kind: 'info',
@@ -458,6 +477,11 @@ export function App() {
         }
         return;
       }
+      if (e.key === 'Escape' && crop) {
+        // Leaves crop mode even from its inputs (the panel's Cancel button does the same).
+        setCrop(null);
+        return;
+      }
       if (mod || isTypingTarget(e.target)) return;
       if (nudgeSelected(e)) {
         e.preventDefault(); // Alt+Left would otherwise navigate back.
@@ -486,7 +510,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, step, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
+  }, [selection, step, crop, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
 
   const onCursor = useCallback((pos: { px: number; py: number } | null) => {
     setCursor(pos);
@@ -716,8 +740,41 @@ export function App() {
   const goStep = (s: Step) => {
     setStep(s);
     setTrace(null);
+    setCrop(null);
     setSelection(EMPTY_SELECTION);
     setChosenRef(null);
+  };
+
+  /** A drag on the canvas in crop mode (re)draws the rectangle. */
+  const onCropRect = useCallback((rect: CropRect) => setCrop((c) => (c ? { ...c, rect } : c)), []);
+
+  /** An edit in the crop panel: the rectangle starts from the whole image when none exists yet. */
+  const onCropField = (field: CropField, value: number) => {
+    if (!doc) return;
+    const { width, height } = doc.image;
+    setCrop((c) => (c ? { ...c, rect: setCropField(c.rect ?? fullCrop(width, height), field, value, width, height) } : c));
+  };
+
+  /**
+   * Apply the crop: the document's image becomes the cut-out and every ref and point moves with
+   * it (one undo step); the image effect above re-decodes and re-fits it. Crop mode ends.
+   */
+  const applyCrop = () => {
+    if (!doc || !image || !crop?.rect) return;
+    const rect = crop.rect;
+    let cropped: DocState['image'];
+    try {
+      cropped = cropImage(image, doc.image, rect);
+    } catch {
+      setNotice({ kind: 'error', text: 'The image could not be cropped.' });
+      return;
+    }
+    const lost = cropLosses(doc, rect.x0, rect.y0, cropped.width, cropped.height);
+    dispatch({ type: 'crop', image: cropped, x0: rect.x0, y0: rect.y0 });
+    setCrop(null);
+    setSelection(EMPTY_SELECTION);
+    setChosenRef(null);
+    setNotice({ kind: 'info', text: `Cropped to ${cropped.width} × ${cropped.height} px.${removedByCrop(lost)}`, undoRev: history.rev + 1 });
   };
 
   const loupe = useMemo(() => ({ enabled: prefs.loupe, zoom: prefs.loupeZoom }), [prefs.loupe, prefs.loupeZoom]);
@@ -878,6 +935,7 @@ export function App() {
           tracePrompt={trace?.status === 'picking' ? promptFor(trace.mode) : null}
           onTraceSeed={onTraceSeed}
           traceGhost={traceGhost}
+          crop={crop ? { rect: crop.rect, onRect: onCropRect } : null}
         />
 
         <aside className="panel">
@@ -918,12 +976,37 @@ export function App() {
                   browser, and your work is autosaved here.
                 </p>
                 {doc && (
-                  <p>
-                    Current: <strong>{doc.image.name}</strong>, {doc.image.width} × {doc.image.height} px.{' '}
-                    <button type="button" className="link" onClick={() => goStep('axes')}>
-                      Calibrate axes →
-                    </button>
-                  </p>
+                  <>
+                    <p data-testid="image-current">
+                      Current: <strong>{doc.image.name}</strong>, {doc.image.width} × {doc.image.height} px.{' '}
+                      <button type="button" className="link" onClick={() => goStep('axes')}>
+                        Calibrate axes →
+                      </button>
+                    </p>
+                    <p className="muted">Figure with several panels? Crop to the one you want.</p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        className="toggle"
+                        aria-pressed={crop !== null}
+                        disabled={!image}
+                        onClick={() => setCrop(crop ? null : { of: doc.image, rect: null })}
+                        title="Crop the image to a rectangle; refs and points move with it (undoable)"
+                      >
+                        Crop…
+                      </button>
+                    </div>
+                    {crop && (
+                      <CropPanel
+                        rect={crop.rect}
+                        imageWidth={doc.image.width}
+                        imageHeight={doc.image.height}
+                        onField={onCropField}
+                        onApply={applyCrop}
+                        onCancel={() => setCrop(null)}
+                      />
+                    )}
+                  </>
                 )}
               </section>
             )}
