@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "privacy:check": "node scripts/privacy-check.ts",
     "verify": "npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run bench:lines && npm run test:e2e",
     "fixtures:synthetic": "node scripts/make-synthetic-charts.ts",
     "bench:axes": "node bench/axes/run.ts",
