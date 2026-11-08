@@ -394,6 +394,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   within 2 px along the axis (4 px across); tick recall counts major ticks on axes with tick
   marks, precision all reported ticks there; `bare` counts ticks reported on axes without tick
   marks (must stay 0). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
+  `-- --summary <path>` also writes every row of this table and the calibration table as
+  `<path>.csv` and `<path>.json` (`bench/summary.ts`: the console's numbers unrounded, ratios in
+  percent, a unit per column; the CSV has one header over the union of both tables' columns).
 - **Regression gate**: `bench/axes/baseline.json` holds the metrics of the accepted detector
   (timings excluded). `bench:axes` exits 1 when axes-found, box-found, tick recall, minor recall
   or precision drops — or `bare` rises — overall or in any category; it is part of `npm run verify`.
@@ -495,12 +498,15 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   prompt as usual). A suggestion belongs to the image it was made for.
 - **Benchmark** (`npm run bench:axes`, ~8 s for 62 images with 4 Tesseract workers): per axis the
   suggested scale and refs predict every labelled true tick that is not a ref; the error is taken
-  in the true scale's linear space as a fraction of the labelled range. *Correct* = scale right and
-  every held-out tick within 1 %; *wrong* = suggested at medium/high but not correct. Gated against
-  the baseline, overall and per category: correct, wrong, wrong-at-high, scale accuracy, images
-  calibrated end to end, known-value error on the real figures. *Calibrated* alone is not gated
-  (declining a doubtful suggestion is the right trade). OCR output is deterministic on a machine;
-  another CPU may pick a different WASM core.
+  in the true scale's linear space as a fraction of the labelled range. Every axis ends in exactly
+  one of three outcomes: *correct* = suggested at medium/high confidence, scale right and every
+  held-out tick within 1 %; *wrong* = suggested at medium/high but not correct; *declined* = no
+  medium/high suggestion, left to the user (so calibrated + declined = 100 % and correct + wrong =
+  calibrated, per category). Gated against the baseline, overall and per category: correct, wrong,
+  wrong-at-high, scale accuracy, images calibrated end to end, known-value error on the real
+  figures. *Calibrated* and *declined* are reported, not gated (declining a doubtful suggestion is
+  the right trade). `-- --summary <path>` writes both tables as CSV/JSON (see Axis detection). OCR
+  output is deterministic on a machine; another CPU may pick a different WASM core.
 - **Phase 5 baseline**: 65.3 % of axes correct, **0 wrong**, scale accuracy 97.9 %, median
   held-out error 0.14 % of range, 48.4 % of images end to end. Real figures: both fully correct,
   known values within 0.0009 (pericardial plateau 0.162 → 0.1618; CNS 0.548 / 0.437 / 0.294 /
@@ -687,6 +693,18 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   against `bench/lines/baseline.json`, overall and per category (series kind, style, colour,
   crossing, line width, scenario, grid, JPEG, DPI, legend, frame…); `-- --update` only for an
   explained improvement or trade-off.
+  **Errors in data units** (`bench/lines/values.ts`; a second table, reported, not gated): for
+  figures whose label carries calibrated axes (the real figures and fixtures, bench/axes label
+  format) the same errors are also given through the engine's `calibrate` built from the label's
+  outermost tick of each axis — as a user would place the two refs; the maths is never
+  reimplemented. Each scored traced point is set against its nearest truth point, each matched
+  corner and marker against its true position; the displacement is reported per axis (Δx, Δy) as
+  median and p95 in data units and as % of the labelled axis range (lowest to highest labelled
+  tick, in the scale's linear space). Rows: OVERALL, each category and each figure (`figure:<id>`)
+  × points / corners / markers. Data units are only comparable within one figure, so rows pooling
+  several figures show them as `–` and keep the % columns; synthetic charts carry no axis ticks or
+  limits, so they have no data-unit rows. `-- --summary <path>` writes both tables as
+  `<path>.csv` / `<path>.json` (`bench/summary.ts`, see Axis detection).
 - **Baseline** (217 traces, after Phase 6 part B — Find points): kind 96.3 % (the misses are 8 of
   the new scatter series: 7 yield no template and become curves, 1 seed lies on the x axis line),
   markers recall 80.1 % / precision 81.3 % / wrong group 6.9 % over all 45 scatter series. The 19
@@ -790,7 +808,10 @@ npm run typecheck && npm run lint && npm test && npm run bench:axes && npm run b
 `npm run verify` runs all six. `test:e2e` (Playwright, Chromium, added in Phase 2) starts its own
 dev server on port 5174. `bench:axes` (Phase 4, extended with calibration scoring in Phase 5) fails
 on any regression against `bench/axes/baseline.json`, `bench:lines` (Auto-trace) against
-`bench/lines/baseline.json` (see above).
+`bench/lines/baseline.json` (see above). `npm test` also covers the benchmarks' scoring and summary
+code (`bench/**/*.test.ts`). Either benchmark takes `-- --summary <path>` to write every row of its
+tables as `<path>.csv` and `<path>.json` for reporting; `last-run.json` and the baselines are
+unchanged by it.
 
 ## Non-goals (for now)
 

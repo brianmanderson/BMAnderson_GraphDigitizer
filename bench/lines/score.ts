@@ -22,6 +22,7 @@
 
 import type { TraceResult } from '../../src/auto/index.ts';
 import type { P, SeriesTruth } from './truth.ts';
+import { nearestOnPieces, valueError, type ValueErrors, type ValueMap } from './values.ts';
 
 export const COVER_PX = 3;
 export const CORNER_PX = 2;
@@ -44,6 +45,8 @@ export interface TraceScore {
   points: number;
   /** Curves with a known style: the true style and the reported one. */
   style: { truth: string; got: string } | null;
+  /** The same errors in data units / % of axis range (figures with calibrated axes); else null. */
+  values: ValueErrors | null;
 }
 
 function segDist(p: P, a: P, b: P): number {
@@ -79,8 +82,8 @@ function geometry(s: SeriesTruth): P[][] {
   return s.kind === 'scatter' ? s.markers.map((m) => [m]) : s.pieces;
 }
 
-/** One-to-one matches (greedy, nearest first): how many, and which found ones are used. */
-function matchMarkers(truth: P[], found: P[], tol: number): { matched: number; used: Set<number> } {
+/** One-to-one matches (greedy, nearest first): the matched pairs (truth index, found index) and which found ones are used. */
+function matchMarkers(truth: P[], found: P[], tol: number): { matched: number; used: Set<number>; pairs: [number, number][] } {
   const pairs: { d: number; i: number; j: number }[] = [];
   truth.forEach((t, i) =>
     found.forEach((f, j) => {
@@ -91,17 +94,30 @@ function matchMarkers(truth: P[], found: P[], tol: number): { matched: number; u
   pairs.sort((a, b) => a.d - b.d);
   const ti = new Set<number>();
   const fj = new Set<number>();
+  const matched: [number, number][] = [];
   for (const p of pairs) {
     if (ti.has(p.i) || fj.has(p.j)) continue;
     ti.add(p.i);
     fj.add(p.j);
+    matched.push([p.i, p.j]);
   }
-  return { matched: ti.size, used: fj };
+  return { matched: ti.size, used: fj, pairs: matched };
 }
 
-export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, others: SeriesTruth[], r: TraceResult): TraceScore {
+/**
+ * `map` (the chart's calibrated axes, bench/lines/values.ts) adds the same errors in data units:
+ * each scored path point against its nearest truth point, each matched corner and marker against
+ * its true position. Without a map, `values` is null.
+ */
+export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, others: SeriesTruth[], r: TraceResult, map: ValueMap | null = null): TraceScore {
   const expected = s.kind === 'scatter' ? 'markers' : 'curve';
   const path: P[] = r.path.map((p) => ({ x: p.px, y: p.py }));
+  const values: ValueErrors | null = map ? { points: [], corners: [], markers: [] } : null;
+  const addValue = (list: keyof ValueErrors, got: P, truth: P) => {
+    if (!map || !values) return;
+    const e = valueError(map, got, truth);
+    if (e) values[list].push(e);
+  };
   const score: TraceScore = {
     chart,
     series: s.id,
@@ -116,6 +132,7 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
     markers: { truth: s.markers.length, found: 0, matched: 0, wrongGroup: 0 },
     points: r.points.length,
     style: expected === 'curve' && s.style ? { truth: s.style, got: r.style } : null,
+    values,
   };
   if (expected === 'markers') {
     score.markers.truth = s.markers.length;
@@ -126,6 +143,7 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
       score.markers.found = path.length;
       score.markers.matched = m.matched;
       score.markers.wrongGroup = path.filter((p, j) => !m.used.has(j) && theirs.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= tol)).length;
+      for (const [i, j] of m.pairs) addValue('markers', path[j]!, s.markers[i]!);
     }
     return score;
   }
@@ -152,12 +170,27 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
     const d = piecesDist(p, s.pieces);
     score.errors.push(d);
     if (d > COVER_PX && others.some((o) => piecesDist(p, geometry(o)) < d)) strays++;
+    if (map) {
+      const q = nearestOnPieces(p, s.pieces);
+      if (q) addValue('points', p, q);
+    }
   }
   score.wrong = scored.length > 0 && strays > WRONG_FRACTION * scored.length;
 
-  // Step corners kept in the suggested points.
-  if (s.corners.length) {
-    score.corners.matched = s.corners.filter((c) => r.points.some((p) => Math.hypot(p.px - c.x, p.py - c.y) <= CORNER_PX)).length;
+  // Step corners kept in the suggested points (the nearest one within CORNER_PX).
+  for (const c of s.corners) {
+    let best: P | null = null;
+    let bestD = CORNER_PX;
+    for (const p of r.points) {
+      const d = Math.hypot(p.px - c.x, p.py - c.y);
+      if (d <= bestD) {
+        bestD = d;
+        best = { x: p.px, y: p.py };
+      }
+    }
+    if (!best) continue;
+    score.corners.matched++;
+    addValue('corners', best, c);
   }
   return score;
 }

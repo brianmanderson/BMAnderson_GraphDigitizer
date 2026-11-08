@@ -22,11 +22,17 @@
  * one colour, centres measured to ±1 px) gives full marker truth for each group; its legend samples
  * are not markers.
  *
+ * A real figure's label also carries its calibrated axes (bench/axes format); they become the
+ * chart's `values` (bench/lines/values.ts) so errors can be reported in data units. Synthetic
+ * charts have none (`values: null`).
+ *
  * Pixels follow the app's convention (integer = pixel centre).
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { loadTruth } from '../axes/truth.ts';
+import { valueMapFromTruth, type ValueMap } from './values.ts';
 
 export interface P {
   x: number;
@@ -57,6 +63,8 @@ export interface ChartTruth {
   imagePath: string;
   tags: string[];
   series: SeriesTruth[];
+  /** Pixel → data value through the label's axis ticks (bench/lines/values.ts); null without them. */
+  values: ValueMap | null;
 }
 
 type Json = Record<string, unknown>;
@@ -86,7 +94,17 @@ function synthetic(path: string): ChartTruth {
     imagePath: resolve(dirname(path), String(raw.image)),
     tags: ['synthetic', ...(raw.tags as string[])],
     series,
+    values: null,
   };
+}
+
+/** The label's calibrated axes, when it has them in the bench/axes format (the fixtures do). */
+function valuesOf(labelPath: string): ValueMap | null {
+  try {
+    return valueMapFromTruth(loadTruth(labelPath, 'real'));
+  } catch {
+    return null;
+  }
 }
 
 /** Least-squares line through (value, pixel) tick pairs. */
@@ -151,12 +169,14 @@ function markerFigure(raw: Json): SeriesTruth[] {
 
 function real(path: string, extraTags: string[], source: string, markerSizePx: number): ChartTruth {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
+  const values = valuesOf(path);
   if (Array.isArray(raw.markerSeries)) {
     return {
       id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
       imagePath: resolve(dirname(path), String(raw.image)),
       tags: [source, ...extraTags],
       series: markerFigure(raw),
+      values,
     };
   }
   if (Array.isArray(raw.points)) {
@@ -165,6 +185,7 @@ function real(path: string, extraTags: string[], source: string, markerSizePx: n
       imagePath: resolve(dirname(path), String(raw.image)),
       tags: [source, ...extraTags],
       series: polylineFigure(raw, markerSizePx),
+      values,
     };
   }
   const xa = raw.xAxis as Json;
@@ -206,6 +227,7 @@ function real(path: string, extraTags: string[], source: string, markerSizePx: n
     imagePath: resolve(dirname(path), String(raw.image)),
     tags: [source, ...extraTags],
     series,
+    values,
   };
 }
 
