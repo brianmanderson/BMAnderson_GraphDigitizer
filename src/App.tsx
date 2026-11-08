@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { calibrateSpec, parseProject, parseProjectText, type Project, type RefName } from './core/index.ts';
+import { REF_NAMES, calibrateSpec, parseProject, parseProjectText, type Project, type ProjectImage, type RefName } from './core/index.ts';
 import { AxesStep } from './components/AxesStep.tsx';
 import { CropPanel } from './components/CropPanel.tsx';
 import { DataStep } from './components/DataStep.tsx';
@@ -7,6 +7,7 @@ import { DataTable } from './components/DataTable.tsx';
 import { ThemeToggle } from './components/ThemeToggle.tsx';
 import { Workspace, type Step } from './components/Workspace.tsx';
 import {
+  appReducer,
   calibrationSpec,
   cropLosses,
   fromProject,
@@ -41,6 +42,16 @@ import {
   type Selection,
 } from './ui/selection.ts';
 import { acceptAction, ghostOf, initialValues, type AutoState } from './ui/suggestion.ts';
+import {
+  SessionRecorder,
+  autoDetectEvent,
+  dataUrlBytes,
+  eventsForAction,
+  serializeLog,
+  sessionLogFilename,
+  type LoadSource,
+  type SessionEventBody,
+} from './ui/sessionLog.ts';
 import {
   DEFAULT_TRACE_SETTINGS,
   promptFor,
@@ -173,12 +184,54 @@ export function App() {
   const [cropRaw, setCrop] = useState<{ of: DocState['image']; rect: CropRect | null } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
+  /** The session log of the current image (docs/SPEC.md → Session log): in memory only. */
+  const [sessionLog] = useState(() => new SessionRecorder(() => performance.now()));
+  /** Latest render's values, for callbacks that must not re-create on every change. */
+  const docRef = useRef(doc);
+  const historyRef = useRef(history);
+  const traceTargetRef = useRef<TraceTarget | null>(null);
 
-  const dispatch = useCallback((action: AppAction, group?: string) => {
-    historyDispatch(group === undefined ? { type: 'edit', action } : { type: 'edit', action, group });
-  }, []);
-  const undo = useCallback(() => historyDispatch({ type: 'undo' }), []);
-  const redo = useCallback(() => historyDispatch({ type: 'redo' }), []);
+  /**
+   * Every document edit: logged (src/ui/sessionLog.ts maps it to events, with the same group key
+   * as the undo step so a drag is one event), then applied through the history. An edit the
+   * reducer ignores is not logged. `snapped`: an added point came from Snap.
+   */
+  const dispatch = useCallback(
+    (action: AppAction, group?: string, opts: { snapped?: boolean } = {}) => {
+      const before = docRef.current;
+      if (before && appReducer(before, action) !== before) sessionLog.record(eventsForAction(before, action, group, opts), group);
+      historyDispatch(group === undefined ? { type: 'edit', action } : { type: 'edit', action, group });
+    },
+    [sessionLog],
+  );
+  const undo = useCallback(() => {
+    if (canUndo(historyRef.current)) sessionLog.record({ type: 'undo' });
+    historyDispatch({ type: 'undo' });
+  }, [sessionLog]);
+  const redo = useCallback(() => {
+    if (canRedo(historyRef.current)) sessionLog.record({ type: 'redo' });
+    historyDispatch({ type: 'redo' });
+  }, [sessionLog]);
+  const record = useCallback((body: SessionEventBody, group?: string) => sessionLog.record(body, group), [sessionLog]);
+
+  /** A new log for a newly loaded image (a file, a project, the autosave). */
+  const startLog = useCallback(
+    (image: ProjectImage, source: LoadSource) =>
+      sessionLog.start(
+        {
+          appVersion: __APP_VERSION__,
+          commit: __GIT_COMMIT__,
+          startedAt: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          viewport: { w: window.innerWidth, h: window.innerHeight },
+          devicePixelRatio: window.devicePixelRatio,
+          imageName: image.name,
+          imageSize: { w: image.width, h: image.height, bytes: dataUrlBytes(image.dataUrl) },
+        },
+        source,
+      ),
+    [sessionLog],
+  );
   const onFocused = useCallback(() => setFocusRef(null), []);
 
   // Markers an undo, a deleted line or a load removed drop out of the selection.
@@ -262,11 +315,34 @@ export function App() {
         t?.of === docImage && t.state.status === 'running' && t.state.seed === runningSeed ? { of: docImage, state: state(t.state.target, t.state.mode) } : t,
       );
     const timer = setTimeout(() => {
+      const started = performance.now();
+      const generation = sessionLog.generation;
+      /** One `trace-run` per finished run (a cancelled one, or one for an image since replaced, is not logged). */
+      const logRun = (kind: 'curve' | 'markers' | 'none', outcome: 'ok' | 'empty' | 'error', pointCount: number) => {
+        const d = docRef.current;
+        if (!live || !d || sessionLog.generation !== generation) return;
+        sessionLog.record({
+          type: 'trace-run',
+          datasetId: traceTargetRef.current === 'new' ? null : d.activeDatasetId,
+          seedPx: { x: runningSeed.px, y: runningSeed.py },
+          mode: runningMode,
+          kind,
+          durationMs: Math.round(performance.now() - started),
+          outcome,
+          pointCount,
+        });
+      };
       run = runTrace(pixels, runningSeed, runningMode, traceSettings.maxPoints);
       run.result.then(
-        (result) => settle((target, mode) => ({ status: 'done', target, mode, seed: runningSeed, result })),
-        (err: unknown) =>
-          settle((target, mode) => ({ status: 'error', target, mode, seed: runningSeed, message: err instanceof Error ? err.message : String(err) })),
+        (result) => {
+          const n = result.ok && docRef.current ? tracedPoints(docRef.current, result).length : 0;
+          logRun(result.kind, n > 0 ? 'ok' : 'empty', n);
+          settle((target, mode) => ({ status: 'done', target, mode, seed: runningSeed, result }));
+        },
+        (err: unknown) => {
+          logRun('none', 'error', 0);
+          settle((target, mode) => ({ status: 'error', target, mode, seed: runningSeed, message: err instanceof Error ? err.message : String(err) }));
+        },
       );
     }, TRACE_DEBOUNCE_MS);
     return () => {
@@ -274,12 +350,13 @@ export function App() {
       clearTimeout(timer);
       run?.cancel();
     };
-  }, [runningSeed, runningMode, traceSettings, image, docImage]);
+  }, [runningSeed, runningMode, traceSettings, image, docImage, sessionLog]);
 
   /** Replace the document with an undoable step, and say so with an Undo button when work was replaced. */
   const replaceDoc = useCallback(
-    (next: DocState, text: string) => {
+    (next: DocState, text: string, source: LoadSource) => {
       const replacesWork = hasWork(doc);
+      startLog(next.image, source);
       dispatch({ type: 'replace-doc', doc: next });
       setSelection(EMPTY_SELECTION);
       setChosenRef(null);
@@ -292,7 +369,7 @@ export function App() {
         ...(replacesWork && { undoRev: history.rev + 1 }),
       });
     },
-    [doc, dispatch, history.rev, traceSettings.mode],
+    [doc, dispatch, startLog, history.rev, traceSettings.mode],
   );
 
   const openProject = useCallback(
@@ -317,7 +394,7 @@ export function App() {
         return;
       }
       const migrated = parsed.migratedFrom === null ? '' : ` (converted from format ${parsed.migratedFrom})`;
-      replaceDoc(fromProject(project), `Opened ${file.name}${migrated}.`);
+      replaceDoc(fromProject(project), `Opened ${file.name}${migrated}.`, 'project');
     },
     [replaceDoc],
   );
@@ -334,17 +411,18 @@ export function App() {
         return;
       }
       const next = newDoc(loaded.image, newId(), doc?.settings);
-      replaceDoc(next, `Loaded ${loaded.image.name} (${loaded.image.width} × ${loaded.image.height} px).`);
+      replaceDoc(next, `Loaded ${loaded.image.name} (${loaded.image.width} × ${loaded.image.height} px).`, 'image');
     },
     [doc, openProject, replaceDoc],
   );
 
   // Autosave: restore the last session once on start, then save after every change (debounced).
-  const docRef = useRef(doc);
   const collapsedRef = useRef(collapsed);
   const traceSettingsRef = useRef(traceSettings);
   useLayoutEffect(() => {
     docRef.current = doc;
+    historyRef.current = history;
+    traceTargetRef.current = trace?.target ?? null;
     collapsedRef.current = collapsed;
     traceSettingsRef.current = traceSettings;
   });
@@ -386,6 +464,7 @@ export function App() {
         if (!parsed?.ok || docRef.current !== null) return;
         const active = typeof rec?.activeDatasetId === 'string' ? rec.activeDatasetId : undefined;
         const restored = fromProject(parsed.project, active);
+        startLog(restored.image, 'autosave');
         historyDispatch({ type: 'reset', doc: restored });
         setStep(stepFor(restored));
         setTrace(defaultTrace(restored, traceSettingsRef.current.mode));
@@ -397,7 +476,7 @@ export function App() {
     return () => {
       live = false;
     };
-  }, [restoreFinished]);
+  }, [restoreFinished, startLog]);
 
   useEffect(() => {
     if (!doc || !restoreDone.current) return;
@@ -449,8 +528,40 @@ export function App() {
 
   const saveProject = useCallback(() => {
     if (!doc) return;
-    downloadText(`${baseName(doc.image.name)}-project.json`, JSON.stringify(toProject(doc), null, 2), 'application/json');
-  }, [doc]);
+    const filename = `${baseName(doc.image.name)}-project.json`;
+    record({ type: 'export', kind: 'project', filename });
+    downloadText(filename, JSON.stringify(toProject(doc), null, 2), 'application/json');
+  }, [doc, record]);
+
+  /** "Download session log": the export is the last event of the file it writes. */
+  const downloadSessionLog = useCallback(() => {
+    const header = sessionLog.file()?.header;
+    if (!header) return;
+    const filename = sessionLogFilename(baseName(header.imageName));
+    sessionLog.record({ type: 'export', kind: 'session-log', filename });
+    const file = sessionLog.file();
+    if (file) downloadText(filename, serializeLog(file), 'application/json');
+  }, [sessionLog]);
+
+  /** Snap toggle (toolbar, S): a setting the session log records. */
+  const toggleSnap = useCallback(() => {
+    const snap = !prefs.snap;
+    setPrefs((p) => ({ ...p, snap }));
+    record({ type: 'setting-changed', key: 'snap', value: snap });
+  }, [prefs.snap, record]);
+
+  /**
+   * A trace under review (a result shown) is being closed without Accept — Discard, Escape,
+   * leaving or re-entering the step, "+ Add line", starting another trace: log it as discarded.
+   */
+  const noteTraceDropped = useCallback(() => {
+    if (!doc || trace?.status !== 'done') return;
+    record({
+      type: 'trace-discarded',
+      datasetId: trace.target === 'new' ? null : doc.activeDatasetId,
+      pointCount: trace.result.ok ? tracedPoints(doc, trace.result).length : 0,
+    });
+  }, [doc, trace, record]);
 
   /**
    * Arrow keys move the selection (the ref in Axes, every selected point together in Data);
@@ -519,6 +630,7 @@ export function App() {
           deleteSelected();
         }
       } else if (e.key === 'Escape') {
+        noteTraceDropped();
         setTrace(null);
         setSelection(EMPTY_SELECTION);
         setChosenRef(null);
@@ -528,14 +640,14 @@ export function App() {
       } else if (e.key === 'z' || e.key === 'Z') {
         setPrefs((p) => ({ ...p, loupe: !p.loupe }));
       } else if (e.key === 's' || e.key === 'S') {
-        setPrefs((p) => ({ ...p, snap: !p.snap }));
+        toggleSnap();
       } else if ((e.key === 'm' || e.key === 'M') && step === 'data') {
         setPrefs((p) => ({ ...p, movePoints: !p.movePoints }));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, step, crop, deleteSelected, fit, undo, redo, saveProject, nudgeSelected]);
+  }, [selection, step, crop, deleteSelected, fit, undo, redo, saveProject, nudgeSelected, toggleSnap, noteTraceDropped]);
 
   const onCursor = useCallback((pos: { px: number; py: number } | null) => {
     setCursor(pos);
@@ -559,10 +671,10 @@ export function App() {
   );
 
   const onAddPoint = useCallback(
-    (px: number, py: number) => {
+    (px: number, py: number, snapped: boolean) => {
       if (!doc) return;
       const point = { id: newId(), px, py };
-      dispatch({ type: 'add-point', datasetId: doc.activeDatasetId, point });
+      dispatch({ type: 'add-point', datasetId: doc.activeDatasetId, point }, undefined, { snapped });
       setSelection([{ kind: 'point', datasetId: doc.activeDatasetId, pointId: point.id }]);
       expandLine(doc.activeDatasetId);
     },
@@ -657,8 +769,10 @@ export function App() {
 
   const onExportCsv = useCallback(() => {
     if (!doc) return;
-    downloadText(`${baseName(doc.image.name)}-data.csv`, toCsv(cells()), 'text/csv;charset=utf-8');
-  }, [doc, cells]);
+    const filename = `${baseName(doc.image.name)}-data.csv`;
+    record({ type: 'export', kind: 'csv', filename });
+    downloadText(filename, toCsv(cells()), 'text/csv;charset=utf-8');
+  }, [doc, cells, record]);
 
   const onCopyTsv = useCallback(async () => {
     const rows = cells();
@@ -674,9 +788,10 @@ export function App() {
     if (!doc) return;
     dispatch({ type: 'add-dataset', dataset: { id: newId(), ...nextDatasetDefaults(doc), points: [] } });
     // The new line is the active one: Auto-trace opens for it (dropping a trace under review).
-    const trace = defaultTrace(doc, traceSettings.mode);
-    if (trace) {
-      setTrace(trace);
+    const next = defaultTrace(doc, traceSettings.mode);
+    if (next) {
+      noteTraceDropped();
+      setTrace(next);
       setSelection(EMPTY_SELECTION);
     }
   };
@@ -704,12 +819,23 @@ export function App() {
     );
     autoRun.current = run;
     setAuto({ of, state: { status: 'running', stage: 'Starting…' } });
+    const started = performance.now();
+    const generation = sessionLog.generation;
+    // Logged once it settles, unless a newer run or a new image superseded it.
+    const logRun = (result: Parameters<typeof autoDetectEvent>[0]) => {
+      if (autoRun.current === run && sessionLog.generation === generation) sessionLog.record(autoDetectEvent(result, performance.now() - started));
+    };
     run.result.then(
-      (result) => autoRun.current === run && setAuto({ of, state: { status: 'done', result, values: initialValues(result) } }),
-      (err: unknown) =>
-        autoRun.current === run && setAuto({ of, state: { status: 'error', message: err instanceof Error ? err.message : String(err) } }),
+      (result) => {
+        logRun(result);
+        if (autoRun.current === run) setAuto({ of, state: { status: 'done', result, values: initialValues(result) } });
+      },
+      (err: unknown) => {
+        logRun(null);
+        if (autoRun.current === run) setAuto({ of, state: { status: 'error', message: err instanceof Error ? err.message : String(err) } });
+      },
     );
-  }, [doc, image]);
+  }, [doc, image, sessionLog]);
 
   const onAutoValue = useCallback((ref: RefName, value: string) => {
     setAuto((a) => (a?.state.status === 'done' ? { of: a.of, state: { ...a.state, values: { ...a.state.values, [ref]: value } } } : a));
@@ -717,6 +843,8 @@ export function App() {
 
   const onAutoAccept = () => {
     if (auto.status !== 'done') return;
+    const suggested = initialValues(auto.result);
+    record({ type: 'suggestion-accepted', editedFields: REF_NAMES.filter((r) => r in suggested && auto.values[r] !== suggested[r]) });
     dispatch(acceptAction(auto.result, auto.values));
     setAuto(null);
     setChosenRef(null);
@@ -730,6 +858,7 @@ export function App() {
   /** "Auto-trace line" runs in the session's mode, "Find points" in markers mode. */
   const onTraceStart = (target: TraceTarget, mode: TraceMode = traceSettings.mode) => {
     if (!doc) return;
+    noteTraceDropped();
     setTrace({ of: doc.image, state: { status: 'picking', target, mode } });
     setSelection(EMPTY_SELECTION);
   };
@@ -741,6 +870,9 @@ export function App() {
   );
 
   const onTraceSettings = (patch: Partial<TraceSettings>) => {
+    if (patch.mode !== undefined) record({ type: 'setting-changed', key: 'traceMode', value: patch.mode });
+    // Dragging the Points slider is one event (its latest value), like an undo group.
+    if (patch.maxPoints !== undefined) record({ type: 'setting-changed', key: 'traceMaxPoints', value: clampMaxPoints(patch.maxPoints) }, 'setting:traceMaxPoints');
     setTraceSettings((s) => ({ ...s, ...patch, maxPoints: clampMaxPoints(patch.maxPoints ?? s.maxPoints) }));
     // A trace under review re-runs from the same click with the new settings (a new mode is its own).
     setTrace((t) => {
@@ -759,6 +891,11 @@ export function App() {
     const action = acceptTraceAction(doc, trace.target, trace.result, newId);
     if (!action) return;
     dispatch(action);
+    record(
+      action.type === 'add-dataset'
+        ? { type: 'trace-accepted', datasetId: action.dataset.id, pointCount: action.dataset.points.length }
+        : { type: 'trace-accepted', datasetId: doc.activeDatasetId, pointCount: action.type === 'add-points' ? action.points.length : 0 },
+    );
     setTrace(null);
     setSelection(EMPTY_SELECTION);
     const into = action.type === 'add-dataset' ? `a new line, "${action.dataset.name}"` : `"${doc.datasets.find((d) => d.id === doc.activeDatasetId)?.name}"`;
@@ -769,6 +906,7 @@ export function App() {
   const totalPoints = doc?.datasets.reduce((n, d) => n + d.points.length, 0) ?? 0;
 
   const goStep = (s: Step) => {
+    noteTraceDropped();
     setStep(s);
     setTrace(s === 'data' ? defaultTrace(doc, traceSettings.mode) : null);
     setCrop(null);
@@ -849,6 +987,16 @@ export function App() {
           <button type="button" onClick={saveProject} disabled={!doc} title="Save the project with its image as a .json file (Ctrl+S)">
             Save project
           </button>
+          <button
+            type="button"
+            onClick={downloadSessionLog}
+            disabled={!doc}
+            data-testid="session-log"
+            aria-label="Download session log"
+            title="Download session log: what was done with this image (times, steps, edits, exports) as a .json file. Kept in this tab only; no image data."
+          >
+            Session log
+          </button>
         </div>
         <input
           ref={fileInput}
@@ -922,7 +1070,7 @@ export function App() {
             type="button"
             className="toggle"
             aria-pressed={prefs.snap}
-            onClick={() => setPrefs((p) => ({ ...p, snap: !p.snap }))}
+            onClick={toggleSnap}
             title="Snap new points to the centre of the nearest small marker (S)"
           >
             Snap
@@ -1081,7 +1229,10 @@ export function App() {
                 onAutoDetect={onAutoDetect}
                 onAutoValue={onAutoValue}
                 onAutoAccept={onAutoAccept}
-                onAutoDiscard={() => setAuto(null)}
+                onAutoDiscard={() => {
+                  record({ type: 'suggestion-discarded' });
+                  setAuto(null);
+                }}
               />
             )}
             {step === 'data' && doc && (
@@ -1105,7 +1256,10 @@ export function App() {
                   onStart: onTraceStart,
                   onSettings: onTraceSettings,
                   onAccept: onTraceAccept,
-                  onDiscard: () => setTrace(null),
+                  onDiscard: () => {
+                    noteTraceDropped();
+                    setTrace(null);
+                  },
                 }}
               />
             )}
