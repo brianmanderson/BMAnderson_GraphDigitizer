@@ -349,33 +349,6 @@ export function App() {
     traceSettingsRef.current = traceSettings;
   });
   const restoreDone = useRef(false);
-  useEffect(() => {
-    let live = true;
-    readAutosave()
-      .then((raw) => {
-        if (!live) return;
-        restoreDone.current = true;
-        const rec = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
-        const parsed = rec ? parseProject(rec.project) : null;
-        // Never clobber an image the user loaded while the autosave was being read.
-        if (!parsed?.ok || docRef.current !== null) return;
-        const active = typeof rec?.activeDatasetId === 'string' ? rec.activeDatasetId : undefined;
-        const restored = fromProject(parsed.project, active);
-        historyDispatch({ type: 'reset', doc: restored });
-        setStep(stepFor(restored));
-        setTrace(defaultTrace(restored, traceSettingsRef.current.mode));
-        if (Array.isArray(rec?.collapsed)) setCollapsed(new Set(rec.collapsed.filter((id): id is string => typeof id === 'string')));
-        const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
-        setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
-      })
-      .catch(() => {
-        restoreDone.current = true;
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
-
   const pendingSave = useRef<DocState | null>(null);
   const saveNow = useCallback(() => {
     const d = pendingSave.current;
@@ -389,6 +362,43 @@ export function App() {
       () => setAutosaved({ ok: false, at: savedAt }),
     );
   }, []);
+  /**
+   * The restore read is over (restored or not): saves may start. A document the user loaded
+   * while it was being read missed its debounced save — nothing re-runs that effect until the
+   * next change — so it is saved now.
+   */
+  const restoreFinished = useCallback(() => {
+    restoreDone.current = true;
+    if (docRef.current) {
+      pendingSave.current = docRef.current;
+      saveNow();
+    }
+  }, [saveNow]);
+  useEffect(() => {
+    let live = true;
+    readAutosave()
+      .then((raw) => {
+        if (!live) return;
+        restoreFinished();
+        const rec = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+        const parsed = rec ? parseProject(rec.project) : null;
+        // Never clobber an image the user loaded while the autosave was being read.
+        if (!parsed?.ok || docRef.current !== null) return;
+        const active = typeof rec?.activeDatasetId === 'string' ? rec.activeDatasetId : undefined;
+        const restored = fromProject(parsed.project, active);
+        historyDispatch({ type: 'reset', doc: restored });
+        setStep(stepFor(restored));
+        setTrace(defaultTrace(restored, traceSettingsRef.current.mode));
+        if (Array.isArray(rec?.collapsed)) setCollapsed(new Set(rec.collapsed.filter((id): id is string => typeof id === 'string')));
+        const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
+        setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
+      })
+      .catch(restoreFinished);
+    return () => {
+      live = false;
+    };
+  }, [restoreFinished]);
+
   useEffect(() => {
     if (!doc || !restoreDone.current) return;
     pendingSave.current = doc;

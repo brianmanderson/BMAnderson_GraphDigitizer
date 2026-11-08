@@ -214,3 +214,50 @@ test('a calibration in progress survives a reload', async ({ page }) => {
   await expect(page.getByLabel('X1 value')).toHaveValue('2024-01-01');
   await expect(page.getByTestId('axes-prompt')).toContainText('(X2)');
 });
+
+test('an image loaded before the autosave was read is autosaved once the read finishes', async ({ page }) => {
+  // Hold every IndexedDB open back by 3 s until the image is loaded, so the load lands before the
+  // app's restore read resolves (StrictMode issues that read twice) - a fresh profile on a busy
+  // machine does the same without help. The save must then come on its own: nothing changes
+  // after the load.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __idbDelay: number };
+    w.__idbDelay = 3000;
+    const open = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (this: IDBFactory, ...args: [string, number?]) {
+      const real = open.apply(this, args);
+      const delay = w.__idbDelay;
+      if (!delay) return real;
+      const delayed = {
+        result: undefined as unknown,
+        error: null as DOMException | null,
+        onsuccess: null as (() => void) | null,
+        onerror: null as (() => void) | null,
+        onblocked: null as (() => void) | null,
+        onupgradeneeded: null as (() => void) | null,
+      };
+      real.onupgradeneeded = () => {
+        delayed.result = real.result;
+        delayed.onupgradeneeded?.();
+      };
+      real.onsuccess = () => {
+        delayed.result = real.result;
+        setTimeout(() => delayed.onsuccess?.(), delay);
+      };
+      real.onerror = () => {
+        delayed.error = real.error;
+        delayed.onerror?.();
+      };
+      real.onblocked = () => delayed.onblocked?.();
+      return delayed as unknown as IDBOpenDBRequest;
+    };
+  });
+  await openApp(page);
+  await loadViaPicker(page, 'synthetic/synthetic-linear.png');
+  await page.evaluate(() => {
+    (window as unknown as { __idbDelay: number }).__idbDelay = 0;
+  });
+  await expect.poll(async () => (await readAutosave(page))?.project.image.name, { timeout: 10_000 }).toBe('synthetic-linear.png');
+  await page.reload();
+  await expect(page.getByTestId('notice')).toContainText('Restored synthetic-linear.png');
+});
