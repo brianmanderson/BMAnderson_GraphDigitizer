@@ -51,7 +51,7 @@ export interface ReportMeta {
 export interface ExportCapture {
   filename: string;
   bytes: number;
-  /** CSV: data rows (excluding the header); project: points in the first line. */
+  /** CSV: data rows (excluding the header); project: points in the first line; session log: events. */
   records: number;
 }
 
@@ -72,7 +72,8 @@ export interface PrivacyReport {
   meta: ReportMeta;
   /** Set when the scripted session did not run to completion; the verdict is then a fail. */
   error: string | null;
-  exports: { csv: ExportCapture; project: ExportCapture } | null;
+  /** `sessionLog`: the "Download session log" file (absent in reports written before it existed). */
+  exports: { csv: ExportCapture; project: ExportCapture; sessionLog?: ExportCapture } | null;
   requests: CapturedRequest[];
   countsByOrigin: Record<string, number>;
   /** Requests reported by a worker target (the module worker or Tesseract's worker). */
@@ -178,7 +179,10 @@ export function summarize(report: PrivacyReport): string {
   if (report.exports) {
     lines.push(
       `Exports produced in-page: ${report.exports.csv.filename} (${report.exports.csv.records} rows, ${kb(report.exports.csv.bytes)}), ` +
-        `${report.exports.project.filename} (${report.exports.project.records} points, ${kb(report.exports.project.bytes)})`,
+        `${report.exports.project.filename} (${report.exports.project.records} points, ${kb(report.exports.project.bytes)})` +
+        (report.exports.sessionLog
+          ? `, ${report.exports.sessionLog.filename} (${report.exports.sessionLog.records} events, ${kb(report.exports.sessionLog.bytes)})`
+          : ''),
     );
   }
   lines.push(verdict.pass ? 'PASS: every request stayed on the app origin and the workers were captured.' : `FAIL: ${verdict.reasons.join('; ')}`);
