@@ -342,8 +342,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, savedAt }` (`collapsed`:
   ids of lines whose point lists are collapsed), written 400 ms after
   the last change and on `pagehide`/tab hidden. On start it is read through `parseProject` and
-  restored unless the user already loaded something; the step becomes Data when the restored
-  calibration fits, else Axes; the view is re-fitted. One autosave per browser profile (the last
+  restored unless the user already loaded something — in which case that document is saved as
+  soon as the read finishes (it missed the debounced save, which waits for the read); the step
+  becomes Data when the restored calibration fits, else Axes; the view is re-fitted. One autosave per browser profile (the last
   tab to write wins). The status bar shows the last save time or a failure.
 - **Project files**: "Save project" (Ctrl+S) downloads `<image>-project.json`, the same file as
   "Download JSON". "Open project…" (Ctrl+O), or dropping/pasting a `.json`, reads it through
