@@ -1,16 +1,16 @@
 {
  "overall": {
-  "traces": 217,
-  "kindAccuracy": 0.9677,
-  "coverage": 0.9343,
+  "traces": 220,
+  "kindAccuracy": 0.9682,
+  "coverage": 0.9295,
   "medianError": 0.0268,
-  "p95Error": 0.837,
-  "wrongRate": 0.0174,
+  "p95Error": 0.9016,
+  "wrongRate": 0.0229,
   "cornerRecall": 0.5705,
-  "markerRecall": 0.8174,
-  "markerPrecision": 0.8164,
-  "wrongGroupRate": 0.0684,
-  "styleAccuracy": 0.9763,
+  "markerRecall": 0.8147,
+  "markerPrecision": 0.8136,
+  "wrongGroupRate": 0.0694,
+  "styleAccuracy": 0.9657,
   "meanMs": 0
  },
  "categories": {
@@ -50,24 +50,24 @@
    "p95Error": 0.5153,
    "wrongRate": 0.05,
    "cornerRecall": 0.4719,
-   "markerRecall": 0.6788,
-   "markerPrecision": 0.7671,
-   "wrongGroupRate": 0.1507,
+   "markerRecall": 0.6558,
+   "markerPrecision": 0.7481,
+   "wrongGroupRate": 0.163,
    "styleAccuracy": 0.95,
    "meanMs": 0
   },
   "color:colour": {
-   "traces": 183,
-   "kindAccuracy": 0.9781,
-   "coverage": 0.9376,
+   "traces": 186,
+   "kindAccuracy": 0.9785,
+   "coverage": 0.9321,
    "medianError": 0.0292,
-   "p95Error": 0.8617,
-   "wrongRate": 0.0132,
+   "p95Error": 0.938,
+   "wrongRate": 0.0194,
    "cornerRecall": 0.6124,
    "markerRecall": 0.8569,
    "markerPrecision": 0.8283,
    "wrongGroupRate": 0.0483,
-   "styleAccuracy": 0.9799,
+   "styleAccuracy": 0.9677,
    "meanMs": 0
   },
   "crossing": {
@@ -82,20 +82,6 @@
    "markerPrecision": null,
    "wrongGroupRate": null,
    "styleAccuracy": 0.9786,
-   "meanMs": 0
-  },
-  "curve-on-axis": {
-   "traces": 1,
-   "kindAccuracy": 1,
-   "coverage": 1,
-   "medianError": 0.1424,
-   "p95Error": 0.3155,
-   "wrongRate": 0,
-   "cornerRecall": null,
-   "markerRecall": null,
-   "markerPrecision": null,
-   "wrongGroupRate": null,
-   "styleAccuracy": null,
    "meanMs": 0
   },
   "dpi:high": {
@@ -210,6 +196,20 @@
    "styleAccuracy": 1,
    "meanMs": 0
   },
+  "four-series": {
+   "traces": 4,
+   "kindAccuracy": 1,
+   "coverage": 0.7411,
+   "medianError": 0.3256,
+   "p95Error": 7.6591,
+   "wrongRate": 0.25,
+   "cornerRecall": null,
+   "markerRecall": null,
+   "markerPrecision": null,
+   "wrongGroupRate": null,
+   "styleAccuracy": 0.5,
+   "meanMs": 0
+  },
   "frame:L": {
    "traces": 85,
    "kindAccuracy": 0.9765,
@@ -238,6 +238,20 @@
    "styleAccuracy": 0.9714,
    "meanMs": 0
   },
+  "grey-series": {
+   "traces": 2,
+   "kindAccuracy": 1,
+   "coverage": 0.998,
+   "medianError": 0.0004,
+   "p95Error": 0.0338,
+   "wrongRate": 0,
+   "cornerRecall": null,
+   "markerRecall": null,
+   "markerPrecision": null,
+   "wrongGroupRate": null,
+   "styleAccuracy": 1,
+   "meanMs": 0
+  },
   "grid": {
    "traces": 108,
    "kindAccuracy": 0.9815,
@@ -253,12 +267,12 @@
    "meanMs": 0
   },
   "jpeg": {
-   "traces": 70,
-   "kindAccuracy": 0.9571,
-   "coverage": 0.8722,
-   "medianError": 0.0862,
-   "p95Error": 1.1429,
-   "wrongRate": 0.0351,
+   "traces": 69,
+   "kindAccuracy": 0.9565,
+   "coverage": 0.87,
+   "medianError": 0.0845,
+   "p95Error": 1.1545,
+   "wrongRate": 0.0357,
    "cornerRecall": 0.5847,
    "markerRecall": 0.7727,
    "markerPrecision": 0.85,
@@ -281,17 +295,17 @@
    "meanMs": 0
   },
   "km": {
-   "traces": 5,
+   "traces": 8,
    "kindAccuracy": 1,
-   "coverage": 1,
-   "medianError": 0.1424,
-   "p95Error": 0.4922,
-   "wrongRate": 0,
+   "coverage": 0.87,
+   "medianError": 0.122,
+   "p95Error": 4.5455,
+   "wrongRate": 0.125,
    "cornerRecall": null,
    "markerRecall": null,
    "markerPrecision": null,
    "wrongGroupRate": null,
-   "styleAccuracy": 1,
+   "styleAccuracy": 0.75,
    "meanMs": 0
   },
   "legend": {
@@ -421,17 +435,17 @@
    "meanMs": 0
   },
   "png": {
-   "traces": 147,
-   "kindAccuracy": 0.9728,
-   "coverage": 0.9651,
-   "medianError": 0.0189,
-   "p95Error": 0.72,
-   "wrongRate": 0.0087,
+   "traces": 151,
+   "kindAccuracy": 0.9735,
+   "coverage": 0.9575,
+   "medianError": 0.0191,
+   "p95Error": 0.8364,
+   "wrongRate": 0.0168,
    "cornerRecall": 0.5654,
-   "markerRecall": 0.8362,
-   "markerPrecision": 0.804,
-   "wrongGroupRate": 0.0549,
-   "styleAccuracy": 0.9823,
+   "markerRecall": 0.8327,
+   "markerPrecision": 0.8,
+   "wrongGroupRate": 0.0561,
+   "styleAccuracy": 0.9664,
    "meanMs": 0
   },
   "polyline-markers": {
@@ -449,31 +463,31 @@
    "meanMs": 0
   },
   "real": {
-   "traces": 7,
+   "traces": 10,
    "kindAccuracy": 1,
-   "coverage": 1,
-   "medianError": 0.1424,
-   "p95Error": 0.4922,
-   "wrongRate": 0,
+   "coverage": 0.87,
+   "medianError": 0.122,
+   "p95Error": 4.5455,
+   "wrongRate": 0.125,
    "cornerRecall": null,
    "markerRecall": 1,
    "markerPrecision": 1,
    "wrongGroupRate": 0,
-   "styleAccuracy": 1,
+   "styleAccuracy": 0.75,
    "meanMs": 0
   },
   "same-colour": {
-   "traces": 26,
+   "traces": 30,
    "kindAccuracy": 1,
-   "coverage": 0.8887,
-   "medianError": 0.0257,
-   "p95Error": 0.6903,
-   "wrongRate": 0.0385,
+   "coverage": 0.8691,
+   "medianError": 0.0352,
+   "p95Error": 4.4285,
+   "wrongRate": 0.0667,
    "cornerRecall": 0.4136,
    "markerRecall": null,
    "markerPrecision": null,
    "wrongGroupRate": null,
-   "styleAccuracy": 0.9615,
+   "styleAccuracy": 0.9,
    "meanMs": 0
   },
   "scenario:black": {
@@ -666,24 +680,24 @@
    "p95Error": null,
    "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": 0.8174,
-   "markerPrecision": 0.8164,
-   "wrongGroupRate": 0.0684,
+   "markerRecall": 0.8147,
+   "markerPrecision": 0.8136,
+   "wrongGroupRate": 0.0694,
    "styleAccuracy": null,
    "meanMs": 0
   },
   "series:step": {
-   "traces": 45,
+   "traces": 48,
    "kindAccuracy": 1,
-   "coverage": 0.8991,
-   "medianError": 0.0215,
-   "p95Error": 0.6815,
-   "wrongRate": 0.0222,
+   "coverage": 0.8837,
+   "medianError": 0.0222,
+   "p95Error": 1.3374,
+   "wrongRate": 0.0417,
    "cornerRecall": 0.5697,
    "markerRecall": null,
    "markerPrecision": null,
    "wrongGroupRate": null,
-   "styleAccuracy": 0.9762,
+   "styleAccuracy": 0.9375,
    "meanMs": 0
   },
   "style:dashdot": {
@@ -770,17 +784,17 @@
    "styleAccuracy": 1,
    "meanMs": 0
   },
-  "two-series": {
+  "two-colours": {
    "traces": 2,
    "kindAccuracy": 1,
-   "coverage": 1,
-   "medianError": 0.2964,
-   "p95Error": 0.4922,
-   "wrongRate": 0,
+   "coverage": null,
+   "medianError": null,
+   "p95Error": null,
+   "wrongRate": null,
    "cornerRecall": null,
-   "markerRecall": null,
-   "markerPrecision": null,
-   "wrongGroupRate": null,
+   "markerRecall": 1,
+   "markerPrecision": 1,
+   "wrongGroupRate": 0,
    "styleAccuracy": null,
    "meanMs": 0
   }
@@ -2866,35 +2880,65 @@
    "points": 19,
    "style": ""
   },
-  "km-pericardial-effusion/0:series": {
+  "km-pericardial-pao/0:> 20.33 Gy (black)": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.1424,
+   "medianError": 0.0103,
    "wrong": false,
    "corners": "",
    "markers": "",
    "points": 25,
-   "style": ""
+   "style": "solid"
   },
-  "km-cns-lymphoma/0:0 (blue)": {
+  "km-pericardial-pao/1:<= 20.33 Gy (grey)": {
    "kind": "curve",
-   "coverage": 1,
-   "medianError": 0.2964,
+   "coverage": 0.996,
+   "medianError": 0.0004,
    "wrong": false,
    "corners": "",
    "markers": "",
    "points": 25,
-   "style": ""
+   "style": "solid"
   },
-  "km-cns-lymphoma/1:1 (red)": {
+  "km-sas-frame-ikawa/0:High dose (unweighted)": {
    "kind": "curve",
    "coverage": 1,
-   "medianError": 0.1975,
+   "medianError": 0.3252,
    "wrong": false,
    "corners": "",
    "markers": "",
-   "points": 36,
-   "style": ""
+   "points": 25,
+   "style": "solid"
+  },
+  "km-sas-frame-ikawa/1:Standard dose (unweighted)": {
+   "kind": "curve",
+   "coverage": 0.946,
+   "medianError": 0.3079,
+   "wrong": false,
+   "corners": "",
+   "markers": "",
+   "points": 26,
+   "style": "solid"
+  },
+  "km-sas-frame-ikawa/2:High dose (weighted)": {
+   "kind": "curve",
+   "coverage": 0.0183,
+   "medianError": 4.537,
+   "wrong": true,
+   "corners": "",
+   "markers": "",
+   "points": 25,
+   "style": "solid!"
+  },
+  "km-sas-frame-ikawa/3:Standard dose (weighted)": {
+   "kind": "curve",
+   "coverage": 1,
+   "medianError": 0.1369,
+   "wrong": false,
+   "corners": "",
+   "markers": "",
+   "points": 25,
+   "style": "dotted!"
   },
   "km-same-colour-styles/0:TFT": {
    "kind": "curve",
@@ -2916,24 +2960,24 @@
    "points": 25,
    "style": "dashed"
   },
-  "scatter-filled-open-errorbars/0:3 months (filled)": {
+  "scatter-errorbars-glowa/0:1 Fx (oxygen), red circles": {
    "kind": "markers",
    "coverage": null,
    "medianError": null,
    "wrong": false,
    "corners": "",
-   "markers": "9/9 of 9",
-   "points": 9,
+   "markers": "4/4 of 4",
+   "points": 4,
    "style": ""
   },
-  "scatter-filled-open-errorbars/1:12 months (open)": {
+  "scatter-errorbars-glowa/1:2 Fx (oxygen), blue squares": {
    "kind": "markers",
    "coverage": null,
    "medianError": null,
    "wrong": false,
    "corners": "",
-   "markers": "10/10 of 10",
-   "points": 10,
+   "markers": "4/4 of 4",
+   "points": 4,
    "style": ""
   },
   "synthetic-linear/line": {

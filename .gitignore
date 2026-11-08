@@ -9,3 +9,4 @@ test-results/
 playwright-report/
 bench/axes/last-run.json
 bench/lines/last-run.json
+privacy-report.json

@@ -106,9 +106,11 @@ description: >
   truth for a polyline with a marker on every point (line + marker series; entry needs
   `markerSizePx`; `source` names its top category, e.g. `fixture`); an optional `styles` map
   (series → line style) feeds the style metric; a `markerSeries` list (`series`, `markerSizePx`,
-  `seed`, `markers`) gives full marker truth for scatter groups (Graph.png). Add a figure: label plateaus from measured pixels (±1 px),
+  `seed`, `markers`) gives full marker truth for scatter groups (`scatter-errorbars-glowa.json`).
+  Add a figure: **CC BY only**, with its source, licence, crop box and attribution recorded in
+  `fixtures/real/PROVENANCE.md` first; label plateaus from measured pixels (±1 px),
   add it to the manifest with tags, run `-- --verbose`, rebaseline (new categories) and commit
-  image + label + manifest + baseline together.
+  image + label + manifest + baseline + provenance together.
 
 ## Known failures (baseline)
 

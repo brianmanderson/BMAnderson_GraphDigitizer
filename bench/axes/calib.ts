@@ -154,6 +154,8 @@ export function scoreCalibration(truth: Truth, auto: AutoCalibration, knownValue
 export interface CalibMetrics {
   /** Axes with a medium/high suggestion, of all axes. */
   calibrated: number;
+  /** Axes with no medium/high suggestion (left to the user), of all axes: calibrated + declined = 1. */
+  declined: number;
   /** Axes calibrated correctly (scale right, held-out error ≤ 1 %), of all axes. */
   correct: number;
   /** Axes suggested at medium/high confidence that are wrong (should stay 0). */
@@ -179,6 +181,7 @@ export function aggregateCalib(scores: CalibImageScore[]): CalibMetrics {
   const n = Math.max(1, axes.length);
   return {
     calibrated: axes.filter((a) => a.calibrated).length / n,
+    declined: axes.filter((a) => !a.calibrated).length / n,
     correct: axes.filter((a) => a.correct).length / n,
     wrong: axes.filter((a) => a.calibrated && !a.correct).length,
     wrongHigh: axes.filter((a) => a.calibrated && !a.correct && a.level === 'high').length,
@@ -191,8 +194,8 @@ export function aggregateCalib(scores: CalibImageScore[]): CalibMetrics {
 }
 
 /**
- * Calibration metrics the baseline gates on. `calibrated` alone is not gated: declining a doubtful
- * suggestion (fewer calibrated, fewer wrong) is the right trade.
+ * Calibration metrics the baseline gates on. `calibrated` and `declined` are reported, not gated:
+ * declining a doubtful suggestion (fewer calibrated, more declined, fewer wrong) is the right trade.
  */
 export const CALIB_GATED: { key: keyof CalibMetrics; higherIsBetter: boolean }[] = [
   { key: 'correct', higherIsBetter: true },

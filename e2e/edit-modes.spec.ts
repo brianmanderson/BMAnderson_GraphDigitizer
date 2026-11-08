@@ -10,21 +10,21 @@ import { fixturePath, goToStep, imageToClient, openApp, placeByHand, tableRows }
 
 type Pt = { id: string; px: number; py: number };
 
-/** The real KM figure (850 × 666) calibrated from its labelled ticks, with the given lines. */
+/** The real KM figure (Ikawa fig. 1a, 967 × 725) calibrated from its labelled ticks, with the given lines. */
 function project(lines: Pt[][]) {
-  const dataUrl = `data:image/png;base64,${readFileSync(fixturePath('real/km-cns-lymphoma.png')).toString('base64')}`;
+  const dataUrl = `data:image/png;base64,${readFileSync(fixturePath('real/km-sas-frame-ikawa.png')).toString('base64')}`;
   const colors = ['#d6336c', '#1971c2', '#2f9e44'];
   return {
     version: 2,
-    image: { dataUrl, width: 850, height: 666, name: 'km-cns-lymphoma.png' },
+    image: { dataUrl, width: 967, height: 725, name: 'km-sas-frame-ikawa.png' },
     calibration: {
       xScale: 'linear',
       yScale: 'linear',
       refs: {
-        X1: { px: 128, py: 455, value: 0 },
-        X2: { px: 815, py: 455, value: 100 },
-        Y1: { px: 90.5, py: 401, value: 0 },
-        Y2: { px: 90.5, py: 78, value: 1 },
+        X1: { px: 215.08, py: 575.99, value: 0 },
+        X2: { px: 922.73, py: 575.99, value: 84 },
+        Y1: { px: 187.15, py: 564.52, value: 0 },
+        Y2: { px: 187.15, py: 61.38, value: 1 },
       },
     },
     datasets: lines.map((points, l) => ({ id: `line-${l}`, name: `Line ${l + 1}`, color: colors[l]!, points })),

@@ -1,10 +1,12 @@
 /**
- * "Find points" on the real scatter (fixtures/real/scatter-filled-open-errorbars.png): black
- * circles, filled (3 months) and open (12 months), joined to error bars, caps and a dashed
- * reference line, two filled/open pairs overlapping, legend samples in a box. One click on a
- * filled circle proposes every filled one and only those; one on an open circle every open one.
- * Truth centres are measured to ±0.5 px; a found point must be within 3.5 px of one of its own
- * group (the half-hidden filled marker at x ≈ 52 is found ~3 px off) and match it one to one.
+ * "Find points" on the real scatter (fixtures/real/scatter-errorbars-glowa.png, Glowa et al.
+ * 2024 fig. 3a; provenance in fixtures/real/PROVENANCE.md): red filled circles and blue filled
+ * squares, each joined to horizontal and vertical error bars with caps and to a fit curve of its
+ * own colour, grey circles and squares of the same shapes on and under them, legend samples in
+ * a box. One click on a red circle proposes every red circle and only those (not the grey
+ * circles, not the legend sample); one on a blue square every blue square. Truth centres are
+ * measured to ±0.5 px; a found point must be within 3.5 px of one of its own group and match it
+ * one to one (the same tolerance the previous scatter fixture used).
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -12,34 +14,34 @@ import { calibrate, clickImage, dropFile, goToStep, openApp, placeByHand, readFi
 import { FIND_PROMPT } from '../src/ui/trace.ts';
 
 interface Label {
-  xAxis: { axisLineRow: number; ticks: { value: number; px: number }[] };
-  yAxis: { axisLineCol: number; ticks: { value: number; py: number }[] };
+  xAxis: { axisLineRow: number; ticks: { value: number; px: number; minor?: boolean }[] };
+  yAxis: { axisLineCol: number; ticks: { value: number; py: number; minor?: boolean }[] };
   markerSeries: { series: string; seed: [number, number]; markers: [number, number][] }[];
 }
-const label = readFixtureJson<Label>('real/scatter-filled-open-errorbars.json');
+const label = readFixtureJson<Label>('real/scatter-errorbars-glowa.json');
 const tick = <T extends { value: number }>(ticks: T[], value: number) => ticks.find((t) => t.value === value)!;
-const [filled, open] = label.markerSeries as [Label['markerSeries'][number], Label['markerSeries'][number]];
+const [circles, squares] = label.markerSeries as [Label['markerSeries'][number], Label['markerSeries'][number]];
 
 // Pixel ↔ value for the check (the same linear fit the calibration makes from these ticks).
-const x0 = tick(label.xAxis.ticks, 0);
-const x70 = tick(label.xAxis.ticks, 70);
-const y0 = tick(label.yAxis.ticks, 0);
-const y120 = tick(label.yAxis.ticks, 120);
-const pxPerX = (x70.px - x0.px) / 70;
-const pxPerY = (y0.py - y120.py) / 120;
-const toValue = ([px, py]: [number, number]) => [(px - x0.px) / pxPerX, (y0.py - py) / pxPerY] as const;
+const x20 = tick(label.xAxis.ticks, 20);
+const x160 = tick(label.xAxis.ticks, 160);
+const y12 = tick(label.yAxis.ticks, 1.2);
+const y24 = tick(label.yAxis.ticks, 2.4);
+const pxPerX = (x160.px - x20.px) / 140;
+const pxPerY = (y12.py - y24.py) / 1.2;
+const toValue = ([px, py]: [number, number]) => [20 + (px - x20.px) / pxPerX, 1.2 + (y12.py - py) / pxPerY] as const;
 
 async function loadCalibrated(page: Page) {
   await openApp(page);
-  await dropFile(page, 'real/scatter-filled-open-errorbars.png', 'scatter-filled-open-errorbars.png', 'image/png');
-  await expect(page.getByTestId('notice')).toContainText('Loaded scatter-filled-open-errorbars.png');
+  await dropFile(page, 'real/scatter-errorbars-glowa.png', 'scatter-errorbars-glowa.png', 'image/png');
+  await expect(page.getByTestId('notice')).toContainText('Loaded scatter-errorbars-glowa.png');
   const row = label.xAxis.axisLineRow;
   const col = label.yAxis.axisLineCol;
   await calibrate(page, {
-    X1: { px: x0.px, py: row, value: '0' },
-    X2: { px: x70.px, py: row, value: '70' },
-    Y1: { px: col, py: y0.py, value: '0' },
-    Y2: { px: col, py: y120.py, value: '120' },
+    X1: { px: x20.px, py: row, value: '20' },
+    X2: { px: x160.px, py: row, value: '160' },
+    Y1: { px: col, py: y12.py, value: '1.2' },
+    Y2: { px: col, py: y24.py, value: '2.4' },
   });
   await goToStep(page, 'Data');
   await placeByHand(page);
@@ -75,16 +77,20 @@ async function expectGroup(page: Page, line: string, group: Label['markerSeries'
   }
 }
 
-test('find points: one click finds every filled circle, another every open one', async ({ page }) => {
+test('find points: one click finds every red circle, another every blue square — nothing else, nothing before Accept', async ({ page }) => {
   await loadCalibrated(page);
 
-  const nFilled = await findAt(page, filled.seed, 'Find points');
-  expect(nFilled).toBe(filled.markers.length);
+  const nCircles = await findAt(page, circles.seed, 'Find points');
+  expect(nCircles).toBe(circles.markers.length);
+  // Nothing is added before Accept.
+  expect(await tableRows(page, 'Line 1')).toHaveLength(0);
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  await expectGroup(page, 'Line 1', filled);
+  await expectGroup(page, 'Line 1', circles);
 
-  const nOpen = await findAt(page, open.seed, 'Find points into a new line');
-  expect(nOpen).toBe(open.markers.length);
+  const nSquares = await findAt(page, squares.seed, 'Find points into a new line');
+  expect(nSquares).toBe(squares.markers.length);
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  await expectGroup(page, 'Line 2', open);
+  await expectGroup(page, 'Line 2', squares);
+  // Line 1 keeps its circles.
+  await expectGroup(page, 'Line 1', circles);
 });
