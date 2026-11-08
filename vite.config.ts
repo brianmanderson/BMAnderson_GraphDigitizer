@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -53,8 +54,28 @@ function tesseractAssets(): Plugin {
   };
 }
 
+/**
+ * Build facts for the session log's header (src/ui/sessionLog.ts): the package version and the
+ * git commit being built — from `git rev-parse HEAD`, else GITHUB_SHA (CI), else "unknown", so a
+ * build without git (a source tarball) still works.
+ */
+const appVersion = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
+function gitCommit(): string {
+  try {
+    const out = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (/^[0-9a-f]{40}$/.test(out)) return out;
+  } catch {
+    // git missing or not a repository: fall through.
+  }
+  return /^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA ?? '') ? process.env.GITHUB_SHA! : 'unknown';
+}
+
 export default defineConfig({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __GIT_COMMIT__: JSON.stringify(gitCommit()),
+  },
   plugins: [react(), tesseractAssets()],
   worker: { format: 'es' },
   test: {
