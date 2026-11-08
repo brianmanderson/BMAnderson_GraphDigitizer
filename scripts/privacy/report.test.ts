@@ -50,7 +50,7 @@ const META: ReportMeta = {
   platform: 'linux',
   previewOrigin: ORIGIN,
   basePath: '/',
-  fixture: 'real/km-pericardial-effusion.jpg',
+  fixture: 'real/km-pericardial-pao.png',
   durationMs: 42_000,
 };
 

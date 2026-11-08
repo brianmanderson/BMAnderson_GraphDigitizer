@@ -35,9 +35,12 @@ import { buildReport, summarize, type CapturedRequest, type ExportCapture, type 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const BASE = process.env.BASE_PATH || '/';
-const FIXTURE = 'real/km-pericardial-effusion.jpg';
-/** A pixel on the figure's curve (its final plateau; see fixtures/real/km-pericardial-effusion.json). */
-const CURVE_PX = { px: 450, py: 295 };
+const FIXTURE = 'real/km-pericardial-pao.png';
+/**
+ * A pixel on the black series' curve: its final plateau (y = 0.680) runs columns 526–648 at row 186
+ * (image pixels, integer = pixel centre; see fixtures/real/km-pericardial-pao.json).
+ */
+const CURVE_PX = { px: 590, py: 186 };
 const OCR_TIMEOUT = 60_000;
 
 // ---- arguments ------------------------------------------------------------------------------
@@ -304,8 +307,8 @@ async function drive(page: Page, url: string): Promise<{ csv: ExportCapture; pro
   await page.getByText('Drop a chart image here').waitFor();
 
   log(`drop ${FIXTURE}`);
-  await dropFile(page, FIXTURE, 'km-pericardial-effusion.jpg', 'image/jpeg');
-  await page.getByTestId('notice').filter({ hasText: 'Loaded km-pericardial-effusion.jpg' }).waitFor();
+  await dropFile(page, FIXTURE, 'km-pericardial-pao.png', 'image/png');
+  await page.getByTestId('notice').filter({ hasText: 'Loaded km-pericardial-pao.png' }).waitFor();
 
   log('Auto-detect axes (OCR in the worker)');
   await page.getByRole('button', { name: 'Auto-detect axes' }).click();
