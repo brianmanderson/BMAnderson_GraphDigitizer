@@ -23,7 +23,7 @@ description: >
 3. **Never tune the corpus to the detector.** Don't edit, drop or regenerate charts because the
    detector fails on them; don't loosen `bench/axes/score.ts` thresholds. Fix the detector, or
    accept and document the failure. Correcting a *wrong label* is fine with pixel evidence
-   (that is how the KM figure's x ticks got `tickMarks: true`) — say so in the commit.
+   (that is how a former KM fixture's faint x ticks got `tickMarks: true`) — say so in the commit.
 4. **No invented ticks.** An axis without tick marks must come back with `ticks: []`,
    `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern.
 5. **Gate**: `npm run bench:axes` is part of `npm run verify` and exits 1 if any gated metric
@@ -73,15 +73,19 @@ family — the inputs Phase 5's OCR and scale inference need.
   `[{ value, px, py?, label?, minor? }]` and either `line: [[x1,y1],[x2,y2]]` or the unrotated
   shorthand `axisLineRow` (x) / `axisLineCol` (y). `lineDrawn: false` = no visible line.
   The axis line is the line the ticks hang on — in a closed frame with zero inside it, the
-  bottom/left frame lines (see `fixtures/real/km-cns-lymphoma.json`), not the value-0 line.
+  bottom/left frame lines (see `fixtures/real/km-sas-frame-ikawa.json`), not the value-0 line.
 
 ### Adding a real figure
 
-1. Put the image and a label JSON (format above) in `bench/axes/real/` (or `fixtures/real/`).
+1. **Licence first**: only CC BY figures may enter the public repository. Record the source
+   (citation, DOI, PMC id, figure/panel and crop box, licence wording and URL, attribution,
+   date obtained, who labelled it) in `fixtures/real/PROVENANCE.md` before anything else; a
+   figure without that entry does not get committed. Crop with whole pixels (no resampling).
+2. Put the image and a label JSON (format above) in `bench/axes/real/` (or `fixtures/real/`).
    Measure positions on the pixels (e.g. Python/PIL or the app's loupe), not by eye; ±1 px.
    Label every tick you can see; set `tickMarks` from what the pixels show, not the style.
-2. Add an entry with tags to `real/manifest.json`; add `pitfalls` notes for future readers.
-3. Run `npm run bench:axes -- --verbose`. A new figure adds categories, so rebaseline with
+3. Add an entry with tags to `real/manifest.json`; add `pitfalls` notes for future readers.
+4. Run `npm run bench:axes -- --verbose`. A new figure adds categories, so rebaseline with
    `-- --update` and commit image + label + manifest + baseline together.
 
 ## Known failures (Phase 4 baseline)

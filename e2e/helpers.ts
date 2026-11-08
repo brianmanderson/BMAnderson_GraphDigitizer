@@ -100,26 +100,33 @@ export async function pasteFile(page: Page, rel: string, name: string, type: str
   );
 }
 
-interface KmTruth {
+export interface KmTruth {
   xAxis: { axisLineRow: number; ticks: { value: number; px: number }[] };
   yAxis: { axisLineCol: number; ticks: { value: number; py: number }[] };
-  knownValues: { x: [number, number]; y: number; py?: number }[];
+  knownValues: { series?: string; x: [number, number]; y: number; py?: number }[];
 }
 
-export const kmTruth = readFixtureJson<KmTruth>('real/km-pericardial-effusion.json');
+/** The real Kaplan–Meier figure (Pao et al. 2020, fig. 1c; provenance in fixtures/real/PROVENANCE.md). */
+export const kmTruth = readFixtureJson<KmTruth>('real/km-pericardial-pao.json');
 
-/** Drop the real Kaplan–Meier figure and calibrate it from its labelled ticks (0–120, 0–1). */
+/**
+ * Drop the real Kaplan–Meier figure and calibrate it from its labelled ticks (x 0–72 months,
+ * y 0–1). Its zero lines sit inside the axes (ggplot expansion), so the refs are placed on the
+ * zero lines rather than on the axis lines: X1 and Y1 both at the data origin (the x = 0 column
+ * × the y = 0 row — the same pixel, as on a chart whose axes cross at zero, where a click must
+ * place Y1 rather than grab X1), X2 on the same row, Y2 in the same column.
+ */
 export async function loadAndCalibrateKm(page: Page) {
-  await dropFile(page, 'real/km-pericardial-effusion.jpg', 'km-pericardial-effusion.jpg', 'image/jpeg');
-  await expect(page.getByTestId('notice')).toContainText('Loaded km-pericardial-effusion.jpg');
+  await dropFile(page, 'real/km-pericardial-pao.png', 'km-pericardial-pao.png', 'image/png');
+  await expect(page.getByTestId('notice')).toContainText('Loaded km-pericardial-pao.png');
   const tick = <T extends { value: number }>(ticks: T[], value: number) => ticks.find((t) => t.value === value)!;
-  const row = kmTruth.xAxis.axisLineRow;
-  const col = kmTruth.yAxis.axisLineCol;
+  const x0 = tick(kmTruth.xAxis.ticks, 0).px;
+  const y0 = tick(kmTruth.yAxis.ticks, 0).py;
   await calibrate(page, {
-    X1: { px: tick(kmTruth.xAxis.ticks, 0).px, py: row, value: '0' },
-    X2: { px: tick(kmTruth.xAxis.ticks, 120).px, py: row, value: '120' },
-    Y1: { px: col, py: tick(kmTruth.yAxis.ticks, 0).py, value: '0' },
-    Y2: { px: col, py: tick(kmTruth.yAxis.ticks, 1).py, value: '1' },
+    X1: { px: x0, py: y0, value: '0' },
+    X2: { px: tick(kmTruth.xAxis.ticks, 72).px, py: y0, value: '72' },
+    Y1: { px: x0, py: y0, value: '0' },
+    Y2: { px: x0, py: tick(kmTruth.yAxis.ticks, 1).py, value: '1' },
   });
 }
 

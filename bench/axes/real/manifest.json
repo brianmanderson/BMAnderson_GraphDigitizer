@@ -1,13 +1,21 @@
 {
-  "$comment": "Real-world figures for npm run bench:axes. Each entry points at a label JSON (format: bench/axes/truth.ts and .claude/skills/axis-detection/SKILL.md), relative to this file. Labels can live here or be shared with the e2e fixtures in fixtures/real/. Tags become benchmark categories.",
+  "$comment": "Real-world figures for npm run bench:axes. Each entry points at a label JSON (format: bench/axes/truth.ts and .claude/skills/axis-detection/SKILL.md), relative to this file. Labels can live here or be shared with the e2e fixtures in fixtures/real/. Tags become benchmark categories. Provenance and licences (CC BY only): fixtures/real/PROVENANCE.md.",
   "figures": [
     {
-      "truth": "../../../fixtures/real/km-pericardial-effusion.json",
-      "tags": ["journal", "km", "faint-ticks", "jpeg"]
+      "truth": "../../../fixtures/real/km-pericardial-pao.json",
+      "tags": ["journal", "km", "zero-inside", "table-outside", "grey-series", "png"]
     },
     {
-      "truth": "../../../fixtures/real/km-cns-lymphoma.json",
-      "tags": ["sas", "km", "frame-not-at-zero", "table-in-plot", "png"]
+      "truth": "../../../fixtures/real/km-sas-frame-ikawa.json",
+      "tags": ["journal", "sas", "km", "frame-not-at-zero", "table-outside", "four-series", "png"]
+    },
+    {
+      "truth": "../../../fixtures/real/km-same-colour-styles.json",
+      "tags": ["journal", "km", "same-colour", "jpeg"]
+    },
+    {
+      "truth": "../../../fixtures/real/scatter-errorbars-glowa.json",
+      "tags": ["journal", "scatter", "frame", "minor-ticks", "errorbars", "png"]
     }
   ]
 }

@@ -1,0 +1,30 @@
+# Citation metadata (Citation File Format). GitHub shows it as "Cite this repository".
+# The DOI below is a placeholder until Zenodo mints one for the 1.0.0 release.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Graph Digitizer"
+abstract: >-
+  A client-side graph digitizer: load a chart image, calibrate the axes from two known points
+  each (linear, log, reciprocal, date/time) by hand or with tick-label OCR, trace plotted
+  series or place points by hand on one or more lines, and export the table. Images never
+  leave the browser.
+authors:
+  - family-names: Anderson
+    given-names: Brian Mark
+    orcid: "https://orcid.org/0000-0002-2748-1444"
+    affiliation: "University of California San Diego"
+version: 1.0.0
+date-released: 2026-11-07
+license: MIT
+repository-code: "https://github.com/brianmanderson/UCSD_GraphEvaluator"
+url: "https://brianmanderson.github.io/UCSD_GraphEvaluator/"
+# TODO (release): replace with the DOI Zenodo mints for v1.0.0, e.g. 10.5281/zenodo.NNNNNNN
+doi: "10.5281/zenodo.PLACEHOLDER"
+keywords:
+  - graph digitizer
+  - plot digitizer
+  - figure data extraction
+  - Kaplan-Meier
+  - axis detection
+  - OCR

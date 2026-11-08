@@ -1,0 +1,47 @@
+{
+  "image": "km-pericardial-pao.png",
+  "description": "Cumulative incidence of pericardial effusion (Kaplan-Meier-style step curves), two series told apart by shade: black (mean pericardium dose > 20.33 Gy) and grey (<= 20.33 Gy). Journal figure (Pao et al. 2020, Radiat Oncol 15:48, Fig. 1 panel c; crop x 0-710, y 740-1431 of the publisher's 1418x1431 PNG), 710x691 greyscale PNG. Hand-labelled by pixel analysis (Pillow): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotBox": [[112.9, 35], [674, 35], [674, 485.34], [112.9, 485.34]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 485.34,
+    "tickMarks": true,
+    "notes": "Black 2-px axis line (rows 485-486, columns 112-674) with solid 5-px tick marks below it (rows 488-492) at every label; labels 0, 24, 48, 72 centred within 0.6 px of the marks. x = 0 is 25 px right of the y axis line (ggplot expansion): the axis lines are not the zero lines.",
+    "ticks": [
+      { "value": 0, "px": 138.35 },
+      { "value": 24, "px": 308.56 },
+      { "value": 48, "px": 478.63 },
+      { "value": 72, "px": 648.68 }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 112.9,
+    "tickMarks": true,
+    "notes": "Black 2-px axis line (columns 112-113, rows 35-486) with solid 6-px tick marks left of it (columns 106-111) at every label; labels formatted 0.00-1.00. y = 0 sits 21 px above the x axis line.",
+    "ticks": [
+      { "value": 1.0, "py": 54.91 },
+      { "value": 0.75, "py": 157.45 },
+      { "value": 0.5, "py": 259.94 },
+      { "value": 0.25, "py": 362.49 },
+      { "value": 0.0, "py": 464.83 }
+    ]
+  },
+  "styles": { "> 20.33 Gy (black)": "solid", "<= 20.33 Gy (grey)": "solid" },
+  "knownValues": [
+    { "series": "> 20.33 Gy (black)", "description": "Final plateau (columns 526-648)", "x": [56, 71], "y": 0.680, "py": 186 },
+    { "series": "> 20.33 Gy (black)", "description": "Plateau ~33-55 months (columns 370-530)", "x": [34, 54], "y": 0.574, "py": 229.72 },
+    { "series": "> 20.33 Gy (black)", "description": "Plateau ~16-30 months (columns 252-352)", "x": [17, 29], "y": 0.479, "py": 268.53 },
+    { "series": "<= 20.33 Gy (grey)", "description": "Final plateau (columns 239-674)", "x": [16, 74], "y": 0.148, "py": 404.19 },
+    { "series": "<= 20.33 Gy (grey)", "description": "Step ~8-13.6 months (columns 196-235)", "x": [9, 13], "y": 0.063, "py": 439.19 },
+    { "series": "<= 20.33 Gy (grey)", "description": "Step ~5-8.7 months (columns 173-200)", "x": [5.5, 8], "y": 0.029, "py": 452.96 },
+    { "series": "<= 20.33 Gy (grey)", "description": "Curve sits on y = 0 before its first step (columns 139-177); y = 0 is above the x axis line", "x": [0.5, 5], "y": 0.0, "py": 464.52 }
+  ],
+  "pitfalls": [
+    "The axis lines are not the zero lines: x = 0 is at column 138, 25 px right of the y axis, and y = 0 at row 465, 21 px above the x axis (ggplot-style expansion with theme_classic axes).",
+    "Rotated y-axis title at columns ~3-30 and the x-axis title at rows ~535-565; a 'Number at risk' table (86 12 6 0 / 40 15 8 5) with legend-style black and grey bars sits below the axis title (rows ~592-688) - not tick labels.",
+    "Legend inside the plot (rows 62-66 black sample, 89-93 grey sample, text to the right) and 'p = 0.00027' are not data.",
+    "The black series is a dense staircase of ~30 small steps between 0 and 11 months (5-px line); the grey series (grey ~162) is drawn under the black one where they cross near the origin.",
+    "No censoring marks on either curve."
+  ]
+}

@@ -11,10 +11,15 @@ import {
   placeByHand,
   readFixtureJson,
   tableRows,
+  type KmTruth,
   type SyntheticTruth,
 } from './helpers.ts';
 
-const plateauRow = kmTruth.knownValues[0]!.py!;
+// The black series' final plateau of the Pao figure (row 186, columns 526–648), as a whole pixel row.
+const plateauRow = Math.round(kmTruth.knownValues[0]!.py!);
+const ON_PLATEAU = 590;
+const kmTick = (value: number) => kmTruth.yAxis.ticks.find((t) => t.value === value)!;
+const Y_PER_PX = 1 / (kmTick(0).py - kmTick(1).py);
 
 /** Pixel columns of the first row of a dataset table, as numbers. */
 async function firstPixel(page: Page, dataset = 'Line 1') {
@@ -32,17 +37,18 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   await expect(loupe).toHaveCount(0);
 
   // Over the image the loupe shows the pixel under the cursor, top-left by default…
-  const at = await imageToClient(page, 400, plateauRow);
+  const at = await imageToClient(page, ON_PLATEAU, plateauRow);
   await page.mouse.move(at.x, at.y);
   await expect(loupe).toBeVisible();
-  await expect(page.getByTestId('loupe-pixel')).toHaveText(`pixel (400, ${plateauRow})`);
+  await expect(page.getByTestId('loupe-pixel')).toHaveText(`pixel (${ON_PLATEAU}, ${plateauRow})`);
   let state = await loupeState(page);
   expect(state.corner).toBe('top-left');
-  expect(Math.abs(state.px - 400)).toBeLessThanOrEqual(0.4);
+  expect(Math.abs(state.px - ON_PLATEAU)).toBeLessThanOrEqual(0.4);
   expect(Math.abs(state.py - plateauRow)).toBeLessThanOrEqual(0.4);
 
   // …and flips to the opposite corner when the cursor would be under it.
-  const nearCorner = await imageToClient(page, 100, 40);
+  // Image pixel (20, 20) is under the loupe's default corner at the fitted zoom.
+  const nearCorner = await imageToClient(page, 20, 20);
   await page.mouse.move(nearCorner.x, nearCorner.y);
   await expect(loupe).toHaveAttribute('data-corner', 'top-right');
 
@@ -51,7 +57,7 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   await page.mouse.click(at.x, at.y);
   expect(await tableRows(page)).toHaveLength(1);
   const placed = (await firstPixel(page))!;
-  expect(Math.abs(placed.px - 400)).toBeLessThanOrEqual(0.45);
+  expect(Math.abs(placed.px - ON_PLATEAU)).toBeLessThanOrEqual(0.45);
 
   await page.keyboard.press('ArrowRight');
   // While nudging, the loupe shows the selected point (exact position in its data attributes).
@@ -67,9 +73,9 @@ test('loupe follows the cursor; a point placed with it nudges with the arrow key
   const moved = (await firstPixel(page))!;
   expect(moved.px).toBeCloseTo(p0.px + 0.9, 1);
   expect(moved.py).toBeCloseTo(p0.py - 10, 1);
-  // The table's y value follows (y = 0.162 at the plateau; 10 px up is +10/307.5 of the axis).
+  // The table's y value follows (y = 0.680 at the plateau; 10 px up is +10/409.9 of the axis).
   const y = Number((await tableRows(page))[0]![2]);
-  expect(Math.abs(y - (0.162 + 10 / 307.5))).toBeLessThanOrEqual(0.006);
+  expect(Math.abs(y - (kmTruth.knownValues[0]!.y + 10 * Y_PER_PX))).toBeLessThanOrEqual(0.006);
 
   // Each run of the same key is one undo step: Alt←, Shift↑, →, then the placement itself.
   await page.keyboard.press('Control+z');
@@ -108,13 +114,13 @@ test.describe('on a 2× (high-DPI) display', () => {
 
   test('the loupe copies source pixels exactly at several main-view and loupe zooms', async ({ page }) => {
     await openApp(page);
-    await dropFile(page, 'real/km-pericardial-effusion.jpg', 'km-pericardial-effusion.jpg', 'image/jpeg');
+    await dropFile(page, 'real/km-pericardial-pao.png', 'km-pericardial-pao.png', 'image/png');
     await expect(page.getByTestId('notice')).toContainText('Loaded');
     await goToStep(page, 'Data');
     const loupe = page.getByTestId('loupe');
 
-    // The curve's first riser area: dark and light pixels side by side.
-    const target = { px: 230.3, py: 322.6 };
+    // A riser of the black curve (column 170, rows 409–433): dark and light pixels side by side.
+    const target = { px: 170.3, py: 420.6 };
     const check = async (label: string) => {
       const at = await imageToClient(page, target.px, target.py);
       await page.mouse.move(at.x, at.y);
@@ -124,7 +130,7 @@ test.describe('on a 2× (high-DPI) display', () => {
         const canvas = el.querySelector('canvas')!;
         const { cell, originX, originY, px, py } = el.dataset;
         const img = new Image();
-        img.src = '/fixtures/real/km-pericardial-effusion.jpg';
+        img.src = '/fixtures/real/km-pericardial-pao.png';
         await img.decode();
         const src = document.createElement('canvas');
         src.width = img.naturalWidth;
@@ -222,20 +228,24 @@ test('snap puts points on marker centres, and leaves points on a line where they
     expect(Math.abs(Number(rows[i]![4]) - p.py), `point ${i + 1} py`).toBeLessThanOrEqual(0.3);
   });
 
-  // The Kaplan–Meier step line carries '+' censoring marks of its own colour: hovering anywhere
-  // along the plateau offers no snap, so a click lands exactly where it would without snapping.
-  await dropFile(page, 'real/km-pericardial-effusion.jpg', 'km-pericardial-effusion.jpg', 'image/jpeg');
-  await expect(page.getByTestId('notice')).toContainText('Loaded km-pericardial-effusion.jpg');
+  // A Kaplan–Meier step line that carries '+' censoring marks of its own colour (the Ikawa
+  // figure's red solid series, final plateau at row 414, columns 470–944, with censor ticks at
+  // columns ~510, 527, 544, 578, 595, 603, 645, 654, 679, 687, 721, 746…): hovering anywhere along
+  // the plateau offers no snap, so a click lands exactly where it would without snapping.
+  const ikawa = readFixtureJson<KmTruth>('real/km-sas-frame-ikawa.json');
+  const censored = Math.round(ikawa.knownValues.find((k) => k.series === 'Standard dose (unweighted)')!.py!);
+  await dropFile(page, 'real/km-sas-frame-ikawa.png', 'km-sas-frame-ikawa.png', 'image/png');
+  await expect(page.getByTestId('notice')).toContainText('Loaded km-sas-frame-ikawa.png');
   await goToStep(page, 'Data');
-  for (let px = 300; px <= 560; px += 20) {
-    const at = await imageToClient(page, px, plateauRow);
+  for (let px = 480; px <= 940; px += 20) {
+    const at = await imageToClient(page, px, censored);
     await page.mouse.move(at.x, at.y);
     await expect(page.getByTestId('loupe')).toBeVisible();
     expect((await loupeState(page)).snap, `plateau at px ${px}`).toBeNull();
   }
-  const at = await imageToClient(page, 400, plateauRow);
+  const at = await imageToClient(page, 700, censored);
   await page.mouse.click(at.x, at.y);
   const placed = (await firstPixel(page))!;
-  expect(Math.abs(placed.px - 400)).toBeLessThanOrEqual(0.45);
-  expect(Math.abs(placed.py - plateauRow)).toBeLessThanOrEqual(0.45);
+  expect(Math.abs(placed.px - 700)).toBeLessThanOrEqual(0.45);
+  expect(Math.abs(placed.py - censored)).toBeLessThanOrEqual(0.45);
 });

@@ -1,0 +1,65 @@
+{
+  "image": "km-sas-frame-ikawa.png",
+  "description": "Cumulative local-recurrence probability (Kaplan-Meier-style step curves) in a SAS-style closed frame: four series, blue and red, each solid (unweighted) and dashed (weighted), with censor ticks. Journal figure (Ikawa et al. 2022, BMC Cancer 22:301, Fig. 1 panel a; crop x 3-970, y 2-727 of the publisher's 1944x731 PNG, inside the panel's light-grey border), 967x725 PNG. Hand-labelled by pixel analysis (Pillow): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": { "left": 187.15, "right": 951.2, "top": 50.67, "bottom": 575.99 },
+  "plotBox": [[187.15, 50.67], [951.2, 50.67], [951.2, 575.99], [187.15, 575.99]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 575.99,
+    "tickMarks": true,
+    "notes": "axisLineRow is the bottom frame line (grey ~170, 2 px), which carries the tick marks; the value 0 is not at the left frame edge. Tick marks point outward below the frame (rows 577-586, 1-2 px wide); labels 0, 12, ..., 84 centred within 0.6 px of the marks.",
+    "ticks": [
+      { "value": 0, "px": 215.08 },
+      { "value": 12, "px": 315.95 },
+      { "value": 24, "px": 417.17 },
+      { "value": 36, "px": 518.42 },
+      { "value": 48, "px": 619.3 },
+      { "value": 60, "px": 720.61 },
+      { "value": 72, "px": 821.46 },
+      { "value": 84, "px": 922.73 }
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 187.15,
+    "tickMarks": true,
+    "notes": "axisLineCol is the left frame line (grey ~170, 2 px), which carries the tick marks; the value 0 is 11.5 px above the bottom frame line. Tick marks point outward left of the frame (columns 177-186); labels 0.0-1.0 every 0.1.",
+    "ticks": [
+      { "value": 1.0, "py": 61.38 },
+      { "value": 0.9, "py": 111.62 },
+      { "value": 0.8, "py": 161.86 },
+      { "value": 0.7, "py": 212.43 },
+      { "value": 0.6, "py": 262.64 },
+      { "value": 0.5, "py": 312.93 },
+      { "value": 0.4, "py": 363.15 },
+      { "value": 0.3, "py": 413.82 },
+      { "value": 0.2, "py": 464.04 },
+      { "value": 0.1, "py": 514.26 },
+      { "value": 0.0, "py": 564.52 }
+    ]
+  },
+  "styles": {
+    "High dose (unweighted)": "solid",
+    "Standard dose (unweighted)": "solid",
+    "High dose (weighted)": "dashed",
+    "Standard dose (weighted)": "dashed"
+  },
+  "knownValues": [
+    { "series": "High dose (unweighted)", "description": "Blue solid, final plateau (columns 400-944)", "x": [23, 86], "y": 0.105, "py": 511.86 },
+    { "series": "High dose (unweighted)", "description": "Blue solid, plateau ~10-20.6 months (columns 300-389)", "x": [10.5, 20], "y": 0.075, "py": 527.06 },
+    { "series": "Standard dose (unweighted)", "description": "Red solid, final plateau (columns 470-944)", "x": [31, 86], "y": 0.299, "py": 414.05 },
+    { "series": "Standard dose (unweighted)", "description": "Red solid, step ~23-28.4 months (columns 410-454)", "x": [23.5, 28], "y": 0.279, "py": 424.41 },
+    { "series": "Standard dose (unweighted)", "description": "Red solid, step ~16-20.6 months (columns 350-389)", "x": [16.5, 20], "y": 0.228, "py": 449.94 },
+    { "series": "Standard dose (unweighted)", "description": "Red solid, step ~10.7-13.8 months (columns 305-331)", "x": [11, 13.5], "y": 0.196, "py": 465.88 },
+    { "series": "High dose (weighted)", "description": "Blue dashed, final plateau (dashes from column 470 to 941; dash ~6 px, gap ~6 px); 4 px below the blue solid plateau", "x": [31, 86], "y": 0.096, "py": 516.07 },
+    { "series": "High dose (weighted)", "description": "Blue dashed, plateau ~10-20.6 months (dashes at columns 302-389); 8 px below the blue solid plateau", "x": [10.5, 20], "y": 0.059, "py": 534.84 },
+    { "series": "Standard dose (weighted)", "description": "Red dashed, final plateau (dashes from column 470 to 944); 19 px above the red solid plateau", "x": [31, 86], "y": 0.337, "py": 394.78 }
+  ],
+  "pitfalls": [
+    "The plot is a closed box frame of light-grey lines; the frame lines are NOT the axes (x = 0 is 28 px inside the left frame line, y = 0 is 11.5 px above the bottom one).",
+    "A number-at-risk table (High dose 68 60 55 51 47 41 37 33 / Standard dose 66 52 40 33 26 20 10 6) sits BELOW the x-axis title (rows ~663-706), its numbers aligned under the x tick labels, with row labels left of the frame - easy to take for tick labels.",
+    "A four-entry legend with line samples (rows 69-73 blue, 91-94 red, columns 197-273) and two log-rank-test lines of text sit inside the frame (top left / top right); the panel title 'Local recurrence' sits above it.",
+    "Same-colour pairs told apart only by style: the blue dashed plateau runs 4 px below the blue solid one (0.096 vs 0.105), the red dashed 19 px above the red solid; the dashed series start together with the solid ones near the origin and cross them at the steps.",
+    "'+' censor ticks of the series' own colour stand on the solid curves (they are not steps); the line width is 3 px."
+  ]
+}

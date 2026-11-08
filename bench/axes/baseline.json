@@ -1,14 +1,14 @@
 {
  "overall": {
-  "images": 62,
-  "axesFound": 0.9516129032258065,
-  "xFound": 0.9516129032258065,
-  "yFound": 0.9516129032258065,
-  "medianAxisError": 0.017,
-  "boxFound": 0.9508196721311475,
-  "tickRecall": 0.8517397881996974,
-  "minorRecall": 0.6768707482993197,
-  "tickPrecision": 0.993421052631579,
+  "images": 64,
+  "axesFound": 0.953125,
+  "xFound": 0.953125,
+  "yFound": 0.953125,
+  "medianAxisError": 0.022,
+  "boxFound": 0.953125,
+  "tickRecall": 0.8585858585858586,
+  "minorRecall": 0.6945337620578779,
+  "tickPrecision": 0.9871447902571042,
   "falseTicksOnBareAxes": 0,
   "meanMs": 0
  },
@@ -78,15 +78,41 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
-  "faint-ticks": {
+  "errorbars": {
    "images": 1,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.001,
-   "boxFound": null,
+   "medianAxisError": 0.281,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": 1,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "four-series": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.017,
+   "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "frame": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.281,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": 1,
    "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
@@ -109,7 +135,7 @@
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.033,
+   "medianAxisError": 0.036,
    "boxFound": 1,
    "tickRecall": 0.9210526315789473,
    "minorRecall": 0.6378947368421053,
@@ -169,6 +195,19 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
+  "grey-series": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.101,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
   "grid": {
    "images": 22,
    "axesFound": 0.8636363636363636,
@@ -183,15 +222,15 @@
    "meanMs": 0
   },
   "journal": {
-   "images": 1,
+   "images": 4,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.001,
-   "boxFound": null,
+   "medianAxisError": 0.05,
+   "boxFound": 1,
    "tickRecall": 1,
-   "minorRecall": null,
-   "tickPrecision": 1,
+   "minorRecall": 1,
+   "tickPrecision": 0.9259259259259259,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -202,9 +241,9 @@
    "yFound": 1,
    "medianAxisError": 0.056,
    "boxFound": 1,
-   "tickRecall": 0.9575471698113207,
+   "tickRecall": 0.9569377990430622,
    "minorRecall": 0.5490981963927856,
-   "tickPrecision": 0.99375,
+   "tickPrecision": 0.973305954825462,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -239,7 +278,7 @@
    "axesFound": 0.96,
    "xFound": 0.96,
    "yFound": 0.96,
-   "medianAxisError": 0.021,
+   "medianAxisError": 0.022,
    "boxFound": 0.96,
    "tickRecall": 0.9194139194139194,
    "minorRecall": 0.7382297551789078,
@@ -248,28 +287,28 @@
    "meanMs": 0
   },
   "km": {
-   "images": 2,
+   "images": 3,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.009,
+   "medianAxisError": 0.039,
    "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
-   "tickPrecision": 1,
+   "tickPrecision": 0.7916666666666666,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
   "minor-ticks": {
-   "images": 9,
+   "images": 10,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.019,
+   "medianAxisError": 0.024,
    "boxFound": 1,
-   "tickRecall": 0.9626168224299065,
-   "minorRecall": 0.7978142076502732,
-   "tickPrecision": 0.9850374064837906,
+   "tickRecall": 0.9682539682539683,
+   "minorRecall": 0.8294930875576036,
+   "tickPrecision": 0.9877049180327869,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -291,7 +330,7 @@
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.022,
+   "medianAxisError": 0.023,
    "boxFound": 1,
    "tickRecall": 0.858560794044665,
    "minorRecall": 0.7146496815286624,
@@ -300,28 +339,28 @@
    "meanMs": 0
   },
   "png": {
-   "images": 41,
-   "axesFound": 0.926829268292683,
-   "xFound": 0.926829268292683,
-   "yFound": 0.926829268292683,
+   "images": 43,
+   "axesFound": 0.9302325581395349,
+   "xFound": 0.9302325581395349,
+   "yFound": 0.9302325581395349,
    "medianAxisError": 0.008,
-   "boxFound": 0.926829268292683,
-   "tickRecall": 0.8017817371937639,
-   "minorRecall": 0.7710487444608567,
-   "tickPrecision": 0.9932432432432432,
+   "boxFound": 0.9302325581395349,
+   "tickRecall": 0.8161157024793388,
+   "minorRecall": 0.7919463087248322,
+   "tickPrecision": 0.9939455095862765,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
   "real": {
-   "images": 2,
+   "images": 4,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.009,
+   "medianAxisError": 0.05,
    "boxFound": 1,
    "tickRecall": 1,
-   "minorRecall": null,
-   "tickPrecision": 1,
+   "minorRecall": 1,
+   "tickPrecision": 0.9259259259259259,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
@@ -338,6 +377,19 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
+  "same-colour": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.039,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 0.5,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
   "sas": {
    "images": 1,
    "axesFound": 1,
@@ -347,6 +399,19 @@
    "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
+  },
+  "scatter": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.281,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": 1,
    "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
@@ -364,12 +429,12 @@
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
   },
-  "table-in-plot": {
-   "images": 1,
+  "table-outside": {
+   "images": 2,
    "axesFound": 1,
    "xFound": 1,
    "yFound": 1,
-   "medianAxisError": 0.017,
+   "medianAxisError": 0.036,
    "boxFound": 1,
    "tickRecall": 1,
    "minorRecall": null,
@@ -408,7 +473,7 @@
    "axesFound": 0.9285714285714286,
    "xFound": 0.9285714285714286,
    "yFound": 0.9285714285714286,
-   "medianAxisError": 0.02,
+   "medianAxisError": 0.021,
    "boxFound": 0.9285714285714286,
    "tickRecall": 0.8646788990825688,
    "minorRecall": 0.6492942453854506,
@@ -460,7 +525,7 @@
    "axesFound": 0.9117647058823529,
    "xFound": 0.9117647058823529,
    "yFound": 0.9117647058823529,
-   "medianAxisError": 0.023,
+   "medianAxisError": 0.024,
    "boxFound": 0.9117647058823529,
    "tickRecall": 0.8082901554404145,
    "minorRecall": 0.6608863198458574,
@@ -506,16 +571,29 @@
    "tickPrecision": 1,
    "falseTicksOnBareAxes": 0,
    "meanMs": 0
+  },
+  "zero-inside": {
+   "images": 1,
+   "axesFound": 1,
+   "xFound": 1,
+   "yFound": 1,
+   "medianAxisError": 0.101,
+   "boxFound": 1,
+   "tickRecall": 1,
+   "minorRecall": null,
+   "tickPrecision": 1,
+   "falseTicksOnBareAxes": 0,
+   "meanMs": 0
   }
  },
  "calibOverall": {
-  "calibrated": 0.6532258064516129,
-  "correct": 0.6532258064516129,
+  "calibrated": 0.6640625,
+  "correct": 0.6640625,
   "wrong": 0,
   "wrongHigh": 0,
-  "scaleAccuracy": 0.9791666666666666,
-  "medianErrorPct": 0.135,
-  "autoImages": 0.4838709677419355,
+  "scaleAccuracy": 0.98,
+  "medianErrorPct": 0.126,
+  "autoImages": 0.5,
   "knownMaxError": 0.001,
   "meanOcrMs": 0
  },
@@ -575,15 +653,37 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
-  "faint-ticks": {
+  "errorbars": {
    "calibrated": 1,
    "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.216,
+   "medianErrorPct": 0.082,
    "autoImages": 1,
-   "knownMaxError": 0,
+   "knownMaxError": null,
+   "meanOcrMs": 0
+  },
+  "four-series": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.048,
+   "autoImages": 1,
+   "knownMaxError": 0.001,
+   "meanOcrMs": 0
+  },
+  "frame": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.082,
+   "autoImages": 1,
+   "knownMaxError": null,
    "meanOcrMs": 0
   },
   "frame-not-at-zero": {
@@ -592,7 +692,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.267,
+   "medianErrorPct": 0.048,
    "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
@@ -652,6 +752,17 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
+  "grey-series": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.027,
+   "autoImages": 1,
+   "knownMaxError": 0.001,
+   "meanOcrMs": 0
+  },
   "grid": {
    "calibrated": 0.6136363636363636,
    "correct": 0.6136363636363636,
@@ -669,9 +780,9 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.216,
+   "medianErrorPct": 0.053,
    "autoImages": 1,
-   "knownMaxError": 0,
+   "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
   "jpeg": {
@@ -724,19 +835,19 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.216,
+   "medianErrorPct": 0.048,
    "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
   "minor-ticks": {
-   "calibrated": 0.7777777777777778,
-   "correct": 0.7777777777777778,
+   "calibrated": 0.8,
+   "correct": 0.8,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.115,
-   "autoImages": 0.7777777777777778,
+   "medianErrorPct": 0.102,
+   "autoImages": 0.8,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -763,13 +874,13 @@
    "meanOcrMs": 0
   },
   "png": {
-   "calibrated": 0.6341463414634146,
-   "correct": 0.6341463414634146,
+   "calibrated": 0.6511627906976745,
+   "correct": 0.6511627906976745,
    "wrong": 0,
    "wrongHigh": 0,
-   "scaleAccuracy": 0.9672131147540983,
-   "medianErrorPct": 0.155,
-   "autoImages": 0.4634146341463415,
+   "scaleAccuracy": 0.9692307692307692,
+   "medianErrorPct": 0.144,
+   "autoImages": 0.4883720930232558,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
   },
@@ -779,7 +890,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.216,
+   "medianErrorPct": 0.053,
    "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
@@ -795,15 +906,37 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
+  "same-colour": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.253,
+   "autoImages": 1,
+   "knownMaxError": 0,
+   "meanOcrMs": 0
+  },
   "sas": {
    "calibrated": 1,
    "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.267,
+   "medianErrorPct": 0.048,
    "autoImages": 1,
    "knownMaxError": 0.001,
+   "meanOcrMs": 0
+  },
+  "scatter": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.082,
+   "autoImages": 1,
+   "knownMaxError": null,
    "meanOcrMs": 0
   },
   "synthetic": {
@@ -817,13 +950,13 @@
    "knownMaxError": null,
    "meanOcrMs": 0
   },
-  "table-in-plot": {
+  "table-outside": {
    "calibrated": 1,
    "correct": 1,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.267,
+   "medianErrorPct": 0.045,
    "autoImages": 1,
    "knownMaxError": 0.001,
    "meanOcrMs": 0
@@ -936,6 +1069,17 @@
    "medianErrorPct": 0.148,
    "autoImages": 0.35294117647058826,
    "knownMaxError": null,
+   "meanOcrMs": 0
+  },
+  "zero-inside": {
+   "calibrated": 1,
+   "correct": 1,
+   "wrong": 0,
+   "wrongHigh": 0,
+   "scaleAccuracy": 1,
+   "medianErrorPct": 0.027,
+   "autoImages": 1,
+   "knownMaxError": 0.001,
    "meanOcrMs": 0
   }
  },
@@ -1590,9 +1734,9 @@
     "dpi:low",
     "minor-ticks"
    ],
-   "xError": 0.026,
-   "yError": 0.02,
-   "boxError": 0.931,
+   "xError": 0.031,
+   "yError": 0.023,
+   "boxError": 0.926,
    "xTicks": "5/5M 18/18m 23/23det",
    "yTicks": "6/6M 22/22m 28/28det",
    "xCalib": "low linear",
@@ -2348,40 +2492,80 @@
    "yCalib": "low -",
    "known": ""
   },
-  "km-pericardial-effusion": {
+  "km-pericardial-pao": {
    "tags": [
     "real",
     "journal",
     "km",
-    "faint-ticks",
-    "jpeg"
+    "zero-inside",
+    "table-outside",
+    "grey-series",
+    "png"
    ],
-   "xError": 0.002,
-   "yError": 0,
-   "boxError": null,
-   "xTicks": "7/7M 0/0m 7/7det",
-   "yTicks": "6/6M 0/0m 6/6det",
-   "xCalib": "ok high linear 0.22%",
-   "yCalib": "ok high linear 0.12%",
-   "known": "0.162"
+   "xError": 0.15,
+   "yError": 0.052,
+   "boxError": 1.001,
+   "xTicks": "4/4M 0/0m 4/4det",
+   "yTicks": "5/5M 0/0m 5/5det",
+   "xCalib": "ok high linear 0.03%",
+   "yCalib": "ok high linear 0.02%",
+   "known": "0.680 0.574 0.479 0.148 0.063 0.029 0.001"
   },
-  "km-cns-lymphoma": {
+  "km-sas-frame-ikawa": {
    "tags": [
     "real",
+    "journal",
     "sas",
     "km",
     "frame-not-at-zero",
-    "table-in-plot",
+    "table-outside",
+    "four-series",
     "png"
    ],
-   "xError": 0.017,
-   "yError": 0.016,
-   "boxError": 0.366,
-   "xTicks": "6/6M 0/0m 6/6det",
-   "yTicks": "6/6M 0/0m 6/6det",
-   "xCalib": "ok high linear 0.08%",
-   "yCalib": "ok high linear 0.27%",
-   "known": "0.548 0.436 0.294 0.309 0.231"
+   "xError": 0.013,
+   "yError": 0.021,
+   "boxError": 0.204,
+   "xTicks": "8/8M 0/0m 8/8det",
+   "yTicks": "11/11M 0/0m 11/11det",
+   "xCalib": "ok high linear 0.04%",
+   "yCalib": "ok high linear 0.05%",
+   "known": "0.105 0.074 0.299 0.278 0.228 0.196 0.096 0.059 0.337"
+  },
+  "km-same-colour-styles": {
+   "tags": [
+    "real",
+    "journal",
+    "km",
+    "same-colour",
+    "jpeg"
+   ],
+   "xError": 0.029,
+   "yError": 0.048,
+   "boxError": 0.203,
+   "xTicks": "5/5M 0/0m 5/10det",
+   "yTicks": "5/5M 0/0m 5/10det",
+   "xCalib": "ok high linear 0.16%",
+   "yCalib": "ok high linear 0.25%",
+   "known": "0.819 0.793 0.770 0.778 0.755"
+  },
+  "scatter-errorbars-glowa": {
+   "tags": [
+    "real",
+    "journal",
+    "scatter",
+    "frame",
+    "minor-ticks",
+    "errorbars",
+    "png"
+   ],
+   "xError": 0.259,
+   "yError": 0.302,
+   "boxError": 0.398,
+   "xTicks": "10/10M 36/36m 46/46det",
+   "yTicks": "9/9M 32/32m 41/41det",
+   "xCalib": "ok high linear 0.05%",
+   "yCalib": "ok high linear 0.08%",
+   "known": ""
   }
  }
 }
