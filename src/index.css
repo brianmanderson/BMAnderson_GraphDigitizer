@@ -199,14 +199,35 @@ kbd {
   flex: 1;
 }
 
+/* The notice is a snackbar over the bottom of the canvas area (the workspace column of .main),
+   centred, never in the toolbar: it takes no layout space, so a wide system font can neither
+   squeeze it nor wrap the toolbar. The layer and the text let the pointer through to the
+   canvas; only the notice's buttons catch it. */
+.notice-layer {
+  position: absolute;
+  left: 0;
+  right: var(--panel-width);
+  bottom: 16px;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  pointer-events: none;
+  z-index: 2;
+}
 .notice {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 4px 3px 10px;
+  min-width: 0;
+  max-width: min(720px, 100%);
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
   border-radius: 6px;
+  box-shadow: 0 2px 10px var(--shadow);
   font-size: 13px;
-  max-width: 50%;
+}
+.notice button {
+  pointer-events: auto;
 }
 .notice.info {
   background: var(--accent-soft);
@@ -217,8 +238,10 @@ kbd {
 }
 
 .main {
+  --panel-width: 360px;
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr 360px;
+  grid-template-columns: 1fr var(--panel-width);
   min-height: 0;
 }
 
@@ -740,18 +763,7 @@ button.toggle[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
 }
-/* Takes the rest of the toolbar row (basis 0, so it never makes the row wrap); a long notice
-   shortens with an ellipsis rather than wrapping. */
-.notice-slot {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  justify-content: flex-end;
-}
-.notice-slot .notice {
-  min-width: 0;
-  max-width: 100%;
-}
+/* A notice longer than the snackbar's width shortens with an ellipsis (its title has it all). */
 .notice-text {
   overflow: hidden;
   text-overflow: ellipsis;

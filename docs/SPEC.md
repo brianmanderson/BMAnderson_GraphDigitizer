@@ -154,6 +154,14 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   undo/redo and the precision toggles, and lets the toolbar wrap on narrow windows) · canvas workspace · 360 px side
   panel with step tabs Image → Axes → Data, the step's controls, and the live table with export
   buttons below · status bar with the cursor's pixel and (x, y).
+- **Notices (decided 2026-11-09)**: what just happened ("Loaded …", "Cropped to … px.", errors)
+  shows as a snackbar centred over the bottom of the canvas area, with its Undo (see Undo
+  notices) and ✕; it stays until dismissed or replaced. It is not in the toolbar: there it got
+  only the width left over by the toolbar groups — ~100 px at 1366 px on Windows, ~10 px with the
+  wider Linux system font, where the theme toggle covered its Undo — and giving it more wrapped
+  the toolbar onto two rows, which squeezes the points table (Panel layout, below). The snackbar
+  takes no layout space; its text lets the pointer through to the canvas and only its buttons
+  catch it. `e2e/notice.spec.ts` checks it with a wide font at 1366×768.
 - **Loading**: file picker, drop onto the workspace, or paste anywhere. Any `image/*` that the
   browser decodes is accepted except SVG (vector input is a non-goal); others are rejected with
   a message naming the file. Loading starts a fresh document (settings are kept); since Phase 3

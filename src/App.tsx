@@ -1093,21 +1093,7 @@ export function App() {
             Move points
           </button>
         </div>
-        <div className="notice-slot">
-          {notice && (
-            <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice" title={notice.text}>
-              <span className="notice-text">{notice.text}</span>
-              {showUndo && (
-                <button type="button" className="small" onClick={undo}>
-                  Undo
-                </button>
-              )}
-              <button type="button" className="icon" onClick={() => setNotice(null)} aria-label="Dismiss">
-                ✕
-              </button>
-            </div>
-          )}
-        </div>
+        <div className="spacer" />
         <ThemeToggle />
       </header>
 
@@ -1283,6 +1269,24 @@ export function App() {
             />
           )}
         </aside>
+
+        {/* A snackbar over the bottom of the canvas area: never takes toolbar width, so it stays
+            readable whatever the font (SPEC → Notices). Only its buttons catch the pointer. */}
+        {notice && (
+          <div className="notice-layer">
+            <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'} data-testid="notice" title={notice.text}>
+              <span className="notice-text">{notice.text}</span>
+              {showUndo && (
+                <button type="button" className="small" onClick={undo}>
+                  Undo
+                </button>
+              )}
+              <button type="button" className="icon" onClick={() => setNotice(null)} aria-label="Dismiss">
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       <footer className="statusbar" data-testid="statusbar">
