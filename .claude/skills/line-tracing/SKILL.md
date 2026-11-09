@@ -60,13 +60,18 @@ description: >
    `chainPath`. Otherwise `applyStyle` (same-colour ink of another style becomes an occluder; a
    patterned seed's own gaps are filled, `unfill` after the walk) and the column walker.
 4. Column walker (`curve.ts → traceColumns`): runs per column; prediction = centre + median
-   slope, or after a long run straight-through-then-far-end; hole bridging on verticals; peak
+   slope, or after a long run straight-through-then-far-end (straight-through extrapolates from the
+   entry column `entryX` over every column since, when the clean slope rests on ≥ 3 pairs — a
+   shallow merge with a same-colour gridline is many columns wide); runs thinner than the stroke
+   are ranked by their own centre; hole bridging on verticals; peak
    consistency (`PEAK_RATIO`); open gaps ≤ `defaultMaxGap`, hidden (occluded) gaps ≤
    `defaultMaxHiddenGap`; under a marker-sized occluder a kink allowance (`KINK_SLOPE`,
    `KINK_COLUMNS`) whose runs must emerge from the ink and are only a fallback; retry from the last
    fork (`RETRY_COLUMNS`, `MAX_RETRY_DEPTH`; kink-only runs make no fork; the branch that followed
    most ink wins). Walk order: right, left primed with right, right primed with left.
-5. `columnsToPath`: centroids; thin long-run groups entered at one end → two corner points; square
+5. `columnsToPath`: centroids; thin long-run groups entered at one end → two corner points, unless
+   ≥ 2 columns wide and the agreeing slope on both sides explains the jump (a shallow crossing:
+   bridged; a 1-column stair of a steep line stays, its corner bounds `insertHiddenKinks`); square
    groups wider than a stroke sticking out past the curve (same-colour markers) → one corner at
    their centroid; thin groups sticking out on both sides ('+') dropped.
 6. `kinks.ts`: vertices hidden under other-colour markers (occluder centroid, or the intersection
@@ -91,10 +96,12 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (96 charts, 208 series; committed,
-  ~2.8 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (108 charts, 244 series; committed,
+  ~3.3 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
-  or circle vs square scatter of one colour with error bars) — so earlier ones stay
+  or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
+  solid sigmoid + dashed bounds over outlined bars and gridlines of its own colour, like a
+  dose-response figure) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -119,5 +126,7 @@ small/JPEG markers are still missed; a series hidden under another
 along a step ends the trace; thin faint lines in low-DPI JPEGs fragment; four-series JPEG charts
 on dark gridlines still switch series sometimes (dense 10.7 % wrong); legend samples count as
 markers; same-colour (Phase 6): a dashed series merged into the solid one for a stretch ends the
-dashed trace there, dashed/dotted KM steps keep few corners. Numbers: docs/SPEC.md → Auto-trace →
+dashed trace there, dashed/dotted KM steps keep few corners; grid-crossing: a thick JPEG curve
+among bars of its colour can be taken for markers in auto mode (`l100/s0`), dashed bounds among
+own-colour gridlines get their style misread. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.
