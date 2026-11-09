@@ -3,7 +3,8 @@
  *
  * Numbers: optional sign (ASCII '-', Unicode minus '−', en dash '–', '+'), digits with an optional
  * decimal point, thousands separators (`10,000`, `1 000`; a single comma not followed by exactly
- * three digits is a decimal comma: `0,5`), scientific notation (`1e-3`, `1.5E+04`), powers
+ * three digits is a decimal comma: `0,5`, and so is a comma after a lone 0: `0,001`, since a
+ * thousands group never starts with 0), scientific notation (`1e-3`, `1.5E+04`), powers
  * (`1×10^-3`, `1x10^3`, `10^3`, and Unicode superscripts `10³`, `10⁻³`) and a trailing `%`
  * (the number as printed: `20%` → 20). The OCR stage writes a raised exponent it read separately
  * as `base^exp`.
@@ -63,6 +64,9 @@ export function parseNumberLabel(text: string): { value: number; power: boolean 
   // was lost: never a value.
   if (/^[+-]?0\d/.test(s)) return null;
   if (PLAIN.test(s)) return finite(Number(s), false);
+  // "0,001" is 0.001: a number written with thousands groups never starts with a lone 0.
+  const zeroComma = /^([+-]?)0,(\d+)$/.exec(s);
+  if (zeroComma) return finite(Number(`${zeroComma[1]}0.${zeroComma[2]}`), false);
   const t = THOUSANDS.exec(text.trim().replace(/[−–]/g, '-'));
   if (t) return finite(Number(`${t[1]}${(t[2] ?? '').replace(/[, ]/g, '')}${t[4] ?? ''}`), false);
   const sci = SCI.exec(s);

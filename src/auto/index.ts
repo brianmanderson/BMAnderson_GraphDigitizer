@@ -27,6 +27,7 @@ export {
 } from './suggest.ts';
 export type {
   AxisDetection,
+  AxisPosition,
   DetectedAxis,
   LineCandidate,
   PlotBox,

@@ -17,7 +17,8 @@ import { findLabels } from './labels.ts';
 import type { RgbaImage } from './types.ts';
 
 function load(name: string): RgbaImage {
-  const buf = readFileSync(new URL(`../../fixtures/real/${name}`, import.meta.url));
+  const path = name.startsWith('bench/') ? `../../${name}` : `../../fixtures/real/${name}`;
+  const buf = readFileSync(new URL(path, import.meta.url));
   if (name.endsWith('.png')) {
     const png = pngjs.PNG.sync.read(buf);
     return { width: png.width, height: png.height, data: png.data };
@@ -26,10 +27,25 @@ function load(name: string): RgbaImage {
   return { width: j.width, height: j.height, data: j.data };
 }
 
-function labelsOf(name: string) {
-  const img = load(name);
+/** Mirror top↔bottom (`'v'`) or left↔right (`'h'`): pixel centre k ↦ size − 1 − k. */
+function flip(img: RgbaImage, dir: 'v' | 'h'): RgbaImage {
+  const { width: w, height: h } = img;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const j = ((dir === 'v' ? h - 1 - y : y) * w + (dir === 'h' ? w - 1 - x : x)) * 4;
+      for (let c = 0; c < 4; c++) data[(y * w + x) * 4 + c] = img.data[j + c] ?? 255;
+    }
+  }
+  return { width: w, height: h, data };
+}
+
+function labelsOf(name: string, flips: ('v' | 'h')[] = []) {
+  let img = load(name);
+  for (const d of flips) img = flip(img, d);
   const map = darknessMap(img);
-  return findLabels(map, img, detectAxesInMap(map));
+  const det = detectAxesInMap(map);
+  return { det, ...findLabels(map, img, det) };
 }
 
 describe('findLabels on km-pericardial-pao (axes with the zero lines inside, risk table below)', () => {
@@ -120,5 +136,54 @@ describe('findLabels on scatter-errorbars-glowa (closed frame with minor ticks, 
   it('sees the decimal point of each Y label ("1.0" … "2.6") and none on X', () => {
     for (const l of f.y.labels) expect(l.marks.points).toHaveLength(1);
     for (const l of f.x.labels) expect(l.marks.points).toEqual([]);
+  });
+});
+
+describe('findLabels on km-pericardial-pao mirrored: a top X axis and a right Y axis', () => {
+  const H = 691;
+  const W = 710;
+
+  it('looks above a top X axis, and still not at the risk table (now above the labels)', () => {
+    const f = labelsOf('km-pericardial-pao.png', ['v']);
+    expect(f.det.xAxis?.position).toBe('top');
+    expect(f.x.mode).toBe('ticks');
+    expect(f.x.labels).toHaveLength(pao.xAxis.ticks.length);
+    f.x.labels.forEach((l, i) => expect(Math.abs(l.point.x - (pao.xAxis.ticks[i]?.px ?? NaN))).toBeLessThanOrEqual(1.5));
+    // The labels sat at rows 499–520 (now 170–191), the table at 640–688 (now 2–50).
+    for (const l of f.x.labels) {
+      expect(l.box.center.y).toBeLessThan(H - 1 - pao.xAxis.axisLineRow);
+      expect(l.box.center.y).toBeGreaterThan(H - 1 - 530);
+    }
+    expect(f.y.labels).toHaveLength(pao.yAxis.ticks.length);
+    expect(f.y.note).toBeNull();
+  });
+
+  it('looks right of a right Y axis', () => {
+    const f = labelsOf('km-pericardial-pao.png', ['h']);
+    expect(f.det.yAxis?.position).toBe('right');
+    const ys = [...pao.yAxis.ticks].sort((a, b) => a.py - b.py);
+    expect(f.y.labels).toHaveLength(ys.length);
+    f.y.labels.forEach((l, i) => expect(Math.abs(l.point.y - (ys[i]?.py ?? NaN))).toBeLessThanOrEqual(1.5));
+    // Right of the axis, not the mirrored rotated title further out (columns 679–706).
+    for (const l of f.y.labels) {
+      expect(l.box.center.x).toBeGreaterThan(W - 1 - pao.yAxis.axisLineCol);
+      expect(l.box.center.x).toBeLessThan(W - 1 - 40);
+    }
+  });
+});
+
+describe('findLabels under a top X axis: the Y axis offset note (synthetic bench/axes charts)', () => {
+  it('does not take the corner X label above the Y axis for a Y note (c67, "−0.050" over the corner)', () => {
+    const f = labelsOf('bench/axes/synthetic/c67.jpg');
+    expect(f.det.xAxis?.position).toBe('top');
+    expect(f.x.labels).toHaveLength(6);
+    expect(f.y.note).toBeNull();
+  });
+
+  it("flags matplotlib's Y note squeezed under the X labels (c63, \"−5e3\") as tangled, never readable", () => {
+    const f = labelsOf('bench/axes/synthetic/c63.png');
+    expect(f.det.xAxis?.position).toBe('top');
+    expect(f.y.note).not.toBeNull();
+    expect(f.y.noteTangled).toBe(true);
   });
 });

@@ -367,8 +367,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
 - **Module**: `src/auto/` — pure TS, no DOM (checked by `tsconfig.core.json` and ESLint like
   `src/core`), so Phase 5 can run it in a Web Worker. `detectAxes({ width, height, data })` takes
   RGBA bytes and returns the skew angle, the X/Y axis lines (sub-pixel offset, ends, contrast,
-  thickness, confidence), the plot box (four corners; whether top/right are drawn frame lines),
-  per-axis tick sets and the strongest line candidates. Phase 5 consumes it (Auto-calibration).
+  thickness, confidence, `position`: X `bottom`/`top`, Y `left`/`right`), the plot box (four
+  corners; whether the edges opposite the axes are drawn frame lines), per-axis tick sets and the
+  strongest line candidates. Phase 5 consumes it (Auto-calibration).
 - **Pipeline**: adaptive darkness (pixel darker than the local mean over ~1/40 of the short side;
   ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
   clearly better), refined once from the median tilt of the longest fitted lines → per row/column
@@ -377,10 +378,26 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   hides a stretch of it: a hole ≤ 4 % of the image's short side is crossed when the pieces on
   both sides are ≥ 4 % of the short side and ≥ 3× the hole, of similar darkness; only found
   lines are extended, so rows through side-by-side bars are never chained) → sub-pixel offset = median of clean cross-profile centroids → axis pair = strong
-  horizontal × vertical candidates that meet with the plot above/right (L corner or cross),
-  ranked by strength, extent and tick evidence → plot box to the far axis ends or a frame line of
-  similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
+  horizontal × vertical candidates that meet with the plot on one side of each (L corner or
+  cross; bottom-left by default, top/right under the rule below), ranked by strength, extent and
+  tick evidence → plot box to the far axis ends or a frame line of similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
   estimates the angle; profiles run in the rotated frame. OpenCV.js was not needed.
+- **Axes at the top or right** (decided 2026-11-09, motivated by an Excel survival curve whose
+  dose axis runs along the top, labels above it: a "Γ" frame that got no plot box before). Each
+  candidate pair is scored in all four corner orientations with the same score. Bottom-left is the
+  default; an X axis at the top or a Y axis at the right is accepted only when (a) that axis
+  **ends at the corner** — axes that cross (through zero) keep the default sides, whose labels sit
+  below/left; (b) it has a **tick pattern** (confidence ≥ 0.3) — a bare Γ gets no box, as before;
+  (c) after a **fixed handicap of 0.25 per moved axis**. So a frame with ticks on every side, or
+  with both a bottom and a top X axis, keeps bottom-left; a Γ, or a closed frame whose only X
+  ticks are on the top line, gets the top axis. Ticks' `side` is relative to the plot (outside =
+  above a top axis); labels and the axis note are looked for on the axis's far side from the plot
+  (see Auto-calibration). The tracer's `plotBox: null` path and `bench:lines` get the new boxes
+  too (no `bench:lines` figure changed). Synthetic charts c60–c69 (below) cover it: every axis
+  and box of the eight top-axis charts found, tick recall 97.5 %; on the two right-axis charts the
+  boxes are found, but c69's right log axis is not (its minor ticks are shorter than the thick
+  spine, leaving two decade marks: the known "two decades" failure), so a dashed gridline pairs
+  as the Y axis there. No existing figure's result changed.
 - **Ticks**: short perpendicular marks on both sides of each axis (adjacent columns summed for
   thin antialiased ticks; a walk ends where darkness halves, so a tick doesn't run into a lighter
   gridline; longer runs and blobs wider than a tick are not ticks); a lattice fit picks evenly
@@ -389,8 +406,11 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   interval give `pattern: 'log'` (a scale hint for Phase 5). **Fewer than three majors without
   three minors to back them means no ticks and confidence 0** — an axis with labels only must not
   get invented ticks. Confidences are heuristics in 0–1 (documented in `ticks.ts`/`detect.ts`).
-- **Corpus** (`bench/axes/`): 60 matplotlib charts from `generate.py` (seeded; Python 3.12 +
-  matplotlib 3.10; output committed, ~1.5 MB) varying scale (linear/log10/date), gridlines,
+- **Corpus** (`bench/axes/`): 70 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~1.7 MB) — c60–c69 appended so the first 60 are unchanged:
+  X axis at the top (c60–c67: three "Γ" frames, five closed frames with ticks only on top; linear,
+  log10 and date X, linear and log10 Y; tags `x-axis:top`, `frame:top`/`frame:box-top`) and Y axis
+  at the right (c68–c69, `y-axis:right`) — varying scale (linear/log10/date), gridlines,
   12 fonts, 72–200 DPI, line/scatter/bar, frame (box, L, axes through zero, ggplot-style with no
   axis lines), tick direction and length, minor and mirrored ticks, x labels without tick marks,
   grey axes, rotation ±0.5–3° (bilinear, white fill) and JPEG q30–90. Agg pixel snapping is off so
@@ -462,17 +482,18 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   session on the production build — page and worker targets, over CDP — into
   `privacy-report.json` and fails on any foreign origin. The base is `BASE_PATH` at build time (default `/`; `/BMAnderson_GraphDigitizer/` for the
   GitHub Pages deployment in `.github/workflows/deploy.yml`).
-- **Finding labels**: the band outside each axis (below X, left of Y), sampled in the
+- **Finding labels**: the band outside each axis — on its far side from the plot: below a bottom
+  X axis, above a top one; left of a left Y axis, right of a right one — sampled in the
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
   adaptive threshold (30 % of the band's 98th-percentile darkness, clamped to 24–80); dropped:
   too big, solid square blobs (markers, ≥ 80 % filled), colourful ones (mean chroma ≥ 80: data,
   coloured tables — tick labels are black or grey). Rows by vertical overlap, words by gaps under
   half the text height; Y words grow from the axis side, and a much taller glyph sticking out
   above and below (an axis-title letter) starts a new word. **Matching**: with ≥ 2 major ticks,
-  X = the row with most words centred on ticks; Y = per tick the axis-nearest word of the level
-  row, within 3 text heights of the axis (the number-at-risk tables of the Pao and Ikawa figures fail these tests).
-  Without tick marks: the X row nearest the axis with ≥ 3 words, or the right-aligned Y words;
-  positions are then label centres (looser tolerance).
+  X = the row with most words centred on ticks (nearest the axis on a tie); Y = per tick the
+  axis-nearest word of the level row, within 3 text heights of the axis (the number-at-risk tables of the Pao and Ikawa figures fail these tests).
+  Without tick marks: the X row nearest the axis with ≥ 3 words, or the Y words aligned at the
+  axis; positions are then label centres (looser tolerance).
 - **OCR**: crops are the word box upscaled bilinearly to a 28 px body height (best of 24/28/32/40
   on the corpus), dark on white, contrast-normalised. Pass 1 uses a numeric whitelist
   (`0-9 . , - + e E × x %`), page-segmentation mode 7, falling back to 6 (and 10 for single
@@ -487,17 +508,23 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   tabular); a leading minus is restored the same way. A number with a leading zero followed by a
   digit (`08`, `000`) is never a value: it is a lost point.
 - **Parsing** (`parseLabel.ts`): sign variants, thousands separators (`10,000`, `1 000`; a single
-  comma not followed by exactly three digits is a decimal comma), `1e-3`, `1×10^-3`, `10^3`,
+  comma not followed by exactly three digits is a decimal comma, and so is a comma after a lone 0:
+  `0,001` = 0.001, since a thousands group never starts with 0 — it used to read as 1), `1e-3`, `1×10^-3`, `10^3`,
   superscripts, `%` (the number as printed). Dates: full dates via `parseDateTime`, years, and
   month names dated from a year label on the same axis (months increase along the axis; a year
   label means 1 January; walking forward, a month not after the previous one starts a new year).
   Bare day numbers are never dated (their month and year are printed elsewhere): such an axis is
   declined rather than read as numbers.
-- **Axis note**: matplotlib's offset/multiplier text (`+1e4` right-aligned under the X labels, or
-  above the Y axis top) is found by position and text height and read both ways (`l I o` → `1 0`
+- **Axis note**: matplotlib's offset/multiplier text (`+1e4` right-aligned at the axis end beyond
+  the X labels — below a bottom axis's, above a top one's — or above the Y axis top, aligned at the
+  axis) is found by position and text height and read both ways (`l I o` → `1 0`
   repair); a signed term is added, an unsigned power of ten multiplies. A note read below 50 %
   confidence makes the axis decline — the labels alone are not the values. Text there with two or
-  more real letters (a title, units) is not a note.
+  more real letters (a title, units) is not a note. **Under a top X axis** the X labels' row runs
+  over the Y axis's top end: a word centred on that row is an X label (the one at the corner often
+  has no tick of its own), not a Y note; a word off that row is still a note, and if it reaches
+  into the row (matplotlib squeezes "−5e3" under the "100000" label: their glyphs merge) it is
+  *tangled* — read for display, never applied, so the Y axis declines (c63).
 - **Scale inference**: a consensus fit of value vs position (every label pair proposes a line; the
   one most labels agree with within `max(1.5 px, 3 % of the spacing)` — `max(2.5 px, 8 %)` for
   label centres — wins, then least squares). Linear vs log10: more agreeing labels wins; log needs
@@ -548,6 +575,11 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   → 0.1047 / 0.0744 / 0.2991 / 0.2785 / 0.2277 / 0.1960 / 0.0963 / 0.0590 / 0.3374); the Glowa
   scatter both axes high (0.05 / 0.08 %, all ten and nine labels read including the corner
   majors). Every real figure is calibrated end to end.
+- **Top/right axes (2026-11-09)**: with c60–c69 (74 images) 68.2 % of axes correct, **0 wrong**,
+  51.4 % of images end to end; every earlier figure's result is unchanged (rebaselined for the new
+  charts only). `x-axis:top` 81.3 % of axes correct (13/16), 5 of 8 charts end to end; declined:
+  c61's two-decade log Y (no ticks found), c62's low-resolution `10⁻¹` labels, c63's Y (tangled
+  note). `y-axis:right`: c68 both axes; c69's right log axis not found (see Axis detection).
 
 ## Auto-trace (line tracing engine)
 

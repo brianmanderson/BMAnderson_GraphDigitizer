@@ -109,11 +109,14 @@ export async function autoCalibrate(img: RgbaImage, ocr: OcrEngine, opts: AutoOp
   opts.onProgress?.('Reading the tick labels…');
   const readAxis = async (labels: AxisLabels) => {
     const base = readingBase(detection, labels);
-    const [numeric, note] = await Promise.all([
-      Promise.all(labels.labels.map((l) => readNumeric(counted, l))),
-      labels.note ? readNote(counted, labels.note) : Promise.resolve(null),
-    ]);
-    let reading: AxisReading = { ...base, numeric, text: null, note };
+    // A note tangled with the other axis's labels is shown as read but never applied.
+    const note = labels.note
+      ? labels.noteTangled
+        ? readNumeric(counted, labels.note).then((r) => ({ text: r.text, confidence: 0 }))
+        : readNote(counted, labels.note)
+      : Promise.resolve(null);
+    const [numeric, noteRead] = await Promise.all([Promise.all(labels.labels.map((l) => readNumeric(counted, l))), note]);
+    let reading: AxisReading = { ...base, numeric, text: null, note: noteRead };
     let s = suggestAxis(reading);
     // Read as text too unless the numeric reading is confident and complete: a label that is not
     // a number may be a month name, which makes this a date axis.
