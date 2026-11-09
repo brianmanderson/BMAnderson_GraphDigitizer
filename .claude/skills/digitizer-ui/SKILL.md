@@ -148,6 +148,14 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   table is not rendered (`tableRows` returns `[]`). `onSelect`/`onAddPoint` call `expandLine`;
   DataTable scrolls the selected row (`tr[data-point-id]`) into view on a new selection.
 
+## Notices
+
+- The notice (`data-testid="notice"`, its Undo and ✕) is a snackbar in `.notice-layer`, a child
+  of `.main` over the bottom of the workspace column (SPEC → Notices). Don't put it back in the
+  toolbar or give it toolbar width: on the Linux CI font the toolbar has no room left at 1366 px,
+  and a wider slot wraps the toolbar and squeezes the table. Keep the layer and text
+  `pointer-events: none` (only buttons catch clicks). `e2e/notice.spec.ts` runs with a wide font.
+
 ## e2e hooks — keep them
 
 - Canvas `data-testid="canvas"` with `data-scale`, `data-offset-x`, `data-offset-y` (the view).
