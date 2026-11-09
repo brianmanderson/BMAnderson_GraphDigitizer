@@ -17,7 +17,8 @@
  *    'markers' ("Find points") cuts the clicked marker's shape out of its blob (error bars and
  *    lines attached to it are thinner) and finds every marker that looks like it (markers.ts).
  *    'auto' takes markers when the seed's blob is small, roughly round and not part of such a
- *    chain or a dashed line, or when a marker shape cut out of it is found three times or more.
+ *    chain or a dashed line, or when a marker shape cut out of it is found three times or more (a
+ *    pocket of background beside a thick line, walled off by thinner lines, is no marker shape).
  *    Vertices hidden under markers are restored (kinks.ts): the intersection of the straight
  *    stretches either side of a bridged marker, and a line's end under a marker at its centre.
  * 4. Suggested points (resample.ts): corners and extrema always, then evenly spread to maxPoints;

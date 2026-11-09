@@ -692,7 +692,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
 - **Auto mode**: markers when the seed's blob is at most max(30 px, 6 % of the plot's short
   side), roughly round (second-moment elongation < 2.5), not part of a regular chain and not read
   as dashed, dotted or dash-dot; or when the seed's blob is larger (a marker joined to its error
-  bars) but a marker template is cut out of it and found at least three times; else curve.
+  bars) but a marker template is cut out of it and found at least three times; else curve. An
+  open template is not cut from a pocket of background beside a thick line walled off by thinner
+  lines of its colour (gridlines, bar outlines): when the seed's stroke — the ink at least ¾ as
+  deep as at the seed, widened back to its edges — leaves the template window and borders less
+  than half of the hole, there is no template (a ring bounds its whole hole; 1–2-px strokes are
+  never told from thinner ink, so the test only acts on thick ones).
 - **Suggested points** (`resample.ts`): always both ends, every step corner, every y extremum
   with prominence ≥ max(3 px, 2 line widths) and every sharp kink (Douglas–Peucker vertex at
   max(0.75 px, ½ line width) turning ≥ 30°, e.g. the data points of a polyline chart) — kept even
@@ -845,9 +850,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   two touching markers, traced differently, wrong either way); `l10/s2` +0.001 px median (a dash
   it used to skip at a crossing is now traced, ~1 px off), and the pooled `scenario:dashed`,
   `dpi:high`, `censor-marks` medians +0.0001–0.0002 px and `markers:same-colour` p95 +0.003 px from
-  traces that now cover more of a hard line. **Known failures in the new scenario**: `l100/s0`
-  (JPEG, 6-px black curve) is taken for markers in auto mode — a marker template is cut out of the
-  thick line where it meets the bars and found three times (mode `curve` traces it); the dashed
+  traces that now cover more of a hard line. **Known failures in the new scenario**: (`l100/s0`, taken
+  for markers in auto mode, was fixed the same day: next entry) the dashed
   confidence curves among gridlines of their colour have their style misread as dotted / dash-dot
   in 6 of 24 traces (`own-colour-lines` style 83 %) and `l103/s2` (dashed, JPEG) switches to a
   gridline. Where shallow crossings follow each other closely (fewer than three clean columns of
@@ -855,6 +859,18 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   is not recognised and keeps a step-corner pair up to half a stroke off the curve (the unit test
   "stays on a thick curve where it crosses thin lines of its colour" asserts only that the trace
   stays in the stroke there).
+- **Thick curve among same-colour lines in auto mode (2026-11-09; 256 traces)**: `l100/s0` (JPEG,
+  6-px black sigmoid over black gridlines and outlined bars) came back as 4 "markers": the triangle
+  of background between the curve, a bar side and a gridline was cut out as an *open* marker
+  (curve + thin lines as its ring) and found again wherever the curve crosses a bar side. Fix: the
+  through-stroke test above (Auto mode). `l100/s0` markers → curve, coverage 0 → 100 %, median
+  error 5.55 → 0.03 px, style solid; no other trace changed. Overall: kind 96.9 → 97.3 %, coverage
+  92.6 → 93.1 %, p95 0.9472 → 0.9468 px, wrong 2.4 → 1.9 %, style 94.3 → 94.8 %; scenario
+  `grid-crossing` kind 97.2 → 100 %, coverage 88.1 → 90.9 %, wrong 5.6 → 2.8 %. Trade-off: its 25
+  points now enter the pooled errors of `color:black`, `legend`, `ticks:in` (median +0.0001–0.0002
+  px) and `dpi:mid` (p95 0.728 → 0.730 px). Find points (l84–l95), the Glowa scatter and markers
+  with error bars are unchanged. The unit test above now runs in mode `auto` and asserts a solid
+  curve.
 
 ## Auto-trace — UI
 

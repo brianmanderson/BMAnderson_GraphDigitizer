@@ -78,7 +78,8 @@ description: >
    of the stretches either side, both only over ink) and line ends under a marker.
 7. `resample.ts`: ends + corners + extrema + DP kinks always, rest evenly in x up to `maxPoints`.
 8. Markers ("Find points", `markers.ts`): `markerTemplate` cuts the clicked marker out of its blob
-   (filled: opening wider than the attached strokes; open: the enclosed hole + ring), `findMarkers`
+   (filled: opening wider than the attached strokes; open: the enclosed hole + ring — not a pocket
+   beside a thick stroke that runs on and borders under half of it, `throughStroke`), `findMarkers`
    matches its ink / defining background / margin everywhere (filled on the opened image, corners
    raw), splits clumps by area, drops legend samples (`legendSample`). No template → blob match.
 
@@ -126,7 +127,6 @@ small/JPEG markers are still missed; a series hidden under another
 along a step ends the trace; thin faint lines in low-DPI JPEGs fragment; four-series JPEG charts
 on dark gridlines still switch series sometimes (dense 10.7 % wrong); legend samples count as
 markers; same-colour (Phase 6): a dashed series merged into the solid one for a stretch ends the
-dashed trace there, dashed/dotted KM steps keep few corners; grid-crossing: a thick JPEG curve
-among bars of its colour can be taken for markers in auto mode (`l100/s0`), dashed bounds among
+dashed trace there, dashed/dotted KM steps keep few corners; grid-crossing: dashed bounds among
 own-colour gridlines get their style misread. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.

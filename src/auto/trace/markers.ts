@@ -322,6 +322,45 @@ function component(mask: Uint8Array, w: number, h: number, start: number, eight:
 }
 
 /**
+ * Whether the hole next to the seed is a pocket between a long stroke and thinner ink of its
+ * colour (a thick curve over gridlines and bar outlines, study image A14), not the inside of an
+ * open marker: the seed's stroke — the ink at least ¾ as deep as at the seed, widened back to its
+ * edges — runs out of the window and borders less than half of the hole. A ring bounds its whole
+ * hole, whatever is attached to it; a thin stroke (1–2 px) is never told from thinner ink.
+ * `d`: depth in the blob `B`, `dH`: distance to the hole (both in thirds of a pixel).
+ */
+function throughStroke(B: Uint8Array, d: Uint16Array, w: number, h: number, sx: number, sy: number, dH: Uint16Array): boolean {
+  // The stroke's own depth at the seed (a junction beside it is deeper).
+  let depth = 0;
+  let core = -1;
+  for (let y = Math.max(0, sy - 1); y <= Math.min(h - 1, sy + 1); y++) {
+    for (let x = Math.max(0, sx - 1); x <= Math.min(w - 1, sx + 1); x++) {
+      if (d[y * w + x]! > depth) {
+        depth = d[y * w + x]!;
+        core = y * w + x;
+      }
+    }
+  }
+  if (core < 0) return false;
+  const minDeep = Math.ceil(0.75 * depth);
+  const notDeep = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) notDeep[i] = B[i] && d[i]! >= minDeep ? 0 : 1;
+  const toDeep = chamfer(notDeep, w, h, false);
+  // Widened back to the stroke's edge (depth 1 px), not into the thinner lines it crosses.
+  const stroke = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) stroke[i] = B[i] && toDeep[i]! <= minDeep - 2 ? 1 : 0;
+  if (!component(stroke, w, h, core, true).border) return false;
+  let rim = 0;
+  let onStroke = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!B[i] || dH[i]! > 4) continue;
+    rim++;
+    if (stroke[i]) onStroke++;
+  }
+  return 2 * onStroke < rim;
+}
+
+/**
  * Cut the clicked marker out of its blob. Filled: the thickest part of the blob under the seed
  * (the seed inside its inscribed circle), opened by a radius between the attached strokes' half
  * width and the marker's (0.4 × its inscribed radius, ≥ 2 px). Open: a hole enclosed by the blob
@@ -426,6 +465,8 @@ export function markerTemplate(
       const notHole = new Uint8Array(w * h);
       for (let i = 0; i < w * h; i++) notHole[i] = hole[i] ? 0 : 1;
       const dH = chamfer(notHole, w, h, false);
+      // A pocket beside a thick line, walled off by thinner lines of its colour, is no marker.
+      if (!clicked && throughStroke(B, d, w, h, sx, sy, dH)) return null;
       // Ring width: twice the half width of the blob just outside the hole.
       const halves: number[] = [];
       for (let i = 0; i < w * h; i++) if (B[i] && dH[i]! <= 6) halves.push(d[i]! / 3);

@@ -248,11 +248,12 @@ describe('traceLine: curves', () => {
       c.stroke([{ x: x0, y: 259 }, { x: x0, y: top }, { x: x1, y: top }, { x: x1, y: 259 }], 3, BLACK);
     }
     c.stroke(curve, 5, BLACK);
-    // Mode 'curve': in auto mode a marker template is cut out of the thick line where it meets the
-    // bars and found three times (SPEC → Auto-trace → known failures, `l100/s0`).
+    // Auto mode: the pockets of background between the curve, a bar top and a bar side are no open
+    // markers (the curve borders them on one side only and runs on), so it stays a curve.
     for (const seed of [curve[38]!, curve[158]!, curve[288]!]) {
-      const r = traceLine(c.request(seed, { mode: 'curve' }));
+      const r = traceLine(c.request(seed));
       expect(r.kind).toBe('curve');
+      expect(r.style).toBe('solid');
       const path = pts(r);
       expect(path.every((p) => polyDist(p, curve) < 5)).toBe(true); // within one stroke width
       expect(Math.min(...path.map((p) => p.x))).toBeLessThan(46);
