@@ -6,7 +6,7 @@ date/time, by hand or with **Auto-detect axes** (tick-label OCR) — click a plo
 trace it (the Data step's default), or place points by hand on one or more lines, and export
 the table as CSV, TSV or a project file you can reopen later.
 
-**Use it here:** https://brianmanderson.github.io/UCSD_GraphEvaluator/
+**Use it here:** https://brianmanderson.github.io/BMAnderson_GraphDigitizer/
 
 Everything runs in your browser. Images never leave it: there is no upload, no server-side
 processing, and OCR runs offline from files bundled with the app.
@@ -55,7 +55,7 @@ npm run verify     # typecheck, lint, unit tests, benchmarks, e2e — the gate e
 
 `npm run test:e2e` (part of `verify`) needs `npx playwright install chromium` once. `npm run
 build` writes the production bundle to `dist/`; the GitHub Pages deployment builds it with
-`BASE_PATH=/UCSD_GraphEvaluator/` (see `.github/workflows/deploy.yml`).
+`BASE_PATH=/BMAnderson_GraphDigitizer/` (see `.github/workflows/deploy.yml`).
 
 [docs/SPEC.md](docs/SPEC.md) is the source of truth for the workflow, the calibration maths, the
 data model and the design decisions.
@@ -98,7 +98,7 @@ If you use Graph Digitizer in published work, please cite it. The citation metad
 [CITATION.cff](CITATION.cff) (GitHub's "Cite this repository" renders it):
 
 > Anderson BM. Graph Digitizer (version 1.0.0). University of California San Diego, 2026.
-> https://github.com/brianmanderson/UCSD_GraphEvaluator. DOI: 10.5281/zenodo.PLACEHOLDER
+> https://github.com/brianmanderson/BMAnderson_GraphDigitizer. DOI: 10.5281/zenodo.PLACEHOLDER
 
 The DOI is a placeholder until Zenodo mints one for the 1.0.0 release; `CITATION.cff` carries
 the same placeholder and is updated with it.

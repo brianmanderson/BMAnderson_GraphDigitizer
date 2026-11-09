@@ -1,6 +1,6 @@
 # Verifies every push and pull request with the repo's own gate (npm run verify) and, on main
-# or a manual run, builds the app under /UCSD_GraphEvaluator/ and deploys dist/ to GitHub Pages
-# (https://brianmanderson.github.io/UCSD_GraphEvaluator/). Pages must be set to deploy from
+# or a manual run, builds the app under /BMAnderson_GraphDigitizer/ and deploys dist/ to GitHub Pages
+# (https://brianmanderson.github.io/BMAnderson_GraphDigitizer/). Pages must be set to deploy from
 # "GitHub Actions" in the repository settings. BASE_PATH is read by vite.config.ts; see
 # CLAUDE.md → Commands.
 name: Verify and deploy
@@ -82,7 +82,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     env:
       # The project site lives under /<repo>/; vite.config.ts turns this into Vite's `base`.
-      BASE_PATH: /UCSD_GraphEvaluator/
+      BASE_PATH: /BMAnderson_GraphDigitizer/
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -97,7 +97,7 @@ jobs:
         # honours the same base) must serve the app and the vendored Tesseract worker there.
         run: |
           set -euo pipefail
-          grep -q 'src="/UCSD_GraphEvaluator/assets/' dist/index.html
+          grep -q 'src="/BMAnderson_GraphDigitizer/assets/' dist/index.html
           if grep -Eq '(src|href)="/(src|assets)/' dist/index.html; then
             echo 'dist/index.html still references root-relative assets' >&2
             exit 1
@@ -107,7 +107,7 @@ jobs:
           npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
           PREVIEW_PID=$!
           for _ in $(seq 1 30); do
-            curl -sf -o /dev/null http://localhost:4173/UCSD_GraphEvaluator/ && break
+            curl -sf -o /dev/null http://localhost:4173/BMAnderson_GraphDigitizer/ && break
             sleep 1
           done
           check() {
@@ -115,8 +115,8 @@ jobs:
             echo "$code $1"
             [ "$code" = "200" ]
           }
-          check http://localhost:4173/UCSD_GraphEvaluator/
-          check http://localhost:4173/UCSD_GraphEvaluator/tesseract/worker.min.js
+          check http://localhost:4173/BMAnderson_GraphDigitizer/
+          check http://localhost:4173/BMAnderson_GraphDigitizer/tesseract/worker.min.js
           kill "$PREVIEW_PID"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

@@ -17,8 +17,8 @@ authors:
 version: 1.0.0
 date-released: 2026-11-07
 license: MIT
-repository-code: "https://github.com/brianmanderson/UCSD_GraphEvaluator"
-url: "https://brianmanderson.github.io/UCSD_GraphEvaluator/"
+repository-code: "https://github.com/brianmanderson/BMAnderson_GraphDigitizer"
+url: "https://brianmanderson.github.io/BMAnderson_GraphDigitizer/"
 # TODO (release): replace with the DOI Zenodo mints for v1.0.0, e.g. 10.5281/zenodo.NNNNNNN
 doi: "10.5281/zenodo.PLACEHOLDER"
 keywords:

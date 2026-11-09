@@ -11,7 +11,7 @@ const pkgDir = (name: string) => dirname(require.resolve(`${name}/package.json`)
 
 /**
  * Public base path, from BASE_PATH (default '/'). GitHub Pages serves a project site under
- * /<repo>/, so the deploy workflow builds with BASE_PATH=/UCSD_GraphEvaluator/. It is a
+ * /<repo>/, so the deploy workflow builds with BASE_PATH=/BMAnderson_GraphDigitizer/. It is a
  * build-time (and `vite preview`) setting only: the dev server and the e2e suite assume the
  * app is at '/'. Everything else derives from it — Vite rewrites asset and worker URLs, and
  * src/ui/ocr.ts builds the Tesseract URLs from import.meta.env.BASE_URL.
