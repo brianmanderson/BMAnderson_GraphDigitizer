@@ -850,6 +850,59 @@ this is the UI half. The contract between them is `src/auto/trace/types.ts` (`Tr
   are ordinary points (drag, nudge, delete, table, exports). A trace belongs to the image it was
   made for and is UI state, not part of the document or autosave.
 
+## Session log (decided 2026-11-07)
+
+A per-image record of what the user did, for timing and auditing digitizing sessions (e.g. a
+study's time per figure and its tallies of accepted/edited automatic suggestions). It is kept
+**in memory only** — never written to IndexedDB, the autosave or the project, never fetched or
+posted; a reload loses it — and downloaded on request. It holds **no image data**.
+
+- **Export**: "Session log" (accessible name "Download session log", `data-testid="session-log"`)
+  in the toolbar's File group beside "Save project", enabled once an image is loaded, downloads
+  `<image>-session.json` through the same `downloadText` helper as the other exports. No
+  keyboard shortcut (Ctrl+S already saves the project, with or without Shift). The project
+  file is unchanged (no `PROJECT_VERSION` bump): the log is a separate file.
+- **One log per loaded image**: loading an image, opening a project or restoring the autosave
+  starts a new log (`image-loaded` with `source` `image` | `project` | `autosave`); a crop or an
+  undo across a load does not. The file: `{ format: "graph-digitizer-session-log", version: 1,
+  header, events }`.
+- **Header** (once): `appVersion` (package.json), `commit` (the git commit built, injected by
+  Vite's `define` as `__GIT_COMMIT__` from `git rev-parse HEAD`, else `GITHUB_SHA`, else
+  `"unknown"`), `startedAt` (ISO 8601 wall clock at the load), `userAgent`, `viewport` {w, h}
+  (CSS px), `devicePixelRatio`, `imageName`, `imageSize` {w, h, bytes} of the image as loaded
+  (bytes = the file's size, from its data URL).
+- **Events** `{ seq, t, type, …payload }`: `seq` counts from 0 without gaps; `t` = ms since the
+  load from a monotonic clock (`performance.now()`, 0.1 ms, never decreasing). Types and payloads:
+  `image-loaded` {source}; `crop` {rect: {x0, y0, x1, y1}} — columns x0 … x1 − 1 and rows
+  y0 … y1 − 1 of the image *before* that crop (so later pixels map back to the loaded figure by
+  adding x0, y0 of every crop); `ref-placed` {axis, which (1|2), px {x, y}}; `ref-cleared` {axis,
+  which, px | null}; `ref-value-set` {axis, which, value (as typed)}; `scale-set` {axis, scale};
+  `auto-detect-run` {durationMs, outcome `suggested` (an axis got values) | `declined`,
+  axesSuggested, declineReason (per declined axis, codes `no-axis-line` | `no-tick-labels` |
+  `labels-not-usable`, or `error`), labelsRead, confidence {x, y}}; `suggestion-accepted`
+  {editedFields: suggested refs whose value was changed before Accept}; `suggestion-discarded`;
+  `trace-run` {datasetId (null for "into a new line"), seedPx, mode, kind, durationMs, outcome
+  `ok` | `empty` | `error`, pointCount}; `trace-accepted` {datasetId, pointCount};
+  `trace-discarded` {datasetId, pointCount} when a trace result is closed without Accept
+  (Discard, Escape, a step change, "+ Add line", another trace); `points-added` {datasetId,
+  count, source `hand` | `snap`}; `points-moved` {datasetId, count, source `drag` | `nudge`};
+  `points-deleted` {datasetId, count} (one event per line touched); `dataset-added` /
+  `dataset-renamed` / `dataset-deleted` / `dataset-activated` {datasetId}; `undo`; `redo`;
+  `setting-changed` {key, value} for `snap`, `traceMode`, `traceMaxPoints`,
+  `significantFigures`, `dateFormat`; `export` {kind `csv` | `project` | `session-log`,
+  filename} — the session-log export is the last event of the file it writes.
+- **Grouping**: edits with the same undo-group key one after another are one event (with the
+  time the edit began): a drag is one `points-moved`/`ref-placed`, a held nudge key one
+  `points-moved`, typing into a field one `ref-value-set` with the final text, a Points-slider
+  drag one `setting-changed`. Edits the reducer ignores are not logged.
+- **Not recorded**: pointer movement, keystrokes, idle time, OCR text (the suggestion messages
+  may quote it, so only codes and counts are logged), line names and colours, file paths,
+  anything from other tabs. Copying TSV is not an export event.
+- **Code**: `src/ui/sessionLog.ts` (pure: the recorder with an injected clock, the mapping from
+  document actions to events, serialisation that strips any `image`/`dataUrl` field and any
+  `data:`/`blob:` URL); App logs in its `dispatch` wrapper (the reducer is unchanged) and at the
+  Auto-detect, Auto-trace, undo/redo, settings and export call sites.
+
 ## Verification gate
 
 A change is done only when this passes (commands defined in Phase 1, extended later):

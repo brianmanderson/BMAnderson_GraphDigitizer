@@ -122,6 +122,21 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `isOnImage`); `cropLosses` counts them for the notice. The `docImage` effect re-decodes and
   re-fits on its own. Never keep the original image in the Project (no schema change).
 
+## Session log
+
+- `SessionRecorder` (`src/ui/sessionLog.ts`, pure, clock injected) lives in App (`useState`),
+  never in `DocState`, history, autosave or prefs. App's `dispatch(action, group?, opts?)` logs
+  `eventsForAction(doc, action, group)` before the history applies it (skipped when the reducer
+  would ignore the edit); events with the same group key merge like undo steps, so a new
+  continuous edit's group key also keeps it to one log event. Outcomes the reducer cannot see
+  are recorded at their call sites: Auto-detect (`autoDetectEvent`), trace runs (the trace
+  effect, not inside a `setState` updater — StrictMode calls those twice), Accept/Discard of
+  suggestions and traces (`noteTraceDropped`), undo/redo, snap and trace settings, exports.
+- `replaceDoc(next, text, source)` and the autosave restore call `startLog` (a new log per
+  image); results that arrive after a newer load are dropped by `sessionLog.generation`.
+- Never put image data in an event; `serializeLog` strips it anyway. SPEC → Session log lists
+  every event; add a new one there and in `e2e/session-log.spec.ts`.
+
 ## Side panel and table
 
 - `.panel` is a flex column: step tabs · `.step-scroll` (the step's controls, `flex: 0 1 auto`) ·
@@ -139,7 +154,8 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - Loupe `data-testid="loupe"` with `data-corner`, `data-px`/`data-py` (exact centre),
   `data-cell`, `data-origin-x`/`-y` (device-pixel mapping), `data-snap-px`/`-py` when a snap
   target is shown; caption `loupe-pixel`. `e2e/helpers.ts` → `loupeState()`.
-- `project-input` (Open project), `autosave` (status bar); IndexedDB via `readAutosave()`.
+- `project-input` (Open project), `autosave` (status bar); IndexedDB via `readAutosave()`;
+  `session-log` (toolbar "Session log", accessible name "Download session log").
 - Toolbar groups `History` (Undo/Redo; a notice may have its own "Undo" button, so scope to the
   group), `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select) and
   `Edit` (`Move points` toggle, `aria-pressed`, disabled outside Data). Shortcuts (`M`, `Z`, `S`)

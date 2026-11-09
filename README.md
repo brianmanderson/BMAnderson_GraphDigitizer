@@ -29,10 +29,14 @@ Nothing else: no analytics, no fonts, no CDN, no upload. Your image is read into
 to a canvas and (for Save project) embedded in the project file as a `data:` URL; the CSV and
 project downloads are `blob:` URLs created in the page.
 
+- **Session log** (toolbar, "Session log"): a local `<image>-session.json` download of what was
+  done with the current image — timed steps, edits, automatic-suggestion outcomes, exports — kept
+  only in the tab's memory, never sent or stored, with no image data (docs/SPEC.md → Session log).
+
 `npm run privacy:check` proves this on the production build, on the record: it builds, serves
 `dist/` with `vite preview`, drives a full session in headless Chromium (load the real
 Kaplan–Meier figure, Auto-detect axes with OCR, accept, Auto-trace the curve, accept, Download
-CSV and Save project) while recording every network request over the DevTools Protocol — from
+CSV, Save project and Download session log) while recording every network request over the DevTools Protocol — from
 the page *and* from every worker — and writes `privacy-report.json` (requests with origin,
 target type, status and bytes; counts by origin; verdict). It exits 1 if any request leaves the
 app's origin (`data:` and `blob:` excepted), if one fails, or if the worker-initiated Tesseract

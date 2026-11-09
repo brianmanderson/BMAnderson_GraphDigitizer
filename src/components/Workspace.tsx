@@ -40,7 +40,8 @@ interface Props {
   /** The ref a click on empty canvas places, while calibrating. */
   placingRef: RefName | null;
   onPlaceRef: (ref: RefName, px: number, py: number) => void;
-  onAddPoint: (px: number, py: number) => void;
+  /** `snapped`: the position is Snap's target, not the click (the session log tells them apart). */
+  onAddPoint: (px: number, py: number, snapped: boolean) => void;
   /**
    * New positions for the markers being dragged (one ref, or every selected point). `gesture` is
    * the same for every move of one drag, so the drag is one undo step.
@@ -406,7 +407,7 @@ export function Workspace(props: Props) {
       props.onTraceSeed?.(at.px, at.py);
     } else if (placingPoints) {
       const snapped = pixels ? findSnapTarget(pixels, at.px, at.py, snapOptions(view.scale)) : null;
-      props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py);
+      props.onAddPoint(snapped?.px ?? at.px, snapped?.py ?? at.py, snapped !== null);
     } else {
       props.onSelect([], 'replace', false);
     }

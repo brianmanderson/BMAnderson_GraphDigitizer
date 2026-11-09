@@ -2,8 +2,8 @@
  * Privacy check of the production build: proves, on the record, that the app makes no network
  * request outside its own origin — the page bundle, CSS, the worker chunk and the vendored
  * Tesseract files are everything it fetches — through a full session: load a real figure,
- * Auto-detect axes (OCR in a worker), accept, Auto-trace the curve, accept, Download CSV and
- * Save project (both captured in the page, nothing is written to Downloads).
+ * Auto-detect axes (OCR in a worker), accept, Auto-trace the curve, accept, Download CSV, Save
+ * project and Download session log (all captured in the page, nothing is written to Downloads).
  *
  *   npm run privacy:check                 build, then check; writes ./privacy-report.json
  *   npm run privacy:check -- --no-build   check the dist/ that is already there
@@ -30,7 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Page } from '@playwright/test';
 import { dropFile, imageToClient } from '../e2e/helpers.ts';
-import { buildReport, summarize, type CapturedRequest, type ExportCapture, type PrivacyReport, type ReportMeta } from './privacy/report.ts';
+import { buildReport, summarize, type CapturedRequest, type PrivacyReport, type ReportMeta } from './privacy/report.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -301,7 +301,7 @@ async function nextExport(page: Page, n: number): Promise<InPageExport> {
   return page.evaluate((n) => window.__privacyExports![n - 1]!, n);
 }
 
-async function drive(page: Page, url: string): Promise<{ csv: ExportCapture; project: ExportCapture }> {
+async function drive(page: Page, url: string): Promise<NonNullable<PrivacyReport['exports']>> {
   log(`open ${url}`);
   await page.goto(url);
   await page.getByText('Drop a chart image here').waitFor();
@@ -328,21 +328,31 @@ async function drive(page: Page, url: string): Promise<{ csv: ExportCapture; pro
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await page.getByTestId('trace-panel').waitFor({ state: 'detached' });
 
-  log('Download CSV and Save project (captured in-page)');
+  log('Download CSV, Save project and Download session log (captured in-page)');
   await captureExports(page);
   await page.getByRole('button', { name: 'Download CSV' }).click();
   const csv = await nextExport(page, 1);
   await page.getByRole('button', { name: 'Save project' }).click();
   const project = await nextExport(page, 2);
+  await page.getByRole('button', { name: 'Download session log' }).click();
+  const sessionLog = await nextExport(page, 3);
 
   const csvRows = csv.text.split(/\r?\n/).filter((l) => l.trim() !== '').length - 1;
   const parsed = JSON.parse(project.text) as { image?: { dataUrl?: string }; datasets?: { points: unknown[] }[] };
   const points = parsed.datasets?.[0]?.points.length ?? 0;
   if (csvRows !== traced || points !== traced) throw new Error(`exports disagree with the ${traced} traced points: CSV ${csvRows} rows, project ${points} points`);
   if (!parsed.image?.dataUrl?.startsWith('data:image/')) throw new Error('the saved project does not embed the image');
+  // The session log: ends with its own export, after the CSV and project ones, and holds no image data.
+  const events = (JSON.parse(sessionLog.text) as { events?: { type: string; kind?: string }[] }).events ?? [];
+  const exportKinds = events.filter((e) => e.type === 'export').map((e) => e.kind);
+  if (JSON.stringify(exportKinds) !== JSON.stringify(['csv', 'project', 'session-log']) || events.at(-1)?.kind !== 'session-log') {
+    throw new Error(`the session log's exports are ${JSON.stringify(exportKinds)}, not csv, project, session-log (last)`);
+  }
+  if (/data:|base64/i.test(sessionLog.text)) throw new Error('the session log contains image data');
   return {
     csv: { filename: csv.filename, bytes: Buffer.byteLength(csv.text), records: csvRows },
     project: { filename: project.filename, bytes: Buffer.byteLength(project.text), records: points },
+    sessionLog: { filename: sessionLog.filename, bytes: Buffer.byteLength(sessionLog.text), records: events.length },
   };
 }
 
