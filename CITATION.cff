@@ -1,5 +1,6 @@
 # Citation metadata (Citation File Format). GitHub shows it as "Cite this repository".
-# The DOI below is a placeholder until Zenodo mints one for the 1.0.0 release.
+# `doi` is the Zenodo version DOI of the v1.0.0 release; the concept DOI (all versions) is in
+# `identifiers`.
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
@@ -15,12 +16,18 @@ authors:
     orcid: "https://orcid.org/0000-0002-2748-1444"
     affiliation: "University of California San Diego"
 version: 1.0.0
-date-released: 2026-11-07
+date-released: 2026-11-09
 license: MIT
 repository-code: "https://github.com/brianmanderson/BMAnderson_GraphDigitizer"
 url: "https://brianmanderson.github.io/BMAnderson_GraphDigitizer/"
-# TODO (release): replace with the DOI Zenodo mints for v1.0.0, e.g. 10.5281/zenodo.NNNNNNN
-doi: "10.5281/zenodo.PLACEHOLDER"
+doi: "10.5281/zenodo.24092762"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24092762"
+    description: "Zenodo archive of version 1.0.0 (git tag v1.0.0)"
+  - type: doi
+    value: "10.5281/zenodo.24092761"
+    description: "Concept DOI: all versions, resolves to the latest"
 keywords:
   - graph digitizer
   - plot digitizer

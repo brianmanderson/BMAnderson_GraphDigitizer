@@ -94,11 +94,14 @@ npm run bench:axes -- --verbose # per-image lines; --only c12,km for a subset
 
 ## Citing
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24092761.svg)](https://doi.org/10.5281/zenodo.24092761)
+
 If you use Graph Digitizer in published work, please cite it. The citation metadata is in
 [CITATION.cff](CITATION.cff) (GitHub's "Cite this repository" renders it):
 
 > Anderson BM. Graph Digitizer (version 1.0.0). University of California San Diego, 2026.
-> https://github.com/brianmanderson/BMAnderson_GraphDigitizer. DOI: 10.5281/zenodo.PLACEHOLDER
+> https://github.com/brianmanderson/BMAnderson_GraphDigitizer. DOI: 10.5281/zenodo.24092762
 
-The DOI is a placeholder until Zenodo mints one for the 1.0.0 release; `CITATION.cff` carries
-the same placeholder and is updated with it.
+Every release is archived on Zenodo. The DOI above is version 1.0.0 (git tag `v1.0.0`); the
+badge's concept DOI, 10.5281/zenodo.24092761, cites all versions and resolves to the latest.
+Cite the version you used.
