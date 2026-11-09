@@ -589,7 +589,14 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   then right again primed with the left. Next run = touching (8-connected) or within a window of
   the prediction (previous centre + median recent slope); after a long run, straight through first
   (marker, crossing line, same-colour crossing curve), else from the run's far end (a step's
-  vertical). Long runs continue through small holes (a line of another colour across a vertical).
+  vertical). Straight through = the last short run's centre plus the slope of the clean stretch
+  before it times every column since that run — a thin line of the series' colour (gridline, bar
+  edge) crossing a thick curve at a shallow angle merges with it for many columns, and a
+  one-column extrapolation would lag the curve onto the line (study image A14, 2026-11-09); only
+  one column when that slope rests on fewer than three clean column pairs (a steep stretch, where
+  a guessed slope extrapolated across a marker aims into it). A run thinner than the stroke is
+  ranked by its own centre, not as the top of a stroke (which favoured a 1-px line just above a
+  thick curve). Long runs continue through small holes (a line of another colour across a vertical).
   A run whose peak coverage is < 0.65 × the trace's typical peak is not the series (a related
   colour in a JPEG). Gaps: up to ~3.5 % of the plot width over background (dashes, markers of
   other series), up to 30 % where the prediction is covered by another colour (curves drawn over
@@ -603,7 +610,10 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   through it) and the branch that followed the most columns of ink wins (the tip of a diamond
   marker vs the line leaving it). Columns → centreline:
   α-weighted centroids (sub-pixel); a thin stroke entered at one end and left at the other is a
-  step's vertical, kept as two **corner** points at the stroke's centre x; a roughly square group
+  step's vertical, kept as two **corner** points at the stroke's centre x — unless the group is
+  at least two columns wide and the curve's own slope, read on both sides (≥ 3 clean columns
+  each, the two agreeing), explains the jump: then it is a shallow crossing with a thin line of
+  the series' colour, dropped and bridged (its merged centres lean towards the line); a roughly square group
   wider than a stroke that sticks out past the curve is a marker of the series' colour, kept as
   one corner point at its centroid (the data point); a thin group sticking out on both sides
   (censoring '+') is dropped and bridged.
@@ -689,7 +699,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 96 seeded charts, 208 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 108 seeded charts, 244 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -703,7 +713,11 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   shape (filled circles vs filled squares), 5–9 pt, with vertical and/or horizontal error bars and
   caps drawn under the markers, two points of the second series beside the first's, a marker on
   the x axis, a dashed reference line of the same colour (60 %), legends; an open marker's seed
-  is on its outline away from the bars. Gridlines,
+  is on its outline away from the bars; (l96–l107, `scenario:grid-crossing`, series tag
+  `own-colour-lines`, like study image A14, a dose-response figure) a thick solid sigmoid (3.5–7 px)
+  with two thinner dashed confidence curves, over outlined histogram bars whose tops it crosses at
+  shallow angles and a solid gridline at every y tick, all in the series' colour (black in two
+  charts of three); seeds keep clear of the bars and gridlines. Gridlines,
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
@@ -814,6 +828,33 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   as the find-points fixture and withdrawn: markers no thicker than the lines through them
   give no template (0/5 markers, mode `auto` traces a curve), which is the existing "≲ 10 px
   at low DPI" failure, not a new one.
+- **Shallow same-colour crossings (2026-11-09; 256 traces)**: study image A14 (a thick black LKB
+  curve over black gridlines and outlined histogram bars) left its curve at every shallow
+  crossing — the straight-through prediction after a merged stretch lagged by one column per
+  column of the stretch — and followed a gridline to the Y axis or a bar top. Fix: the
+  extrapolation and the thin-run ranking above, and crossings no longer read as steps. New
+  charts l96–l107: before the fix 11 of the 12 solid sigmoids switched to a gridline or bar
+  (scenario coverage 74.2 %, wrong 33.3 %); after it 11 of 12 are traced end to end (≥ 99 %),
+  scenario coverage 88.1 %, wrong 5.6 %. Overall: kind 96.9 %, coverage 92.6 %, median error
+  0.03 px / p95 0.95 px, wrong 2.4 %, corner recall 57.2 %, markers 81.5 % / 81.4 %, style
+  94.3 % (the new dashed confidence curves account for the drop: see below). On the earlier 220
+  traces: `l31/s0` no longer switches series (coverage 56 → 100 %), coverage up on `l03/s0` (74 →
+  78 %), `l07/s3` (43 → 59 %), `l65/s0` (85 → 100 %, +1 corner), `l68/s0` (86 → 100 %), `l67/s1`,
+  `l82/s1` (79 → 86 %), `l17/s1`; `l79/s0` +1 corner; fewer spurious corner pairs (`l70/s0` 54 → 44
+  points, lower error). Trade-offs: `l57/s1` coverage 98.5 → 97.0 % (a near-vertical drop between
+  two touching markers, traced differently, wrong either way); `l10/s2` +0.001 px median (a dash
+  it used to skip at a crossing is now traced, ~1 px off), and the pooled `scenario:dashed`,
+  `dpi:high`, `censor-marks` medians +0.0001–0.0002 px and `markers:same-colour` p95 +0.003 px from
+  traces that now cover more of a hard line. **Known failures in the new scenario**: `l100/s0`
+  (JPEG, 6-px black curve) is taken for markers in auto mode — a marker template is cut out of the
+  thick line where it meets the bars and found three times (mode `curve` traces it); the dashed
+  confidence curves among gridlines of their colour have their style misread as dotted / dash-dot
+  in 6 of 24 traces (`own-colour-lines` style 83 %) and `l103/s2` (dashed, JPEG) switches to a
+  gridline. Where shallow crossings follow each other closely (fewer than three clean columns of
+  curve between two merges, or the curve squeezed between two lines of its colour) the crossing
+  is not recognised and keeps a step-corner pair up to half a stroke off the curve (the unit test
+  "stays on a thick curve where it crosses thin lines of its colour" asserts only that the trace
+  stays in the stroke there).
 
 ## Auto-trace — UI
 

@@ -26,7 +26,10 @@ zigzag polylines ("kinks"), l72-l83 pairs of series of one colour told apart onl
 plateaus), l84-l95 pairs of scatter series of one colour told apart only by marker fill or shape
 ("find-points": filled vs open circles / squares / triangles, filled circles vs filled squares,
 with vertical and horizontal error bars and caps, overlapping pairs, markers against the x axis, a
-dashed reference line of the same colour, legends).
+dashed reference line of the same colour, legends), l96-l107 a thick solid sigmoid with dashed
+confidence curves among straight lines of its own colour ("grid-crossing", like a dose-response
+figure: gridlines at every y tick and outlined histogram bars whose tops it crosses at shallow
+angles, drawn in the series' colour, black in two charts of three).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -51,7 +54,7 @@ from matplotlib.colors import to_rgb  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 96
+COUNT = 108
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -66,6 +69,8 @@ SAME_VARIANTS = ["km-together", "crossing", "close-plateaus", "dotted"]
 # Charts from POINTS_FROM on: two scatter series of the same colour, told apart by fill or shape.
 POINTS_FROM = 84
 POINTS_VARIANTS = ["circle", "square", "triangle", "shapes"]
+# Charts from CROSS_FROM on: a thick curve crossing gridlines and bar outlines of its own colour.
+CROSS_FROM = 96
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -184,7 +189,7 @@ def coverage_at(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
 
 def build(i: int):
     rng = np.random.default_rng(5000 + i)
-    scenario = ("find-points" if i >= POINTS_FROM else "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM
+    scenario = ("grid-crossing" if i >= CROSS_FROM else "find-points" if i >= POINTS_FROM else "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM
                 else SCENARIOS[i % len(SCENARIOS)])
     dpi = int(DPIS[i % len(DPIS)] if rng.random() < 0.7 else rng.choice(DPIS))
     w_in = float(rng.uniform(4.5, 7.5))
@@ -249,6 +254,11 @@ def build(i: int):
             specs.append(("scatter", "none", m, color))
             specs.append(("scatter", "none", m, color))
         legend = legend or variant == "triangle"
+    elif scenario == "grid-crossing":
+        color = "k" if i % 3 != 2 else colors[0]
+        specs.append(("line", "solid", None, color))
+        specs.append(("line", "dashed", None, color))
+        specs.append(("line", "dashed", None, color))
     else:  # dense
         for k in range(4):
             specs.append(("line", "solid" if k < 3 else "dashed", None, colors[k]))
@@ -311,13 +321,27 @@ def build(i: int):
                 verts = np.column_stack([xs, ys])
                 kind = "line"
             elif kind == "line" and marker is None:
-                if pair:
+                if scenario == "grid-crossing":
+                    # A shallow sigmoid (the fitted curve), then the dashed lower/upper bounds: the
+                    # same sigmoid shifted along x. Thick solid curve, thinner dashes.
+                    if k == 0:
+                        steep = float(rng.uniform(3, 6))
+                        centre = float(rng.uniform(0.45, 0.75))
+                        band = float(rng.uniform(0.1, 0.22))
+                    xs = np.linspace(xlo, xhi, 300)
+                    tt = (xs - xlo) / (xhi - xlo) - centre + (0 if k == 0 else band if k == 1 else -band)
+                    ys = ylo + (yhi - ylo) * (0.1 + 0.8 / (1 + np.exp(-steep * 2 * tt)))
+                    lw = float(rng.uniform(3.5, 7.0) if k == 0 else rng.uniform(1.2, 2.5)) * 72 / dpi
+                    ax.plot(xs, ys, color=color, lw=lw, ls=ls, zorder=2 + k)
+                    verts = np.column_stack([xs, ys])
+                elif pair:
                     xs, ys = pair[k]
                 else:
                     xs = np.linspace(xlo, xhi, 300)
                     ys = smooth_curve(rng, xs, ylo, yhi)
-                ax.plot(xs, ys, color=color, lw=lw, ls=ls, zorder=2 + k)
-                verts = np.column_stack([xs, ys])
+                if scenario != "grid-crossing":
+                    ax.plot(xs, ys, color=color, lw=lw, ls=ls, zorder=2 + k)
+                    verts = np.column_stack([xs, ys])
             elif kind == "line":
                 n = int(rng.integers(8, 20))
                 xs = np.sort(rng.uniform(xlo, xhi, n))
@@ -376,7 +400,27 @@ def build(i: int):
         pad_y = 0.06 * (allv[:, 1].max() - allv[:, 1].min() + 1e-9)
         ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
         ax.set_ylim(allv[:, 1].min() - (0 if scenario == "find-points" else pad_y), allv[:, 1].max() + pad_y)
-        if grid:
+        decor = []  # straight lines of the series' colour that are not series: (polyline in data, width px)
+        if scenario == "grid-crossing":
+            # Outlined bars from the bottom whose tops the solid curve crosses inside the bar, then a
+            # thin gridline at every y tick over them (and under the curves), all in its colour.
+            main = series[0]
+            ybot = ax.get_ylim()[0]
+            edges = np.sort(rng.uniform(xlo + 0.08 * (xhi - xlo), xhi - 0.08 * (xhi - xlo), int(rng.integers(4, 7))))
+            elw = float(rng.uniform(1.0, 3.0))
+            for a, b in zip(edges[:-1], edges[1:]):
+                if b - a < 0.05 * (xhi - xlo):
+                    continue
+                top = float(np.interp(a + float(rng.uniform(0.2, 0.8)) * (b - a), main["xs"], main["ys"]))
+                ax.bar(a, top - ybot, width=b - a, bottom=ybot, align="edge", color=str(rng.choice(["#d9d9d9", "#e8e8e8", "white"])),
+                       edgecolor=main["color"], lw=elw * 72 / dpi, zorder=1.2)
+                decor.append((np.array([[a, ybot], [a, top], [b, top], [b, ybot]]), elw))
+            glw = float(rng.uniform(0.8, 2.0))
+            for yt in ax.get_yticks():
+                if ax.get_ylim()[0] < yt < ax.get_ylim()[1]:
+                    ax.axhline(yt, color=main["color"], lw=glw * 72 / dpi, zorder=1.5)
+                    decor.append((np.array([[ax.get_xlim()[0], yt], [ax.get_xlim()[1], yt]]), glw))
+        if grid and scenario != "grid-crossing":
             ax.grid(True, color=grid_color, ls=str(rng.choice(["-", "--", ":"])), lw=float(rng.uniform(0.5, 1.0)))
         if frame == "L":
             ax.spines["top"].set_visible(False)
@@ -402,6 +446,7 @@ def build(i: int):
             s["censor"] = px_of(ax.transData.transform(np.array(s["cens"])), H) if s["cens"] else np.zeros((0, 2))
             s["lw_px"] = s["lw"] * dpi / 72
             s["ms_px"] = s["ms"] * dpi / 72
+        decor_px = [dict(kind="line", path=px_of(ax.transData.transform(p), H), lw_px=w, marker=None) for p, w in decor]
         plt.close(fig)
 
     rgb = rgba[:, :, :3]
@@ -409,9 +454,9 @@ def build(i: int):
     for k, s in enumerate(series):
         others = [o for j, o in enumerate(series) if j != k]
         s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
-        s["seed"] = pick_seed(s, others, rgb, bg, legend_box, W, H, strict=scenario == "same-colour")
+        s["seed"] = pick_seed(s, others + decor_px, rgb, bg, legend_box, W, H, strict=scenario in ("same-colour", "grid-crossing"))
 
-    tags = [f"scenario:{scenario}", "grid" if grid else "no-grid", f"frame:{frame}", "jpeg" if jpeg_q else "png",
+    tags = [f"scenario:{scenario}", "grid" if grid or scenario == "grid-crossing" else "no-grid", f"frame:{frame}", "jpeg" if jpeg_q else "png",
             "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
     if legend:
         tags.append("legend")
@@ -430,6 +475,8 @@ def build(i: int):
             stags.append("censor-marks")
         if scenario == "same-colour":
             stags.append("same-colour")
+        if decor_px:
+            stags.append("own-colour-lines")
         if s["fill"] is not None:
             stags.append("fill:filled" if s["fill"] else "fill:open")
             stags.append(f"marker:{ {'o': 'circle', 's': 'square', '^': 'triangle'}[s['marker']] }")

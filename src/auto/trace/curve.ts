@@ -161,15 +161,18 @@ export function defaultMaxHiddenGap(region: Region): number {
   return Math.max(4 * defaultMaxGap(region), Math.round(0.3 * (region.x1 - region.x0 + 1)));
 }
 
-/** Median slope over the last few consecutive short (shallow, clean) entries, or 0. */
-function cleanSlope(hist: ColumnEntry[], t: number): number {
+/**
+ * Median slope over the last few consecutive short (shallow, clean) entries, or 0, and how many
+ * pairs it rests on.
+ */
+function cleanSlope(hist: ColumnEntry[], t: number): { slope: number; n: number } {
   const d: number[] = [];
   for (let i = hist.length - 1; i >= 1 && d.length < 8; i--) {
     const a = hist[i - 1]!;
     const b = hist[i]!;
     if (runLength(a) - t < 2.5 && runLength(b) - t < 2.5) d.push((b.cy - a.cy) / Math.max(1, Math.abs(b.x - a.x)));
   }
-  return median(d);
+  return { slope: median(d), n: d.length };
 }
 
 /**
@@ -238,6 +241,8 @@ export function traceColumns(
     minLen: number;
     /** Centre of the last short run: where the walk entered the current long stretch. */
     entryY: number;
+    /** Column of that run. */
+    entryX: number;
     gap: number;
     openGap: number;
     /** Gap columns whose predicted position was under ink of another colour. */
@@ -288,6 +293,7 @@ export function traceColumns(
     const cy = runCentre(alpha, w, h, st.x, best);
     if (!isLong(best)) {
       st.entryY = cy;
+      st.entryX = st.x;
       st.farOnly = false;
     }
     st.hist.push({ ...best, x: st.x, cy, afterGap: st.gap, peak: runPeak(alpha, w, st.x, best) });
@@ -324,8 +330,12 @@ export function traceColumns(
       };
       const out: Candidate[] = [];
       runs.forEach((r, index) => {
-        const lo = r.top + half;
-        const hi = Math.max(lo, r.bottom - half);
+        // Where the centre of a stroke covering run r can be. A run thinner than the stroke is
+        // measured from its own centre (from `top + half` it would look closer to a prediction
+        // below it than it is: a 1-px gridline just above a thick curve would win).
+        const mid = (r.top + r.bottom) / 2;
+        const lo = Math.min(r.top + half, mid);
+        const hi = Math.max(r.bottom - half, mid);
         const dPred = pred < lo ? lo - pred : pred > hi ? pred - hi : 0;
         const touches = gap === 0 && r.top <= prev.bottom + 1 && r.bottom >= prev.top - 1;
         if (!touches && dPred > win) return;
@@ -346,8 +356,12 @@ export function traceColumns(
       // Leaving a long run. Straight through first, at the slope of the shallow curve before it
       // (a line or marker crossing the curve, a same-colour curve crossing it); otherwise from the
       // run's end farther from where the walk came in (a step's vertical, a steep stretch).
-      const slope = cleanSlope(st.hist, t);
-      const straight = st.entryY + slope * (gap + 1);
+      const { slope, n } = cleanSlope(st.hist, t);
+      // Straight through from where the walk entered the long stretch, over every column since —
+      // a thin line merged with the curve at a shallow angle makes a stretch many columns long.
+      // Only over one column when the slope rests on fewer than three clean pairs (a steep
+      // stretch): extrapolating a guessed slope across a marker would aim into it.
+      const straight = st.entryY + slope * (n >= 3 ? Math.abs(st.x - st.entryX) : gap + 1);
       // Not on a retry branch that has just left the long run another way: going straight would
       // pull it back to the curve before the marker it chose not to follow.
       const s = st.farOnly ? [] : rank(straight, slope);
@@ -430,7 +444,7 @@ export function traceColumns(
   const walk = (dir: 1 | -1, prime: ColumnEntry[]): ColumnEntry[] => {
     const lead = prime.slice(0, 8).reverse();
     const hist = [...lead, first];
-    const st = walkFrom({ hist, minLen: runLength(first), entryY: seed.y, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false }, dir, 0);
+    const st = walkFrom({ hist, minLen: runLength(first), entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false }, dir, 0);
     return st.hist.slice(lead.length + 1);
   };
 
@@ -463,6 +477,34 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
   const out: PathPoint[] = [];
   const plain = (e: ColumnEntry, conf: number) =>
     out.push({ px: e.x, py: e.cy, confidence: e.afterGap > 0 ? Math.min(conf, 0.7) : conf, corner: false });
+  /**
+   * Slope (dy per column, x increasing) of the up to 6 adjacent short entries from index `from`
+   * on, walking `dir`; null when fewer than 3 (then that side is no evidence).
+   */
+  const sideSlope = (from: number, dir: 1 | -1): number | null => {
+    const pts: ColumnEntry[] = [];
+    for (let k = from; k >= 0 && k < entries.length && pts.length < 6; k += dir) {
+      const e = entries[k]!;
+      if (long(e) || (pts.length && Math.abs(e.x - pts[pts.length - 1]!.x) !== 1)) break;
+      pts.push(e);
+    }
+    if (pts.length < 3) return null;
+    const a = pts[0]!;
+    const b = pts[pts.length - 1]!;
+    return (b.cy - a.cy) / (b.x - a.x);
+  };
+  /**
+   * The curve's slope through the long group i…j: 0 unless both sides show it and agree (a curve
+   * running straight on, not a kink at a data point).
+   */
+  const slopeAround = (i: number, j: number): number => {
+    const before = sideSlope(i - 1, -1);
+    const after = sideSlope(j + 1, 1);
+    if (before === null || after === null) return 0;
+    return Math.abs(before - after) <= 0.5 * Math.max(1, Math.abs(before), Math.abs(after)) ? (before + after) / 2 : 0;
+  };
+  /** x of entry k, or one column past the group's end when there is none. */
+  const xAt = (k: number, dir: 1 | -1): number => entries[k]?.x ?? entries[k - dir]!.x + dir;
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
@@ -501,7 +543,14 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
       group.length <= 1.6 * heightFull &&
       (T < Math.min(yin, yout) - 1.5 || B > Math.max(yin, yout) + 1.5);
     const thin = group.length <= t + 2;
-    if (thin && D >= 2.5 && within(yin) && within(yout) && Math.abs(yout - yin) >= Math.max(2.5, 0.6 * D)) {
+    const stepLike = thin && D >= 2.5 && within(yin) && within(yout) && Math.abs(yout - yin) >= Math.max(2.5, 0.6 * D);
+    if (stepLike && group.length >= 2 && Math.abs(yout - yin - slopeAround(i, j) * (xAt(j + 1, 1) - xAt(i - 1, -1))) < Math.max(2.5, 0.6 * D)) {
+      // Not a step: the curve's own slope on both sides explains the jump. A thin line of the
+      // series' colour merged with a sloping curve where it crosses at a shallow angle (a gridline,
+      // a bar's edge). Bridged: the merged runs' centres lean towards that line. (A single long
+      // column is a steep line's pixel stair, kept as before: its corner bounds the stretches
+      // that `insertHiddenKinks` fits.)
+    } else if (stepLike) {
       // A step's vertical segment: its x is the α-weighted centre of the stroke between the ends.
       let sw = 0;
       let sx = 0;
