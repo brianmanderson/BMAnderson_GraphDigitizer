@@ -2,8 +2,9 @@
  * Finding tick labels next to a detected axis (Phase 5), and cutting them out for OCR. Pure TS,
  * no DOM.
  *
- * 1. Patch: the band outside the axis (below the X axis, left of the Y axis), sampled in the
- *    skew-corrected frame so text is upright, starting just past the outside tick marks.
+ * 1. Patch: the band outside the axis (below a bottom X axis or above a top one; left of a left
+ *    Y axis or right of a right one: `DetectedAxis.position`), sampled in the skew-corrected
+ *    frame so text is upright, starting just past the outside tick marks.
  * 2. Glyphs: 8-connected components of ink (an adaptive threshold from the band's own darkest
  *    strokes, so faint grey labels work). Components too big to be text (curves, legend boxes,
  *    lines), solid blobs (markers) and colourful ones (data, coloured tables) are dropped.
@@ -14,16 +15,17 @@
  *    row with the most such words (nearest the axis on a tie), for the Y axis the word nearest the
  *    axis in the row level with the tick. Words that match no tick (a number-at-risk table's row
  *    labels, an axis title) are ignored. Without tick marks, the label row itself gives the
- *    positions: the X row nearest the axis with ≥ 3 words, or the Y words whose right edges line
- *    up next to the axis; the label centre is the position (less precise than a tick).
- * 5. Offset note: the text matplotlib prints for an axis offset or multiplier (`+1e4` below the
- *    X labels at the right end, above the Y axis's top), found by position and text height.
+ *    positions: the X row nearest the axis with ≥ 3 words, or the Y words whose edges facing
+ *    the axis line up next to it; the label centre is the position (less precise than a tick).
+ * 5. Offset note: the text matplotlib prints for an axis offset or multiplier (`+1e4` beyond the
+ *    X labels at the right end — below a bottom axis, above a top one — and above the Y axis's
+ *    top end), found by position and text height.
  * 6. Layout inside a word: a raised, smaller trailing group is an exponent (`10⁻²`); a short wide
  *    mark at mid-height in front of the digits is a minus sign (OCR often drops it).
  */
 
 import { INK_THRESHOLD, sample, type DarknessMap } from './darkness.ts';
-import { familyPoint, makeFrame, type Frame } from './frame.ts';
+import { familyPoint, makeFrame, toFrame, type Frame } from './frame.ts';
 import type { AxisDetection, DetectedAxis, Point, RgbaImage } from './types.ts';
 
 /** A connected ink component in patch coordinates (inclusive bounds). */
@@ -106,6 +108,11 @@ export interface AxisLabels {
    * labels are only right after applying it.
    */
   note: FoundLabel | null;
+  /**
+   * The note runs into the other axis's tick labels (a Y note under a top X axis's label row), so
+   * its text cannot be cut out cleanly: it must be treated as unreadable, never applied.
+   */
+  noteTangled?: boolean;
 }
 
 const BODY_MIN_HEIGHT = 4;
@@ -434,9 +441,29 @@ interface AxisGeometry {
   thickness: number;
 }
 
-function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 'y', ax: DetectedAxis): AxisLabels {
+/**
+ * A text row in the frame: its centre line (w), how far a word's centre may be from it to be
+ * part of it, and half its height.
+ */
+interface Row {
+  w: number;
+  tol: number;
+  half: number;
+}
+
+function labelsFor(
+  map: DarknessMap,
+  img: RgbaImage,
+  frame: Frame,
+  which: 'x' | 'y',
+  ax: DetectedAxis,
+  avoid: Row | null = null,
+): AxisLabels {
   const { width: W, height: H } = map;
   const line: AxisGeometry = ax.line;
+  // The labels' side: below a bottom X axis / above a top one; left of a left Y axis / right of
+  // a right one. "Near" = the patch edge next to the axis.
+  const flipped = ax.position === 'top' || ax.position === 'right';
   const majors = ax.ticks.ticks.map((t, i) => ({ t, i })).filter(({ t }) => t.kind === 'major');
   const mode: AxisLabels['mode'] = majors.length >= 2 ? 'ticks' : 'labels-only';
   const outsideLen =
@@ -449,13 +476,20 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
   let p: Patch;
   if (which === 'x') {
     const depth = Math.min(250, Math.max(45, 0.15 * short));
-    p = makePatch(map, img, frame, line.start - margin, line.offset + d0, line.end - line.start + 2 * margin, depth);
+    const w0 = flipped ? line.offset - d0 - depth : line.offset + d0;
+    p = makePatch(map, img, frame, line.start - margin, w0, line.end - line.start + 2 * margin, depth);
   } else {
     const depth = Math.min(400, Math.max(40, 0.25 * W));
-    p = makePatch(map, img, frame, line.offset - d0 - depth, line.start - margin, depth, line.end - line.start + 2 * margin);
+    const u0 = flipped ? line.offset + d0 : line.offset - d0 - depth;
+    p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
   const glyphs = components(p, inkThreshold(p)).filter((g) => glyphChroma(p, g) < MAX_LABEL_CHROMA);
-  const rows = words(glyphs, maxTextHeight, which === 'y');
+  // Y labels are aligned at the axis: words grow from the axis side.
+  const rows = words(glyphs, maxTextHeight, which === 'y' && !flipped);
+  // X rows nearest the axis first.
+  const xRows = flipped ? [...rows].reverse() : rows;
+  // Distance of a Y word's near edge from the axis side of the patch.
+  const gapToAxis = (wd: LabelWord) => (flipped ? wd.x0 : p.width - 1 - wd.x1);
 
   // Candidate (word, position) pairs.
   const chosen: { word: LabelWord; along: number; tick: number | null }[] = [];
@@ -468,7 +502,7 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
     const tol = (wd: LabelWord) => 0.35 * wd.textHeight + 0.2 * (wd.x1 - wd.x0 + 1) + 1;
     if (mode === 'ticks') {
       let best: { row: LabelWord[]; hits: { word: LabelWord; along: number; tick: number }[] } | null = null;
-      for (const row of rows) {
+      for (const row of xRows) {
         const used = new Set<LabelWord>();
         const hits: { word: LabelWord; along: number; tick: number }[] = [];
         for (const { t, i } of majors) {
@@ -486,12 +520,12 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
       }
       if (best) chosen.push(...best.hits);
     } else {
-      const row = rows.find((r) => r.length >= 3);
+      const row = xRows.find((r) => r.length >= 3);
       if (row) for (const wd of row) chosen.push({ word: wd, along: centreX(wd), tick: null });
     }
   } else {
-    // The word of each row nearest the axis (rightmost in the patch).
-    const nearest = rows.map((r) => r.reduce((a, b) => (b.x1 > a.x1 ? b : a)));
+    // The word of each row nearest the axis.
+    const nearest = rows.map((r) => r.reduce((a, b) => (gapToAxis(b) < gapToAxis(a) ? b : a)));
     if (mode === 'ticks') {
       const used = new Set<LabelWord>();
       for (const { t, i } of majors) {
@@ -499,8 +533,7 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
         for (const wd of nearest) {
           const d = Math.abs(bodyCentreY(wd) - t.along);
           // The label must also sit close to the axis (not a table's row label further out).
-          const gapToAxis = p.width - 1 - wd.x1;
-          if (d <= 0.5 * wd.textHeight + 1 && gapToAxis <= 3 * wd.textHeight + 4 && !used.has(wd)) {
+          if (d <= 0.5 * wd.textHeight + 1 && gapToAxis(wd) <= 3 * wd.textHeight + 4 && !used.has(wd)) {
             if (!pick || d < Math.abs(bodyCentreY(pick) - t.along)) pick = wd;
           }
         }
@@ -510,9 +543,9 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
         }
       }
     } else if (nearest.length >= 3) {
-      const right = Math.max(...nearest.map((wd) => wd.x1));
+      const closest = Math.min(...nearest.map(gapToAxis));
       for (const wd of nearest) {
-        if (wd.x1 >= right - Math.max(3, 0.6 * wd.textHeight)) chosen.push({ word: wd, along: bodyCentreY(wd), tick: null });
+        if (gapToAxis(wd) <= closest + Math.max(3, 0.6 * wd.textHeight)) chosen.push({ word: wd, along: bodyCentreY(wd), tick: null });
       }
       if (chosen.length < 3) chosen.length = 0;
     }
@@ -551,6 +584,7 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
   // The offset/multiplier note, only next to an axis whose labels were found. Its words (`+`,
   // `1e5`) are merged.
   let note: FoundLabel | null = null;
+  let noteTangled = false;
   const merge = (ws: LabelWord[]): LabelWord => ({
     x0: Math.min(...ws.map((w) => w.x0)),
     y0: Math.min(...ws.map((w) => w.y0)),
@@ -564,11 +598,15 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
     const used = new Set(chosen.map((c) => c.word));
     const similar = (wd: LabelWord) => Math.abs(wd.textHeight - h) <= 0.4 * h;
     if (which === 'x') {
-      // Right-aligned at the axis end, in the rows just below the labels.
-      const bottom = Math.max(...chosen.map((c) => c.word.y1));
+      // Right-aligned at the axis end, in the rows just beyond the labels (below a bottom axis's
+      // labels, above a top axis's), nearest row first.
+      const beyond = flipped ? -Math.min(...chosen.map((c) => c.word.y0)) : Math.max(...chosen.map((c) => c.word.y1));
       const endX = line.end - p.u0;
-      for (const row of rows) {
-        const ws = row.filter((wd) => !used.has(wd) && wd.y0 > bottom - 0.3 * h && wd.y0 <= bottom + 2.5 * h && similar(wd));
+      for (const row of xRows) {
+        const ws = row.filter((wd) => {
+          const start = flipped ? -wd.y1 : wd.y0;
+          return !used.has(wd) && start > beyond - 0.3 * h && start <= beyond + 2.5 * h && similar(wd);
+        });
         const last = ws.reduce<LabelWord | null>((a, b) => (!a || b.x1 > a.x1 ? b : a), null);
         if (!last || Math.abs(last.x1 - endX) > 1.5 * h) continue;
         const group = ws.filter((wd) => wd.x1 >= last.x0 - 6 * h);
@@ -576,31 +614,48 @@ function labelsFor(map: DarknessMap, img: RgbaImage, frame: Frame, which: 'x' | 
         break;
       }
     } else {
-      // Left-aligned at the axis, just above its top end.
-      const q = makePatch(map, img, frame, line.offset - 3 * h, line.start - 3 * h, 14 * h, 3 * h - 1);
+      // Aligned at the axis (left-aligned for a left axis, right-aligned for a right one), just
+      // above its top end.
+      const q = makePatch(map, img, frame, flipped ? line.offset - 11 * h : line.offset - 3 * h, line.start - 3 * h, 14 * h, 3 * h - 1);
       // A fixed low threshold: a dark title beside a small grey note would set an adaptive one
       // so high that the note falls apart.
       const qRows = words(components(q, 1.5 * INK_THRESHOLD).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA), maxTextHeight, false);
+      // Above a Y axis that meets a top X axis runs the X labels' row: a word centred on that row
+      // is an X label (one at the corner often has no tick of its own), not a note. A note
+      // squeezed in beside it (matplotlib's, between the labels and the axis) is off-centre.
+      const xLabel = (wd: LabelWord) => !!avoid && Math.abs(q.w0 + (wd.y0 + wd.y1) / 2 - avoid.w) <= avoid.tol;
       for (const row of qRows.reverse()) {
-        const ws = row.filter((wd) => similar(wd) && line.start - (q.w0 + wd.y1) <= 1.5 * h);
-        const first = ws.reduce<LabelWord | null>((a, b) => (!a || b.x0 < a.x0 ? b : a), null);
+        const ws = row.filter((wd) => similar(wd) && line.start - (q.w0 + wd.y1) <= 1.5 * h && !xLabel(wd));
+        // The word at the axis (leftmost for a left axis, rightmost for a right one), its outer
+        // edge within reach of the axis line; mirrored for a right axis.
+        const first = ws.reduce<LabelWord | null>((a, b) => (!a || (flipped ? b.x1 > a.x1 : b.x0 < a.x0) ? b : a), null);
         if (!first) continue;
-        const left = q.u0 + first.x0 - line.offset;
-        if (left < -2.5 * h || left > 1.5 * h) continue;
-        const group = ws.filter((wd) => wd.x0 <= first.x1 + 6 * h);
+        const edge = flipped ? line.offset - (q.u0 + first.x1) : q.u0 + first.x0 - line.offset;
+        if (edge < -2.5 * h || edge > 1.5 * h) continue;
+        const group = ws.filter((wd) => (flipped ? wd.x1 >= first.x0 - 6 * h : wd.x0 <= first.x1 + 6 * h));
         note = found(merge(group), q, line.start, null);
+        // Any part of it reaching into the X labels' row: glyphs of both may have merged.
+        noteTangled =
+          !!avoid && group.some((wd) => q.w0 + wd.y0 <= avoid.w + avoid.half && q.w0 + wd.y1 >= avoid.w - avoid.half);
         break;
       }
     }
   }
-  return { axis: which, mode, labels, note };
+  return noteTangled ? { axis: which, mode, labels, note, noteTangled } : { axis: which, mode, labels, note };
 }
 
 /** Tick labels beside both detected axes (empty lists when an axis was not found). */
 export function findLabels(map: DarknessMap, img: RgbaImage, det: AxisDetection): { x: AxisLabels; y: AxisLabels } {
   const frame = makeFrame((det.skewDegrees * Math.PI) / 180);
+  const x: AxisLabels = det.xAxis ? labelsFor(map, img, frame, 'x', det.xAxis) : { axis: 'x', mode: 'labels-only', labels: [], note: null };
+  // A top X axis's label row runs over the Y axis's top end, where the Y note is looked for.
+  let avoid: Row | null = null;
+  if (det.xAxis?.position === 'top' && x.labels.length) {
+    const height = median(x.labels.map((l) => l.box.height));
+    avoid = { w: median(x.labels.map((l) => toFrame(frame, l.box.center).w)), tol: Math.max(2, 0.3 * height), half: height / 2 };
+  }
   return {
-    x: det.xAxis ? labelsFor(map, img, frame, 'x', det.xAxis) : { axis: 'x', mode: 'labels-only', labels: [], note: null },
-    y: det.yAxis ? labelsFor(map, img, frame, 'y', det.yAxis) : { axis: 'y', mode: 'labels-only', labels: [], note: null },
+    x,
+    y: det.yAxis ? labelsFor(map, img, frame, 'y', det.yAxis, avoid) : { axis: 'y', mode: 'labels-only', labels: [], note: null },
   };
 }

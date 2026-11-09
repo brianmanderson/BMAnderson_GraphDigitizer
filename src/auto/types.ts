@@ -40,6 +40,7 @@ export interface LineCandidate {
   strength: number;
 }
 
+/** Relative to the plot: 'outside' = away from it (below a bottom X axis, above a top one). */
 export type TickSide = 'outside' | 'inside' | 'both';
 
 export interface Tick {
@@ -73,8 +74,15 @@ export interface TickSet {
   rejected: Point[];
 }
 
+/**
+ * Which edge of the plot an axis runs along: X at the bottom (default) or top, Y at the left
+ * (default) or right. Tick labels sit on the far side of the axis from the plot.
+ */
+export type AxisPosition = 'bottom' | 'top' | 'left' | 'right';
+
 export interface DetectedAxis {
   line: LineCandidate;
+  position: AxisPosition;
   /** 0–1 heuristic: line strength, its length, and whether it forms a plausible axis pair. */
   confidence: number;
   ticks: TickSet;
@@ -86,8 +94,11 @@ export interface PlotBox {
   topRight: Point;
   bottomRight: Point;
   bottomLeft: Point;
-  /** Whether each edge is a drawn frame line or was inferred from the axes' extents. */
-  framed: { top: boolean; right: boolean };
+  /**
+   * For the edges opposite the axes: whether each is a drawn frame line (true) or was inferred
+   * from the axes' extents. Edges along an axis are always false.
+   */
+  framed: { top: boolean; right: boolean; bottom: boolean; left: boolean };
 }
 
 export interface AxisDetection {

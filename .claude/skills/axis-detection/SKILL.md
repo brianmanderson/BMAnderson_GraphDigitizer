@@ -47,9 +47,12 @@ description: >
    ≤ 4 % of the short side, long similar pieces on both sides; never per row, or rows through
    side-by-side bars chain into one thick band and the axis under them is lost); sub-pixel offset =
    median of clean cross-profile centroids (ignores bars/ticks/labels touching the line).
-4. Pair choice: strong horizontal × vertical candidates that meet with the plot above/right
+4. Pair choice: strong horizontal × vertical candidates that meet, in each corner orientation
    (L corner or a cross for axes through zero), scored by strength, extent into the plot and
-   tick confidence. Plot box = corner to far ends, or to a frame line of similar darkness.
+   tick confidence. Bottom-left is the default; an X axis at the top / Y at the right needs a
+   corner (not a cross), a tick pattern (≥ 0.3) and pays 0.25 per moved axis (SPEC → Axes at
+   the top or right), so ties stay bottom-left. `DetectedAxis.position` tells label finding which
+   side to look on. Plot box = corner to far ends, or to a frame line of similar darkness.
 5. `ticks.ts`: short perpendicular marks on each side (adjacent columns summed; a walk stops
    when darkness halves, so ticks don't run into lighter gridlines); a lattice fit picks evenly
    spaced majors (several "major length" references are tried); minors between them; minors at
@@ -62,7 +65,8 @@ family — the inputs Phase 5's OCR and scale inference need.
 ## Corpus and labels
 
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
-  writes `synthetic/cNN.{png,jpg,json}` — 60 seeded charts. Pixel snapping is off so the truth
+  writes `synthetic/cNN.{png,jpg,json}` — 70 seeded charts (c60–c69, axes at the top/right,
+  were appended; new charts go at the end so earlier ones stay byte-identical). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.
 - `real/manifest.json` lists real figures: `{ "truth": "<label.json relative to manifest>",

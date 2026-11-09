@@ -7,7 +7,9 @@ Run offline and commit the output; the benchmark itself never needs Python:
                                    numpy, Pillow)
 
 Everything is seeded per chart, so a rerun reproduces the same files (given the same
-matplotlib/font versions). Do not edit the output by hand and do not change a chart because the
+matplotlib/font versions). Charts c60-c69 were appended later (axes moved to the top/right), so
+the first 60 are unchanged: c60-c67 have the X axis at the top (a "Γ" frame without a bottom
+line, or a box frame with ticks and labels only on top), c68-c69 the Y axis at the right. Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -42,7 +44,7 @@ import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 60
+COUNT = 70
 
 FONTS = [
     "DejaVu Sans", "DejaVu Serif", "DejaVu Sans Mono", "Arial", "Times New Roman",
@@ -57,6 +59,11 @@ SCALES = [
 OFFSET_AXES = {5, 17, 29, 41, 53}      # spines through data zero, not at the plot edge
 GGPLOT = {11, 35, 59}                  # grey panel, white grid, no axis lines at all
 NO_X_TICKMARKS = {6, 19, 32, 45, 58}   # x tick labels without tick marks (like the KM figure)
+# Appended charts with the axes moved: X at the top (c60-c67), Y at the right (c68-c69). Their
+# scales are fixed here (linear and log Y both covered), not taken from SCALES.
+TOP_X = {60: ("linear", "linear"), 61: ("linear", "log10"), 62: ("linear", "log10"), 63: ("linear", "linear"),
+         64: ("log10", "linear"), 65: ("linear", "log10"), 66: ("date", "linear"), 67: ("linear", "log10")}
+RIGHT_Y = {68: ("linear", "linear"), 69: ("linear", "log10")}
 
 
 @dataclass
@@ -98,11 +105,19 @@ def build(i: int) -> tuple[Image.Image, dict, int]:
     chart = Chart(name=f"c{i:02d}")
     offset = i in OFFSET_AXES
     ggplot = i in GGPLOT
+    top_x = i in TOP_X
+    right_y = i in RIGHT_Y
     xscale, yscale = ("linear", "linear") if offset else SCALES[i % len(SCALES)]
+    if top_x or right_y:
+        xscale, yscale = TOP_X.get(i) or RIGHT_Y[i]
     kind = ["line", "scatter", "bar"][int(rng.integers(0, 3))]
     if kind == "bar" and (yscale != "linear" or xscale == "log10"):
         kind = "line"
     frame = "offset" if offset else "ggplot" if ggplot else ("box" if rng.random() < 0.55 else "L")
+    if top_x:  # "top" = Γ (no bottom/right lines); "box-top" = closed frame, ticks only on top
+        frame = "box-top" if frame == "box" else "top"
+    if right_y:  # mirrored: no left/top lines; or a closed frame with ticks only at the right
+        frame = "box-right" if frame == "box" else "right"
     grid = ggplot or rng.random() < 0.4
     tickdir = "out" if ggplot else str(rng.choice(["out"] * 7 + ["in"] * 2 + ["inout"] * 2))
     mirror = frame == "box" and rng.random() < 0.15
@@ -184,6 +199,18 @@ def build(i: int) -> tuple[Image.Image, dict, int]:
         if frame == "L":
             ax.spines["top"].set_visible(False)
             ax.spines["right"].set_visible(False)
+        if top_x:
+            ax.xaxis.tick_top()
+            ax.xaxis.set_label_position("top")
+            if frame == "top":
+                ax.spines["bottom"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+        if right_y:
+            ax.yaxis.tick_right()
+            ax.yaxis.set_label_position("right")
+            if frame == "right":
+                ax.spines["left"].set_visible(False)
+                ax.spines["top"].set_visible(False)
         if offset:
             ax.spines["left"].set_position(("data", 0))
             ax.spines["bottom"].set_position(("data", 0))
@@ -213,7 +240,7 @@ def build(i: int) -> tuple[Image.Image, dict, int]:
         W, H = fig.canvas.get_width_height()
         rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
         truth = extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir,
-                              no_x_ticks=i in NO_X_TICKMARKS)
+                              no_x_ticks=i in NO_X_TICKMARKS, top_x=top_x, right_y=right_y)
         plt.close(fig)
 
     img = Image.fromarray(rgba[:, :, :3])
@@ -231,6 +258,10 @@ def build(i: int) -> tuple[Image.Image, dict, int]:
         tags.append("x-no-tickmarks")
     if axis_color != "#000000":
         tags.append("grey-axes")
+    if top_x:
+        tags.append("x-axis:top")
+    if right_y:
+        tags.append("y-axis:right")
     chart.tags = tags
     ext = "jpg" if jpeg_q else "png"
     doc = {
@@ -254,7 +285,8 @@ def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str
     out = []
     p0, p1 = line
     for t, v in zip(ticks, locs):
-        if not t.tick1line.get_visible():
+        # tick1/label1 = bottom/left; an axis moved to the top/right draws tick2/label2 only.
+        if not (t.tick1line.get_visible() or t.tick2line.get_visible()):
             continue
         disp = ax.transData.transform((v, 1.0) if axis == "x" else (1.0, v))
         pix = px_of(disp, H)[0]
@@ -273,7 +305,8 @@ def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str
             pt = (float(p0[0] + f * (p1[0] - p0[0])), float(pix[1]))
         value = iso(v) if scale == "date" else float(v)
         e = {"value": value, "px": round(pt[0], 3), "py": round(pt[1], 3)}
-        label = t.label1.get_text() if t.label1.get_visible() else ""
+        label = (t.label1.get_text() if t.label1.get_visible()
+                 else t.label2.get_text() if t.label2.get_visible() else "")
         if label:
             e["label"] = label
         if which == "minor":
@@ -282,7 +315,7 @@ def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str
     return out
 
 
-def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks):
+def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks, top_x=False, right_y=False):
     box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)  # TL TR BR BL
 
     def spine_line(name: str, fallback: np.ndarray) -> tuple[np.ndarray, bool]:
@@ -292,8 +325,8 @@ def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks):
         verts = sp.get_transform().transform(sp.get_path().vertices)
         return px_of(verts[[0, -1]], H), True
 
-    xline, xdrawn = spine_line("bottom", box[[3, 2]])
-    yline, ydrawn = spine_line("left", box[[3, 0]])
+    xline, xdrawn = spine_line("top", box[[0, 1]]) if top_x else spine_line("bottom", box[[3, 2]])
+    yline, ydrawn = spine_line("right", box[[2, 1]]) if right_y else spine_line("left", box[[3, 0]])
     # Orient: x axis left -> right, y axis bottom -> top.
     if xline[0][0] > xline[1][0]:
         xline = xline[::-1]
