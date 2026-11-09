@@ -1316,7 +1316,7 @@ export function App() {
         </span>
         <span className="muted credit">
           Brian Anderson, UC San Diego ·{' '}
-          <a href="https://github.com/brianmanderson/UCSD_GraphEvaluator" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/brianmanderson/BMAnderson_GraphDigitizer" target="_blank" rel="noopener noreferrer">
             GitHub
           </a>
         </span>

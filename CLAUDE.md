@@ -35,8 +35,8 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
 - `npm run build` — type-check + bundle in `dist/` (Tesseract's files go to `dist/tesseract/`).
   `BASE_PATH` (default `/`) sets Vite's `base` for `build`/`preview` only — never for dev or
   e2e, which assume `/`. `.github/workflows/deploy.yml` runs the gate on every push/PR and, on
-  `main`, builds with `BASE_PATH=/UCSD_GraphEvaluator/` and deploys `dist/` to GitHub Pages
-  (https://brianmanderson.github.io/UCSD_GraphEvaluator/).
+  `main`, builds with `BASE_PATH=/BMAnderson_GraphDigitizer/` and deploys `dist/` to GitHub Pages
+  (https://brianmanderson.github.io/BMAnderson_GraphDigitizer/).
 - **Verification gate** — a change is done only when `npm run verify` passes: `typecheck`,
   `lint`, `test`, `bench:axes` (~8 s; exits 1 on any regression vs `bench/axes/baseline.json`),
   `bench:lines` (~15 s; same vs `bench/lines/baseline.json`) and `test:e2e`. Never ease a test,

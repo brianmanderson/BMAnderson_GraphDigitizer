@@ -460,7 +460,7 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   copy (`cacheMethod: 'none'`). The e2e spec aborts every non-localhost request and asserts
   none; `npm run privacy:check` (`scripts/privacy-check.ts`) records every request of a full
   session on the production build — page and worker targets, over CDP — into
-  `privacy-report.json` and fails on any foreign origin. The base is `BASE_PATH` at build time (default `/`; `/UCSD_GraphEvaluator/` for the
+  `privacy-report.json` and fails on any foreign origin. The base is `BASE_PATH` at build time (default `/`; `/BMAnderson_GraphDigitizer/` for the
   GitHub Pages deployment in `.github/workflows/deploy.yml`).
 - **Finding labels**: the band outside each axis (below X, left of Y), sampled in the
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
