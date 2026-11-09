@@ -666,7 +666,10 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   then, bridges thin one-sided spurs (dashes touching it). A patterned seed drops blobs longer than
   2 × its longest dash + 4 widths (the solid series, gridlines) and fills its own gaps: pieces
   linked along chains with its gap and size (dots of a dotted gridline it crosses are too small),
-  and chain ends joined across the dropped ink where it crosses the other series; the walker then
+  and chain ends joined across the dropped ink where it crosses the other series (to a piece of
+  its size ahead of the end, off the chain's line by no more than a dash and two widths; a join
+  longer than one gap must have at least half a dash of its length on dropped ink, where the lost
+  dash went — so never to a tick label across an axis, A22 below); the walker then
   follows it round step corners and along dashed verticals like a solid line, bridging a hole of
   up to a dash and two gaps where the dash touching the other series went with it. After the walk
   the fill is undone; columns that ran mostly over fill are dropped and the rest re-centred on
@@ -846,6 +849,24 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   as the find-points fixture and withdrawn: markers no thicker than the lines through them
   give no template (0/5 markers, mode `auto` traces a curve), which is the existing "≲ 10 px
   at low DPI" failure, not a new one.
+- **Top X axis (2026-11-09; 236 traces)**: a dashed survival curve with open squares and error
+  bars under an X axis drawn along the top (paper corpus figure A22) jumped from a dash to the '1'
+  tick label above the plot. `detectAxes` pairs only an "L" corner, so such a figure has no plot
+  box and the labels lie in the traced region; the dashed seed's chain broke at an open marker,
+  and its end was joined across the dropped ink (the solid series and the axis) to the label,
+  which had a dash's size and lay within reach (the reach is built from the longest piece, there
+  a marker with its error bar, 70 px). Fixed in the join (direction and lost-dash rules above);
+  pinned by a unit test with that geometry. On the earlier corpus every change is an improvement
+  (`l78/s1` coverage 73 → 85 %, `l80/s1` 86 → 88 %). Appended `l96`–`l103` (`scenario:top-axis`,
+  `frame:top-L`: Γ frame, log or linear Y, solid + Office-dashed fits of one colour from the
+  top-left corner, filled / open squares with error bars): kind 93.8 %, coverage 87.6 %, p95
+  error 6.4 px, wrong series 6.3 %, style 75 % — the fix does not change them (the label join
+  needs A22's long reach). OVERALL kind 96.6 %, coverage 92.6 %, p95 1.02 px, wrong 2.6 %, style
+  94.8 %. **Known failures** of this scenario: with no plot box a trace can still leave the plot
+  across the Y axis to a tick label (`l99/s1`, from an error bar's cap; tick-label glyphs can
+  also link into the dash chain's own fill); a dashed trace stops at an open marker whose cap it entered (A22 from most seeds stops at
+  0.5 Gy); one dashed series is taken for markers (`l97/s1`) and one ends almost at once
+  (`l98/s1`, 2.8 %). The general fix is a plot box for top/right axes in `detectAxes` (not done).
 
 ## Auto-trace — UI
 

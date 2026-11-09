@@ -614,18 +614,33 @@ export function applyStyle(ctx: Ctx, template: Blob, sig: StyleSignature, marker
   // dropped ink (over no other ink of the series' colour).
   if (any) {
     const degree = new Map<number, number>();
+    /** The piece a chain end is linked to: the chain comes from there. */
+    const from = new Map<number, number>();
     for (const e of own) {
       if (e.gap < FRAGMENT_GAP || e.crossing) continue;
       degree.set(e.a, (degree.get(e.a) ?? 0) + 1);
       degree.set(e.b, (degree.get(e.b) ?? 0) + 1);
+      from.set(e.a, e.b);
+      from.set(e.b, e.a);
     }
     const reach = 2 * (sig.maxOn + sig.gap) + 4 * sig.thickness;
+    // The piece across goes on the way the chain was going: ahead of its end and off its line by no
+    // more than a dash turning a corner — not a tick label beside the crossing (a top X axis's).
+    const offLine = sig.maxOn + 2 * sig.thickness;
+    const oneGap = sig.gap + Math.max(1.5, 0.35 * sig.gap) + sig.thickness;
     for (const [label, n] of degree) {
       if (n > 1 || !fits(label)) continue;
       const b = found.blobs[label - 1]!;
+      const p = found.blobs[from.get(label)! - 1]!;
+      const ul = Math.hypot(b.cx - p.cx, b.cy - p.cy) || 1;
+      const ux = (b.cx - p.cx) / ul;
+      const uy = (b.cy - p.cy) / ul;
       let best: Link | null = null;
       for (const o of index.near(b.cx, b.cy, reach + index.maxLen)) {
         if (o.label === label || drop[o.label] || !fits(o.label) || bboxGap(b, o) > reach) continue;
+        const vx = o.cx - b.cx;
+        const vy = o.cy - b.cy;
+        if (vx * ux + vy * uy <= 0 || Math.abs(vx * uy - vy * ux) > offLine) continue;
         const { ka, kb, d } = nearestPair(ctx, index.pixels(b), index.pixels(o));
         if (d > reach || (best && d - 1 >= best.gap)) continue;
         const xa = ka % w;
@@ -641,7 +656,11 @@ export function applyStyle(ctx: Ctx, template: Blob, sig: StyleSignature, marker
           if (l && drop[l]) crossed++;
           else blocked = l !== 0 || !ctx.region.mask[k];
         }
-        if (!blocked && crossed > 0) best = { a: label, b: o.label, ka, kb, gap: d - 1 };
+        // A join longer than one gap has lost a piece to the dropped ink: at least half a piece of
+        // it lies on that ink. Background in its place is past the series' end (a label beyond
+        // an axis it ran into).
+        const lostPiece = d > oneGap && crossed < 0.5 * sig.minOn;
+        if (!blocked && crossed > 0 && !lostPiece) best = { a: label, b: o.label, ka, kb, gap: d - 1 };
       }
       if (best) fillGap(ctx, best, sig.thickness, fill, level);
     }

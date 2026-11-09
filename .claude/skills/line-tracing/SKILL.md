@@ -58,7 +58,9 @@ description: >
    blob small + round and not patterned → markers (also a larger blob from which `markerTemplate`
    cuts a marker found ≥ 3 times: a marker with error bars); a dotted chain whose pattern wasn't read →
    `chainPath`. Otherwise `applyStyle` (same-colour ink of another style becomes an occluder; a
-   patterned seed's own gaps are filled, `unfill` after the walk) and the column walker.
+   patterned seed's own gaps are filled — chain ends joined across the dropped ink only to a piece
+   ahead on the chain's line with a lost dash's worth of dropped ink between, never to a tick label
+   across an axis — `unfill` after the walk) and the column walker.
 4. Column walker (`curve.ts → traceColumns`): runs per column; prediction = centre + median
    slope, or after a long run straight-through-then-far-end; hole bridging on verticals; peak
    consistency (`PEAK_RATIO`); open gaps ≤ `defaultMaxGap`, hidden (occluded) gaps ≤
@@ -91,10 +93,12 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (96 charts, 208 series; committed,
-  ~2.8 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (104 charts, 224 series; committed,
+  ~3.0 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
-  or circle vs square scatter of one colour with error bars) — so earlier ones stay
+  or circle vs square scatter of one colour with error bars), l96–l103 `top-axis` (X axis along
+  the top, so `detectAxes` finds no box and tick labels are in the traced region; solid + dashed
+  fits of one colour from the top-left corner with filled/open squares and error bars) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -119,5 +123,7 @@ small/JPEG markers are still missed; a series hidden under another
 along a step ends the trace; thin faint lines in low-DPI JPEGs fragment; four-series JPEG charts
 on dark gridlines still switch series sometimes (dense 10.7 % wrong); legend samples count as
 markers; same-colour (Phase 6): a dashed series merged into the solid one for a stretch ends the
-dashed trace there, dashed/dotted KM steps keep few corners. Numbers: docs/SPEC.md → Auto-trace →
+dashed trace there, dashed/dotted KM steps keep few corners; top X axis (no plot box): a trace can
+still reach a tick label across the Y axis, a dashed trace stops at an open marker whose cap it
+entered. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.

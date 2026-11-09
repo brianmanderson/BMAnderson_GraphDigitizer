@@ -349,6 +349,36 @@ describe('traceLine: line style and same-colour series', () => {
     }
   });
 
+  it('does not join a dashed line across the other series and a top X axis to a tick label', () => {
+    // A survival plot with its X axis along the top (no plot box found: tick labels are inside the
+    // traced region). The dashed series' chain breaks at an open marker; across the solid series
+    // and the axis sits the '1' label, within reach of a lost dash. The trace keeps to the dashes
+    // past the marker instead of jumping up to the label.
+    const c = new Canvas(320, 220);
+    const corner = { x: 30, y: 40 };
+    c.stroke([{ x: 30, y: 210 }, corner, { x: 310, y: 40 }], 1.5, BLACK);
+        c.stroke([corner, { x: 310, y: 75 }], 3, BLACK);
+    const line: P[] = [corner, { x: 310, y: 200 }];
+    const pieces = dashes(line, [12, 30]); // Office-style: gaps longer than the dashes
+    for (const d of pieces) c.stroke(d, 4, BLACK);
+    // An open square with an error bar in the gap after the dash ending nearest x = 104, clear of
+    // the next dash (as a data point off the fitted line leaves it).
+    const before = pieces.reduce((a, d) => (Math.abs(d[1]!.x - 104) < Math.abs(a[1]!.x - 104) ? d : a));
+    const after = pieces[pieces.indexOf(before) + 1]!;
+    const m = { x: before[1]!.x + 0.35 * (after[0]!.x - before[1]!.x), y: before[1]!.y + 0.35 * (after[0]!.y - before[1]!.y) };
+    c.stroke([{ x: m.x, y: m.y - 12 }, { x: m.x, y: m.y + 12 }], 1.2, BLACK);
+    c.square(m, 9, BLACK);
+    c.square(m, 6, [255, 255, 255]);
+    c.stroke([{ x: m.x, y: 14 }, { x: m.x, y: 30 }], 2.5, BLACK); // the '1' above it
+    c.stroke([{ x: m.x - 5, y: 19 }, { x: m.x, y: 14 }], 2.5, BLACK);
+    const seedDash = pieces.find((d) => d[0]!.x > 220)!;
+    const seed = { x: (seedDash[0]!.x + seedDash[1]!.x) / 2, y: (seedDash[0]!.y + seedDash[1]!.y) / 2 };
+    const r = traceLine(c.request(seed, { plotBox: null }));
+    expect(r.style).toBe('dashed');
+    expect(pts(r).every((p) => polyDist(p, line) < 9)).toBe(true); // on the line (or its marker)
+    expect(Math.min(...r.path.map((p) => p.px))).toBeLessThan(m.x - 10); // past the marker
+  });
+
   it('takes a dash at a step corner for a line in auto mode, not for a marker', () => {
     const c = new Canvas(400, 280);
     frame(c);
