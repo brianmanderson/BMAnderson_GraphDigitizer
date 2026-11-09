@@ -851,22 +851,28 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   at low DPI" failure, not a new one.
 - **Top X axis (2026-11-09; 236 traces)**: a dashed survival curve with open squares and error
   bars under an X axis drawn along the top (paper corpus figure A22) jumped from a dash to the '1'
-  tick label above the plot. `detectAxes` pairs only an "L" corner, so such a figure has no plot
-  box and the labels lie in the traced region; the dashed seed's chain broke at an open marker,
+  tick label above the plot. Before `detectAxes` paired a top X axis, such a figure had no plot
+  box and its labels lay in the traced region; the dashed seed's chain broke at an open marker,
   and its end was joined across the dropped ink (the solid series and the axis) to the label,
   which had a dash's size and lay within reach (the reach is built from the longest piece, there
   a marker with its error bar, 70 px). Fixed in the join (direction and lost-dash rules above);
-  pinned by a unit test with that geometry. On the earlier corpus every change is an improvement
-  (`l78/s1` coverage 73 → 85 %, `l80/s1` 86 → 88 %). Appended `l96`–`l103` (`scenario:top-axis`,
-  `frame:top-L`: Γ frame, log or linear Y, solid + Office-dashed fits of one colour from the
-  top-left corner, filled / open squares with error bars): kind 93.8 %, coverage 87.6 %, p95
-  error 6.4 px, wrong series 6.3 %, style 75 % — the fix does not change them (the label join
-  needs A22's long reach). OVERALL kind 96.6 %, coverage 92.6 %, p95 1.02 px, wrong 2.6 %, style
-  94.8 %. **Known failures** of this scenario: with no plot box a trace can still leave the plot
-  across the Y axis to a tick label (`l99/s1`, from an error bar's cap; tick-label glyphs can
-  also link into the dash chain's own fill); a dashed trace stops at an open marker whose cap it entered (A22 from most seeds stops at
-  0.5 Gy); one dashed series is taken for markers (`l97/s1`) and one ends almost at once
-  (`l98/s1`, 2.8 %). The general fix is a plot box for top/right axes in `detectAxes` (not done).
+  pinned by a unit test with that geometry and no box (a box from any source the UI cannot get is
+  no defence). On the earlier corpus every change is an improvement (`l78/s1` coverage 73 → 85 %,
+  `l80/s1` 86 → 88 %). With the top-axis box A22 traces the same with or without the join fix
+  (seed on the 3 Gy dash: to x ≈ 232 by the origin; other seeds: to the 0.5 Gy marker). Appended
+  `l96`–`l103` (`scenario:top-axis`, `frame:top-L`: Γ frame, log or linear Y, solid +
+  Office-dashed fits of one colour from the top-left corner, filled / open squares with error
+  bars; 7 of 8 get a detected box): kind 93.8 %, coverage 87.4 %, p95 error 5.2 px, wrong series
+  6.3 %, style 75 %. Measured with the box: where a series starts inside the axis stroke at the
+  corner it is dropped with the axis (`l99/s0`, `l100/s0`: the first 6–10 columns), and the
+  coverage a box-less trace "had" there came from running on into the tick labels.
+  **Known failures** of this scenario: a coloured series on black axes loses the axis band, as
+  the colour model takes black for full strength, so a filled marker drawn on the top axis is cut
+  and the trace dips ~4 px there (`l100/s0`, x 186–192); a dashed trace that begins at the corner
+  may end on an inward tick mark of the Y axis (`l100/s1`); a dashed trace stops at an open marker
+  whose cap it entered (A22 from most seeds stops at 0.5 Gy); one dashed series is taken for
+  markers (`l97/s1`) and one ends almost at once (`l98/s1`, 2.8 %). Without a box (`l96`; any
+  figure detection misses) tick-label glyphs can still link into a dash chain's own fill.
 
 ## Auto-trace — UI
 

@@ -97,7 +97,7 @@ description: >
   ~3.0 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l103 `top-axis` (X axis along
-  the top, so `detectAxes` finds no box and tick labels are in the traced region; solid + dashed
+  the top with its labels above, a Γ frame `detectAxes` boxes on 7 of 8; solid + dashed
   fits of one colour from the top-left corner with filled/open squares and error bars) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
@@ -123,7 +123,7 @@ small/JPEG markers are still missed; a series hidden under another
 along a step ends the trace; thin faint lines in low-DPI JPEGs fragment; four-series JPEG charts
 on dark gridlines still switch series sometimes (dense 10.7 % wrong); legend samples count as
 markers; same-colour (Phase 6): a dashed series merged into the solid one for a stretch ends the
-dashed trace there, dashed/dotted KM steps keep few corners; top X axis (no plot box): a trace can
-still reach a tick label across the Y axis, a dashed trace stops at an open marker whose cap it
-entered. Numbers: docs/SPEC.md → Auto-trace →
+dashed trace there, dashed/dotted KM steps keep few corners; top X axis: a series starting inside the
+axis stroke loses those columns with the axis, a coloured series on black axes loses the axis band
+(a marker on it is cut), a dashed trace stops at an open marker whose cap it entered. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.
