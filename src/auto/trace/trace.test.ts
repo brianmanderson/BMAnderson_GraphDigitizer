@@ -229,6 +229,40 @@ describe('traceLine: curves', () => {
     expect(r.path.every((p) => p.px < 355 && p.py > 25)).toBe(true);
   });
 
+  it('stays on a thick curve where it crosses thin lines of its colour at shallow angles', () => {
+    // A dose-response figure (study image A14): a thick black sigmoid over black gridlines and
+    // outlined bars whose tops it crosses at shallow angles — each crossing merges the two into
+    // one run for many columns. Neither a gridline nor a bar top is the curve: the trace stays
+    // in the stroke end to end (before the fix it left at the first crossing, 80+ px off). Where
+    // crossings follow each other within a few dozen columns, as here, they can still leave a
+    // corner pair half a stroke off (SPEC → Auto-trace → known failures).
+    const c = new Canvas(400, 280);
+    frame(c);
+    const curve = Array.from({ length: 317 }, (_, i) => ({ x: 42 + i, y: 235 - 170 / (1 + Math.exp(-(i - 200) / 110)) })); // frame to frame
+    for (const y of [200, 180, 160, 140, 120]) c.stroke([{ x: 41, y }, { x: 359, y }], 1.5, BLACK);
+    // Bar tops halfway between gridlines, as in A14.
+    for (const [x0, x1, top] of [[100, 150, 190], [150, 210, 170], [210, 265, 150], [265, 320, 130]] as const) {
+      const at = (x: number) => curve[x - 42]!.y;
+      expect(at(x0)).toBeGreaterThan(top); // the curve crosses each bar's top inside the bar
+      expect(at(x1)).toBeLessThan(top);
+      c.stroke([{ x: x0, y: 259 }, { x: x0, y: top }, { x: x1, y: top }, { x: x1, y: 259 }], 3, BLACK);
+    }
+    c.stroke(curve, 5, BLACK);
+    // Mode 'curve': in auto mode a marker template is cut out of the thick line where it meets the
+    // bars and found three times (SPEC → Auto-trace → known failures, `l100/s0`).
+    for (const seed of [curve[38]!, curve[158]!, curve[288]!]) {
+      const r = traceLine(c.request(seed, { mode: 'curve' }));
+      expect(r.kind).toBe('curve');
+      const path = pts(r);
+      expect(path.every((p) => polyDist(p, curve) < 5)).toBe(true); // within one stroke width
+      expect(Math.min(...path.map((p) => p.x))).toBeLessThan(46);
+      expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(354);
+      expect(r.points.every((p) => polyDist({ x: p.px, y: p.py }, curve) < 5)).toBe(true);
+      const errs = path.map((p) => polyDist(p, curve)).sort((x, y) => x - y);
+      expect(errs[errs.length >> 1]!).toBeLessThan(0.5);
+    }
+  });
+
   it('does not take a green line for a black one', () => {
     const c = new Canvas(400, 280);
     frame(c);
