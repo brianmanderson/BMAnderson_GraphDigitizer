@@ -384,6 +384,59 @@ describe('traceLine: line style and same-colour series', () => {
     }
   });
 
+  it('does not join a dashed line across the other series and a top X axis to a tick label', () => {
+    // Figure A22 with no plot box (labels in the traced region): the dashed series' chain breaks
+    // at an open marker; above it, across the thick solid series and the top axis, sits the '1'
+    // label — a piece of a dash's size with enough dropped ink on the way for a lost dash, but off
+    // the dashed line's course. The trace keeps to the dashes instead of jumping up to the label.
+    const c = new Canvas(320, 220);
+    const corner = { x: 30, y: 40 };
+    c.stroke([{ x: 30, y: 210 }, corner, { x: 310, y: 40 }], 1.5, BLACK);
+    c.stroke([corner, { x: 310, y: 75 }], 8, BLACK); // thick: the way up crosses a lost dash's worth
+    const line: P[] = [corner, { x: 310, y: 200 }];
+    const pieces = dashes(line, [12, 30]); // Office-style: gaps longer than the dashes
+    for (const d of pieces) c.stroke(d, 4, BLACK);
+    // An open square with an error bar in the gap after the dash ending nearest x = 104, clear of
+    // the next dash (as a data point off the fitted line leaves it).
+    const before = pieces.reduce((a, d) => (Math.abs(d[1]!.x - 104) < Math.abs(a[1]!.x - 104) ? d : a));
+    const after = pieces[pieces.indexOf(before) + 1]!;
+    const m = { x: before[1]!.x + 0.35 * (after[0]!.x - before[1]!.x), y: before[1]!.y + 0.35 * (after[0]!.y - before[1]!.y) };
+    c.stroke([{ x: m.x, y: m.y - 12 }, { x: m.x, y: m.y + 12 }], 1.2, BLACK);
+    c.square(m, 9, BLACK);
+    c.square(m, 6, [255, 255, 255]);
+    c.stroke([{ x: m.x, y: 14 }, { x: m.x, y: 30 }], 2.5, BLACK); // the '1' above it
+    c.stroke([{ x: m.x - 5, y: 19 }, { x: m.x, y: 14 }], 2.5, BLACK);
+    const seedDash = pieces.find((d) => d[0]!.x > 220)!;
+    const seed = { x: (seedDash[0]!.x + seedDash[1]!.x) / 2, y: (seedDash[0]!.y + seedDash[1]!.y) / 2 };
+    const r = traceLine(c.request(seed, { plotBox: null }));
+    expect(r.style).toBe('dashed');
+    expect(pts(r).every((p) => polyDist(p, line) < 9)).toBe(true); // on the line (or its marker)
+  });
+
+  it('does not join a dashed line across the axis it runs into to the tick label beyond', () => {
+    // No plot box (the labels are in the traced region, as in figure A22 before a top X axis was
+    // detected). The dashed series ends at the Y axis; on its line, past the thin axis, sits the
+    // '100' label, as far from the last dash as a lost dash and two gaps would be. Joined across
+    // dropped ink it could be, but no dash was lost there: the axis is all the dropped ink between
+    // them. The trace ends at its last dash.
+    const c = new Canvas(340, 220);
+    c.stroke([{ x: 80, y: 210 }, { x: 80, y: 30 }, { x: 330, y: 30 }], 1.5, BLACK);
+    c.stroke([{ x: 80, y: 32 }, { x: 330, y: 60 }], 3, BLACK); // the solid series
+    const line: P[] = [{ x: 330, y: 200 }, { x: 80, y: 110 }];
+    const pieces = dashes(line, [12, 22]).filter((d) => Math.min(...d.map((p) => p.x)) > 92);
+    for (const d of pieces) c.stroke(d, 3, BLACK);
+    const ring = (cx: number): P[] => Array.from({ length: 25 }, (_, i) => ({ x: cx + 4 * Math.cos((i * Math.PI) / 12), y: 91 + 7 * Math.sin((i * Math.PI) / 12) }));
+    c.stroke([{ x: 2, y: 84 }, { x: 2, y: 98 }], 2, BLACK); // '1'
+    c.stroke(ring(13), 2, BLACK); // '0'
+    c.stroke(ring(25), 2, BLACK); // '0'
+    const seedDash = pieces[2]!;
+    const seed = { x: (seedDash[0]!.x + seedDash[1]!.x) / 2, y: (seedDash[0]!.y + seedDash[1]!.y) / 2 };
+    const r = traceLine(c.request(seed, { plotBox: null }));
+    expect(r.style).toBe('dashed');
+    expect(Math.min(...r.path.map((p) => p.px))).toBeGreaterThan(85); // not past the axis
+    expect(Math.min(...r.path.map((p) => p.px))).toBeLessThan(100); // to its last dash
+  });
+
   it('takes a dash at a step corner for a line in auto mode, not for a marker', () => {
     const c = new Canvas(400, 280);
     frame(c);

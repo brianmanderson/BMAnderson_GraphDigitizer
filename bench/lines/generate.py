@@ -29,7 +29,11 @@ with vertical and horizontal error bars and caps, overlapping pairs, markers aga
 dashed reference line of the same colour, legends), l96-l107 a thick solid sigmoid with dashed
 confidence curves among straight lines of its own colour ("grid-crossing", like a dose-response
 figure: gridlines at every y tick and outlined histogram bars whose tops it crosses at shallow
-angles, drawn in the series' colour, black in two charts of three).
+angles, drawn in the series' colour, black in two charts of three), l108-l115 survival-style
+pairs of one colour under an X axis drawn along the top ("top-axis": a Γ frame with the X tick
+labels above the plot, log or linear Y; a solid line with filled squares and a dashed one with open
+squares and tall error bars around fitted curves, both starting at the top-left corner, where they
+meet the top axis).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -51,10 +55,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.colors import to_rgb  # noqa: E402
+from matplotlib.ticker import FuncFormatter  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 108
+COUNT = 116
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -71,6 +76,10 @@ POINTS_FROM = 84
 POINTS_VARIANTS = ["circle", "square", "triangle", "shapes"]
 # Charts from CROSS_FROM on: a thick curve crossing gridlines and bar outlines of its own colour.
 CROSS_FROM = 96
+# Charts from TOP_FROM on: the X axis along the top of the plot (no bottom axis), two series of one
+# colour starting together at the top-left corner, with square markers and error bars.
+TOP_FROM = 108
+TOP_VARIANTS = ["log", "linear"]
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -189,7 +198,7 @@ def coverage_at(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
 
 def build(i: int):
     rng = np.random.default_rng(5000 + i)
-    scenario = ("grid-crossing" if i >= CROSS_FROM else "find-points" if i >= POINTS_FROM else "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM
+    scenario = ("top-axis" if i >= TOP_FROM else "grid-crossing" if i >= CROSS_FROM else "find-points" if i >= POINTS_FROM else "same-colour" if i >= SAME_FROM else "kinks" if i >= KINKS_FROM
                 else SCENARIOS[i % len(SCENARIOS)])
     dpi = int(DPIS[i % len(DPIS)] if rng.random() < 0.7 else rng.choice(DPIS))
     w_in = float(rng.uniform(4.5, 7.5))
@@ -259,6 +268,12 @@ def build(i: int):
         specs.append(("line", "solid", None, color))
         specs.append(("line", "dashed", None, color))
         specs.append(("line", "dashed", None, color))
+    elif scenario == "top-axis":
+        variant = TOP_VARIANTS[(i - TOP_FROM) % len(TOP_VARIANTS)]
+        color = "k" if rng.random() < 0.5 else colors[0]
+        frame = "top-L"
+        specs.append(("line", "solid", "s", color))
+        specs.append(("line", "dashed", "s", color))
     else:  # dense
         for k in range(4):
             specs.append(("line", "solid" if k < 3 else "dashed", None, colors[k]))
@@ -279,6 +294,12 @@ def build(i: int):
             xhi = xlo + float(rng.choice([10, 50, 100, 400]))
             ylo = float(rng.choice([0, -1, 20]))
             yhi = ylo + float(rng.choice([1, 10, 80, 500]))
+        if scenario == "top-axis":
+            xlo, xhi = 0.0, float(rng.choice([4, 6, 8, 10]))
+            ylo, yhi = 0.0, 100.0
+            n_pts = int(rng.integers(6, 10))
+            top_xs = np.linspace(xlo, xhi, n_pts)
+            top_xs[1] = top_xs[1] / 2  # a first point close to the start, where the lines converge
         series = []
         # Same-colour pairs: the second series' data are made from the first's (crossing, close).
         pair = None
@@ -320,6 +341,39 @@ def build(i: int):
                 ax.plot(xs, ys, ls="none", marker=marker, color=marker_color, ms=ms, zorder=2.5 + k)
                 verts = np.column_stack([xs, ys])
                 kind = "line"
+            elif scenario == "top-axis":
+                # Survival-style fits from (0, yhi), as in a clonogenic-survival figure: the solid
+                # one falls slowly, the dashed one by several decades. The line is the fitted model
+                # (the truth path); the measured points scatter around it as filled / open squares
+                # with error bars that grow tall on the dashed series.
+                xs = top_xs.copy()
+                fit_x = np.linspace(xlo, xhi, 300)
+                if k == 0:
+                    a, b = rng.uniform(0.02, 0.08), rng.uniform(0.005, 0.03)
+                    model = lambda x: yhi * np.exp(-a * x - b * x ** 2)  # noqa: E731
+                    f = 1 + rng.uniform(0.05, 0.35, len(xs))
+                    noise = rng.normal(0, 0.06, len(xs))
+                else:
+                    c = rng.uniform(3.0, 5.0) * math.log(10) / xhi
+                    model = lambda x: yhi * np.exp(-c * x)  # noqa: E731
+                    f = 1.2 + rng.uniform(0.2, 1.0, len(xs)) * (1 + 6 * xs / xhi)
+                    noise = rng.normal(0, 0.3, len(xs))
+                if variant == "linear":
+                    f = 1 + 0.25 * (f - 1)
+                    noise = 0.25 * noise
+                noise[0] = 0  # the start point is exact
+                ys = model(xs) * np.exp(noise)
+                yerr = np.vstack([ys - ys / f, ys * f - ys])
+                yerr[:, 0] = 0
+                lw = float(rng.uniform(1.2, 3.0))
+                ms = float(rng.uniform(5, 8))
+                # Office-style dashes (A22's): a dash about 3.3 line widths long, a gap about 4.
+                dash = ls if k == 0 else (0, (3.3, 4.2))
+                ax.plot(fit_x, model(fit_x), color=color, lw=lw, ls=dash, zorder=2 + k)
+                ax.errorbar(xs, ys, yerr=yerr, fmt=marker, ls="none", color=color, ecolor=color, mec=color,
+                            mfc=color if k == 0 else "white", ms=ms, mew=float(rng.uniform(1.0, 1.6)),
+                            elinewidth=float(rng.uniform(0.8, 1.4)), capsize=float(rng.uniform(2, 4)), zorder=2 + k)
+                verts = np.column_stack([fit_x, model(fit_x)])
             elif kind == "line" and marker is None:
                 if scenario == "grid-crossing":
                     # A shallow sigmoid (the fitted curve), then the dashed lower/upper bounds: the
@@ -398,8 +452,22 @@ def build(i: int):
                                marker_color=marker_color, fill=marker_fill))
         allv = np.vstack([s["verts"] for s in series])
         pad_y = 0.06 * (allv[:, 1].max() - allv[:, 1].min() + 1e-9)
-        ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
-        ax.set_ylim(allv[:, 1].min() - (0 if scenario == "find-points" else pad_y), allv[:, 1].max() + pad_y)
+        if scenario == "top-axis":
+            # The start point sits in the corner of the axes; the X axis and its labels are on top.
+            ax.set_xlim(xlo, xhi * 1.02)
+            if variant == "log":
+                ax.set_yscale("log")
+                ax.set_ylim(10 ** math.floor(math.log10(allv[:, 1].min() / 2)), yhi)
+                ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+            else:
+                ax.set_ylim(0, yhi)
+            ax.xaxis.tick_top()
+            ax.xaxis.set_label_position("top")
+            ax.spines["bottom"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+        else:
+            ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
+            ax.set_ylim(allv[:, 1].min() - (0 if scenario == "find-points" else pad_y), allv[:, 1].max() + pad_y)
         decor = []  # straight lines of the series' colour that are not series: (polyline in data, width px)
         if scenario == "grid-crossing":
             # Outlined bars from the bottom whose tops the solid curve crosses inside the bar, then a
@@ -454,7 +522,7 @@ def build(i: int):
     for k, s in enumerate(series):
         others = [o for j, o in enumerate(series) if j != k]
         s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
-        s["seed"] = pick_seed(s, others + decor_px, rgb, bg, legend_box, W, H, strict=scenario in ("same-colour", "grid-crossing"))
+        s["seed"] = pick_seed(s, others + decor_px, rgb, bg, legend_box, W, H, strict=scenario in ("same-colour", "grid-crossing", "top-axis"))
 
     tags = [f"scenario:{scenario}", "grid" if grid or scenario == "grid-crossing" else "no-grid", f"frame:{frame}", "jpeg" if jpeg_q else "png",
             "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
@@ -473,10 +541,12 @@ def build(i: int):
             stags.append("crossing")
         if s["kind"] == "step" and s["marker"]:
             stags.append("censor-marks")
-        if scenario == "same-colour":
+        if scenario in ("same-colour", "top-axis"):
             stags.append("same-colour")
         if decor_px:
             stags.append("own-colour-lines")
+        if scenario == "top-axis":
+            stags.append("errorbars")
         if s["fill"] is not None:
             stags.append("fill:filled" if s["fill"] else "fill:open")
             stags.append(f"marker:{ {'o': 'circle', 's': 'square', '^': 'triangle'}[s['marker']] }")

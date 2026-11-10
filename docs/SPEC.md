@@ -676,7 +676,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   then, bridges thin one-sided spurs (dashes touching it). A patterned seed drops blobs longer than
   2 × its longest dash + 4 widths (the solid series, gridlines) and fills its own gaps: pieces
   linked along chains with its gap and size (dots of a dotted gridline it crosses are too small),
-  and chain ends joined across the dropped ink where it crosses the other series; the walker then
+  and chain ends joined across the dropped ink where it crosses the other series — to a chain end
+  across (a piece linked on both sides is inside another chain; links to dropped ink, a marker
+  with its error bars, end a chain), or to a lone piece ahead of the end and off its line by no
+  more than a dash and two widths; a join longer than one gap must have at least half a dash of
+  its length on dropped ink, where the lost dash went (so not to a tick label beyond a thin axis
+  or beside a crossing; Top X axis below); the walker then
   follows it round step corners and along dashed verticals like a solid line, bridging a hole of
   up to a dash and two gaps where the dash touching the other series went with it. After the walk
   the fill is undone; columns that ran mostly over fill are dropped and the rest re-centred on
@@ -736,7 +741,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 108 seeded charts, 244 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 116 seeded charts, 260 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -754,7 +759,11 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   `own-colour-lines`, like study image A14, a dose-response figure) a thick solid sigmoid (3.5–7 px)
   with two thinner dashed confidence curves, over outlined histogram bars whose tops it crosses at
   shallow angles and a solid gridline at every y tick, all in the series' colour (black in two
-  charts of three); seeds keep clear of the bars and gridlines. Gridlines,
+  charts of three); seeds keep clear of the bars and gridlines; (l108–l115, `scenario:top-axis`,
+  `frame:top-L`, series tags `same-colour`, `errorbars`, like figure A22, a clonogenic survival
+  plot) a Γ frame with the X axis and its labels along the top, log or linear Y, and two fitted
+  curves of one colour from the top-left corner — solid with filled squares, Office-dashed (dash
+  ≈ 3.3 widths, gap ≈ 4) with open squares and error bars growing tall. Gridlines,
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
@@ -903,6 +912,34 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   px) and `dpi:mid` (p95 0.728 → 0.730 px). Find points (l84–l95), the Glowa scatter and markers
   with error bars are unchanged. The unit test above now runs in mode `auto` and asserts a solid
   curve.
+- **Top X axis (2026-11-09; 272 traces)**: a dashed survival curve with open squares and error
+  bars under an X axis drawn along the top (paper corpus figure A22) jumped from a dash to the '1'
+  tick label above the plot. `detectAxes` paired only an "L" corner, so the figure had no plot box
+  and its labels lay in the traced region; the dashed chain broke at an open marker and its end
+  was joined across the dropped ink (the solid series and the axis) to the label. Detection now
+  boxes a top X axis (Axis detection), and with the box the trace is right: from a seed on the
+  3 Gy dash it runs to x ≈ 232 by the origin; from the other seeds it stops at the 0.5 Gy marker
+  (see below). For figures still traced without a box (detection misses one), the join across
+  dropped ink is now checked (rules above), and A22 traced with no box gives the same three
+  results: a lone piece across must lie on the chain's course (the '1' does not), a long join
+  needs the lost dash on the dropped ink (the '100' label beyond the Y axis has none), the other
+  side of a break must be a chain end (on `l106` a join reached into the other dashed bound
+  across the thick curve), and a link to dropped ink (A22's marker and error bar at 2 Gy) ends a
+  chain. Each rule is needed: without the first A22's no-box trace reaches the '1', without the
+  third `l106/s2` falls to 80 %, and counting links to dropped ink stops A22 at 2 Gy. Two unit
+  tests reproduce the '1' and the '100' joins with no box; both fail on the code before. Main's
+  corpus, every change a gain: `l78/s1` coverage 73.3 → 84.6 % (corners 14 → 15 of 70, median
+  0.0102 → 0.0081 px), `l80/s1` 86.4 → 88.2 %, `l106/s2` 97.1 → 98.1 % (median 0.0771 → 0.0753
+  px), `l98/s2` 99.4 → 100 %, `l97/s1` median 0.0663 → 0.0661 px. Appended `l108`–`l115`
+  (`scenario:top-axis`, `frame:top-L`: Γ frame, log or linear Y, solid + Office-dashed fits of one
+  colour from the top-left corner, filled / open squares with error bars; 6 of 8 get a detected
+  box): kind 100 %, coverage 93.2 %, median error 0.05 px / p95 3.0 px, wrong series 0 %, style
+  62.5 %. Overall (272 traces): kind 97.4 %, coverage 93.2 %, median 0.03 px / p95 1.03 px, wrong
+  1.8 %, corner recall 57.2 %, style 92.5 %. **Known failures** of this scenario: Office dashes
+  (gaps longer than the dashes) often leave the style unread (5 of 8 dashed: `unknown`, one
+  dash-dot); a series running inside the axis stroke is lost there with the axis (`l110/s0`, a
+  pink line under the black top axis for its first 40 %: coverage 64 %); a dashed trace stops at
+  an open marker whose cap it entered (A22 from most seeds stops at 0.5 Gy).
 
 ## Auto-trace — UI
 
