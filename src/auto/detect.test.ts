@@ -141,6 +141,24 @@ function chart(o: ChartOptions = {}): Canvas {
   return img;
 }
 
+/** Mirror an image top↔bottom (`'v'`) or left↔right (`'h'`); pixel centre k ↦ size − 1 − k. */
+function flip(img: Canvas, dir: 'v' | 'h'): Canvas {
+  const out = canvas(img.width, img.height);
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const sx = dir === 'h' ? img.width - 1 - x : x;
+      const sy = dir === 'v' ? img.height - 1 - y : y;
+      const i = (y * img.width + x) * 4;
+      const j = (sy * img.width + sx) * 4;
+      for (let c = 0; c < 4; c++) out.data[i + c] = img.data[j + c] ?? 255;
+    }
+  }
+  return out;
+}
+
+const H = 420;
+const W = 640;
+
 function allFinite(det: AxisDetection): boolean {
   let ok = true;
   JSON.stringify(det, (_k, v: unknown) => {
@@ -178,7 +196,7 @@ describe('detectAxes on drawn charts', () => {
     expect(box?.bottomLeft.y).toBeCloseTo(ORIGIN.y, 0);
     expect(Math.abs((box?.topRight.x ?? 0) - RIGHT)).toBeLessThan(1.5);
     expect(Math.abs((box?.topRight.y ?? 0) - TOP)).toBeLessThan(1.5);
-    expect(box?.framed).toEqual({ top: false, right: false });
+    expect(box?.framed).toEqual({ top: false, right: false, bottom: false, left: false });
   });
 
   it('reports no ticks (confidence 0) on an axis that has labels but no tick marks', () => {
@@ -241,16 +259,94 @@ describe('detectAxes on drawn charts', () => {
     expect(Math.abs((box?.bottomLeft.x ?? 0) - ORIGIN.x)).toBeLessThan(1.5);
     expect(Math.abs((box?.topRight.x ?? 0) - RIGHT)).toBeLessThan(1.5);
     expect(Math.abs((box?.topRight.y ?? 0) - TOP)).toBeLessThan(1.5);
-    expect(box?.framed).toEqual({ top: false, right: false });
+    expect(box?.framed).toEqual({ top: false, right: false, bottom: false, left: false });
   });
 
   it('picks the bottom-left corner of a box frame and reports the frame', () => {
     const det = detectAxes(chart({ frame: true }));
     expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 1);
     expect(det.yAxis?.line.offset).toBeCloseTo(ORIGIN.x, 1);
-    expect(det.plotBox?.framed).toEqual({ top: true, right: true });
+    expect(det.plotBox?.framed).toEqual({ top: true, right: true, bottom: false, left: false });
     expect(det.plotBox?.topRight.x).toBeCloseTo(RIGHT, 0);
     expect(det.plotBox?.topRight.y).toBeCloseTo(TOP, 0);
+  });
+
+  it('takes a top X axis ("Γ": no bottom line) with its ticks and labels above, and the box below it', () => {
+    const det = detectAxes(flip(chart(), 'v'));
+    expect(allFinite(det)).toBe(true);
+    expect(det.xAxis?.position).toBe('top');
+    expect(det.yAxis?.position).toBe('left');
+    expect(det.xAxis?.line.offset).toBeCloseTo(H - 1 - ORIGIN.y, 1);
+    expect(det.yAxis?.line.offset).toBeCloseTo(ORIGIN.x, 1);
+    // Ticks point up, away from the plot.
+    expect(det.xAxis?.ticks.side).toBe('outside');
+    expect(det.xAxis?.ticks.spacing).toBeCloseTo(90, 0);
+    const box = det.plotBox;
+    expect(box?.topLeft.x).toBeCloseTo(ORIGIN.x, 0);
+    expect(box?.topLeft.y).toBeCloseTo(H - 1 - ORIGIN.y, 0);
+    expect(Math.abs((box?.bottomRight.x ?? 0) - RIGHT)).toBeLessThan(1.5);
+    expect(Math.abs((box?.bottomRight.y ?? 0) - (H - 1 - TOP))).toBeLessThan(1.5);
+    expect(box?.framed).toEqual({ top: false, right: false, bottom: false, left: false });
+  });
+
+  it('takes a right Y axis, and a top-right pair', () => {
+    const right = detectAxes(flip(chart(), 'h'));
+    expect(right.xAxis?.position).toBe('bottom');
+    expect(right.yAxis?.position).toBe('right');
+    expect(right.yAxis?.line.offset).toBeCloseTo(W - 1 - ORIGIN.x, 1);
+    expect(right.yAxis?.ticks.side).toBe('outside');
+    expect(right.plotBox?.bottomRight.x).toBeCloseTo(W - 1 - ORIGIN.x, 0);
+    expect(Math.abs((right.plotBox?.topLeft.x ?? 0) - (W - 1 - RIGHT))).toBeLessThan(1.5);
+    const both = detectAxes(flip(flip(chart(), 'h'), 'v'));
+    expect(both.xAxis?.position).toBe('top');
+    expect(both.yAxis?.position).toBe('right');
+    expect(both.plotBox?.topRight.x).toBeCloseTo(W - 1 - ORIGIN.x, 0);
+    expect(both.plotBox?.topRight.y).toBeCloseTo(H - 1 - ORIGIN.y, 0);
+  });
+
+  it('takes the top line of a box frame when only it has ticks, and reports the bottom frame line', () => {
+    const det = detectAxes(flip(chart({ frame: true }), 'v'));
+    expect(det.xAxis?.position).toBe('top');
+    expect(det.xAxis?.line.offset).toBeCloseTo(H - 1 - ORIGIN.y, 1);
+    expect(det.plotBox?.framed).toEqual({ top: false, right: true, bottom: true, left: false });
+    expect(det.plotBox?.bottomRight.y).toBeCloseTo(H - 1 - TOP, 0);
+  });
+
+  it('keeps the bottom-left corner of a box frame with ticks on all four sides', () => {
+    const img = chart({ frame: true });
+    for (const x of X_TICKS) line(img, { x, y: TOP }, { x, y: TOP + 6 }, 1, 0);
+    for (const y of Y_TICKS) line(img, { x: RIGHT - 6, y }, { x: RIGHT, y }, 1, 0);
+    for (const im of [img, flip(img, 'v'), flip(img, 'h')]) {
+      const det = detectAxes(im);
+      expect(det.xAxis?.position).toBe('bottom');
+      expect(det.yAxis?.position).toBe('left');
+    }
+  });
+
+  it('needs tick marks to take a top X axis: a bare Γ gets no plot box', () => {
+    const det = detectAxes(flip(chart({ xTicks: false }), 'v'));
+    expect(det.plotBox).toBeNull();
+  });
+
+  it('keeps axes that cross through the data at the default sides, whichever arm is longer', () => {
+    // X axis at row 260 from 70 to 610; Y axis at column 400 from 30 to 390 (its left arm and,
+    // flipped, its lower arm are the longer ones); ticks on both.
+    for (const im of [0, 1].map((k) => {
+      const img = canvas(W, H);
+      line(img, { x: 70, y: 260 }, { x: 610, y: 260 }, 1, 0);
+      line(img, { x: 400, y: 30 }, { x: 400, y: 390 }, 1, 0);
+      for (let x = 70; x <= 610; x += 60) line(img, { x, y: 260 }, { x, y: 266 }, 1, 0);
+      for (let y = 30; y <= 390; y += 60) line(img, { x: 394, y }, { x: 400, y }, 1, 0);
+      return k ? flip(img, 'v') : img;
+    })) {
+      const det = detectAxes(im);
+      expect(det.plotBox).not.toBeNull();
+      expect(det.xAxis?.position).toBe('bottom');
+      expect(det.yAxis?.position).toBe('left');
+      // The box spans both arms of each axis.
+      expect(det.plotBox?.topLeft.x).toBeCloseTo(70, 0);
+      expect(det.plotBox?.bottomRight.x).toBeCloseTo(610, 0);
+    }
   });
 
   it('recognises log-axis minor ticks', () => {
