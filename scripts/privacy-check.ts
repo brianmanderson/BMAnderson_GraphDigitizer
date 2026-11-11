@@ -16,7 +16,8 @@
  * type of target that issued it; the check fails unless the worker-initiated Tesseract requests
  * (WASM core, language data) are among them, because a passing list that never saw the workers
  * would prove nothing. Exit code 1 on any request to another origin (data: and blob: excepted),
- * on an incomplete capture, or on a failed own-origin request.
+ * on an own-origin request outside BASE_PATH, on an incomplete capture, or on a failed own-origin
+ * request.
  *
  * BASE_PATH is honoured as for `npm run build`/`preview` (vite.config.ts). Never uses port 5174
  * (the e2e server) or 5173 (the dev server); preview and the debugging endpoint get free ports.
@@ -102,7 +103,9 @@ async function startPreview(port: number): Promise<{ child: ChildProcess; origin
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error(`vite preview did not answer on ${origin} within 30 s:\n${out}`);
+  // Don't leave it running: its open pipes would keep this process alive after the failure.
+  child.kill();
+  throw new Error(`vite preview did not answer on ${origin}${BASE} within 30 s:\n${out}`);
 }
 
 // ---- CDP capture ----------------------------------------------------------------------------
