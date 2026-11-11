@@ -147,6 +147,14 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `activeDatasetId`, never in `DocState`/Project, never filtering exports. A collapsed line's
   table is not rendered (`tableRows` returns `[]`). `onSelect`/`onAddPoint` call `expandLine`;
   DataTable scrolls the selected row (`tr[data-point-id]`) into view on a new selection.
+- Hidden lines (`hidden: ReadonlySet<string>` in App, the eye in each DataStep row) are UI state
+  autosaved the same way, never in `DocState`/Project/history, never filtering the table or
+  exports. Workspace gets `hiddenLines` and passes it to `drawWorkspace({ hidden })`, `hitTest`,
+  `pointsInRect` and the loupe markers; App's `selection` is `withoutHidden(validSelection(…))`,
+  so nothing reaches a point the user cannot see. A line that becomes active is shown by a
+  render-time adjustment on `activeDatasetId` (lint forbids setState in an effect);
+  `onAddPoint`, `onSelect`, `onSelectLine` and trace Accept call `showLine`. A new path that
+  picks or adds points must not bypass these. `e2e/line-visibility.spec.ts` guards it.
 
 ## Notices
 
@@ -183,7 +191,7 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
 - Accessible names used by specs: `X1 value`…`Y2 value`, `X scale`, `Y scale`, `Pixel columns`,
   `Sort by X`, `Significant figures`, `Collapse all`, `Expand all`, line headers `Line 1 (n)`, `Date format`, `Line name`, `Lines`, `+ Add line`, `Make <name> active`, `Auto-detect axes`,
   `Suggested X1 value`…, `Accept suggestion`, `Discard`,
-  `Delete <name>`, `Auto-trace line`, `Trace into a new line`, `Points`, `Number of points`,
+  `Delete <name>`, `Hide <name>` / `Show <name>` (the eye), `Auto-trace line`, `Trace into a new line`, `Points`, `Number of points`,
   `Trace mode`, `Find points`, `Find points into a new line`, `Accept`, `Colour of <name>`, the `Steps` navigation and the export button labels.
 
 ## Fixtures

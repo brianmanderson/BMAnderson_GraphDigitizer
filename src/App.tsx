@@ -38,6 +38,7 @@ import {
   selectedPoints,
   targetKey,
   validSelection,
+  withoutHidden,
   type SelectHow,
   type Selection,
 } from './ui/selection.ts';
@@ -167,6 +168,11 @@ export function App() {
   const [tableView, setTableView] = useState({ showPixels: false, sortByX: false });
   /** Lines whose point lists are collapsed in the table (UI state; autosaved, not in the Project). */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  /**
+   * Lines hidden on the canvas with their eye toggle (UI state; autosaved, not in the Project,
+   * never filtering the table or exports). Their points are not drawn and cannot be picked.
+   */
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   /** The selection was just nudged with the keyboard: the loupe shows it until the mouse moves. */
   const [loupeOnSelection, setLoupeOnSelection] = useState(false);
@@ -235,7 +241,11 @@ export function App() {
   const onFocused = useCallback(() => setFocusRef(null), []);
 
   // Markers an undo, a deleted line or a load removed drop out of the selection.
-  const selection = useMemo(() => (doc ? validSelection(doc, selectionRaw) : EMPTY_SELECTION), [doc, selectionRaw]);
+  // Points of hidden lines are never selected: Delete, nudges and drags cannot reach what is not shown.
+  const selection = useMemo(
+    () => (doc ? withoutHidden(validSelection(doc, selectionRaw), hidden) : EMPTY_SELECTION),
+    [doc, selectionRaw, hidden],
+  );
   const selectedPointCount = useMemo(() => selectedPoints(selection).length, [selection]);
   const image = decoded && doc && decoded.of === doc.image ? decoded.el : null;
   // A suggestion belongs to the image it was made for (a load or an undo across one drops it).
@@ -418,12 +428,14 @@ export function App() {
 
   // Autosave: restore the last session once on start, then save after every change (debounced).
   const collapsedRef = useRef(collapsed);
+  const hiddenRef = useRef(hidden);
   const traceSettingsRef = useRef(traceSettings);
   useLayoutEffect(() => {
     docRef.current = doc;
     historyRef.current = history;
     traceTargetRef.current = trace?.target ?? null;
     collapsedRef.current = collapsed;
+    hiddenRef.current = hidden;
     traceSettingsRef.current = traceSettings;
   });
   const restoreDone = useRef(false);
@@ -435,7 +447,8 @@ export function App() {
     const project: Project = toProject(d);
     const savedAt = Date.now();
     const collapsedIds = d.datasets.filter((ds) => collapsedRef.current.has(ds.id)).map((ds) => ds.id);
-    writeAutosave({ project, activeDatasetId: d.activeDatasetId, collapsed: collapsedIds, savedAt }).then(
+    const hiddenIds = d.datasets.filter((ds) => hiddenRef.current.has(ds.id)).map((ds) => ds.id);
+    writeAutosave({ project, activeDatasetId: d.activeDatasetId, collapsed: collapsedIds, hidden: hiddenIds, savedAt }).then(
       () => setAutosaved({ ok: true, at: savedAt }),
       () => setAutosaved({ ok: false, at: savedAt }),
     );
@@ -469,6 +482,7 @@ export function App() {
         setStep(stepFor(restored));
         setTrace(defaultTrace(restored, traceSettingsRef.current.mode));
         if (Array.isArray(rec?.collapsed)) setCollapsed(new Set(rec.collapsed.filter((id): id is string => typeof id === 'string')));
+        if (Array.isArray(rec?.hidden)) setHidden(new Set(rec.hidden.filter((id): id is string => typeof id === 'string')));
         const at = typeof rec?.savedAt === 'number' ? `, autosaved at ${timeOf(rec.savedAt)}` : '';
         setNotice({ kind: 'info', text: `Restored ${restored.image.name} from your last session${at}.` });
       })
@@ -483,7 +497,7 @@ export function App() {
     pendingSave.current = doc;
     const t = setTimeout(saveNow, 400);
     return () => clearTimeout(t);
-  }, [doc, collapsed, saveNow]);
+  }, [doc, collapsed, hidden, saveNow]);
   useEffect(() => {
     const flush = () => {
       if (document.visibilityState === 'hidden') saveNow();
@@ -670,6 +684,34 @@ export function App() {
     [],
   );
 
+  const showLine = useCallback(
+    (datasetId: string) => setHidden((h) => (h.has(datasetId) ? new Set([...h].filter((id) => id !== datasetId)) : h)),
+    [],
+  );
+
+  /** The eye toggle of a line in the Data step's list. Hiding a line deselects its points. */
+  const onToggleVisible = useCallback(
+    (datasetId: string) => {
+      if (hidden.has(datasetId)) {
+        showLine(datasetId);
+        return;
+      }
+      setHidden((h) => new Set(h).add(datasetId));
+      setSelection((s) => withoutHidden(s, new Set([datasetId])));
+    },
+    [hidden, showLine],
+  );
+
+  // A line that becomes active (radio, its name, a pick in the table, a new line, an undo, a
+  // restore) is shown: points are never placed on a line the user cannot see. Adjusted while
+  // rendering (React's "storing information from previous renders"), not in an effect.
+  const activeDatasetId = doc?.activeDatasetId;
+  const [shownActive, setShownActive] = useState(activeDatasetId);
+  if (activeDatasetId !== shownActive) {
+    setShownActive(activeDatasetId);
+    if (activeDatasetId && hidden.has(activeDatasetId)) setHidden(new Set([...hidden].filter((id) => id !== activeDatasetId)));
+  }
+
   const onAddPoint = useCallback(
     (px: number, py: number, snapped: boolean) => {
       if (!doc) return;
@@ -677,8 +719,9 @@ export function App() {
       dispatch({ type: 'add-point', datasetId: doc.activeDatasetId, point }, undefined, { snapped });
       setSelection([{ kind: 'point', datasetId: doc.activeDatasetId, pointId: point.id }]);
       expandLine(doc.activeDatasetId);
+      showLine(doc.activeDatasetId);
     },
-    [doc, dispatch, expandLine],
+    [doc, dispatch, expandLine, showLine],
   );
 
   const onMoveTargets = useCallback(
@@ -706,14 +749,15 @@ export function App() {
       setSelection(next);
       setLoupeOnSelection(false);
       const picked = targets.length === 1 ? targets[0]! : null;
-      if (activate && picked?.kind === 'point' && next.some((t) => targetKey(t) === targetKey(picked)) && doc && picked.datasetId !== doc.activeDatasetId) {
-        dispatch({ type: 'set-active-dataset', datasetId: picked.datasetId });
+      if (activate && picked?.kind === 'point' && next.some((t) => targetKey(t) === targetKey(picked)) && doc) {
+        if (picked.datasetId !== doc.activeDatasetId) dispatch({ type: 'set-active-dataset', datasetId: picked.datasetId });
+        showLine(picked.datasetId); // a row of a hidden line picked in the table
       }
       // The current (last selected) point's row is shown, so its line's list opens.
       const last = lastPoint(next);
       if (last && targets.some((t) => targetKey(t) === targetKey(last))) expandLine(last.datasetId);
     },
-    [doc, selection, dispatch, expandLine],
+    [doc, selection, dispatch, expandLine, showLine],
   );
 
   /** "Select all" in a line's table header: every point of that line, which becomes active. */
@@ -724,8 +768,9 @@ export function App() {
       setLoupeOnSelection(false);
       if (datasetId !== doc.activeDatasetId) dispatch({ type: 'set-active-dataset', datasetId });
       expandLine(datasetId);
+      showLine(datasetId);
     },
-    [doc, dispatch, expandLine],
+    [doc, dispatch, expandLine, showLine],
   );
 
   const onToggleLine = useCallback(
@@ -896,6 +941,7 @@ export function App() {
         ? { type: 'trace-accepted', datasetId: action.dataset.id, pointCount: action.dataset.points.length }
         : { type: 'trace-accepted', datasetId: doc.activeDatasetId, pointCount: action.type === 'add-points' ? action.points.length : 0 },
     );
+    if (action.type !== 'add-dataset') showLine(doc.activeDatasetId);
     setTrace(null);
     setSelection(EMPTY_SELECTION);
     const into = action.type === 'add-dataset' ? `a new line, "${action.dataset.name}"` : `"${doc.datasets.find((d) => d.id === doc.activeDatasetId)?.name}"`;
@@ -1119,6 +1165,7 @@ export function App() {
           loupeOnSelection={loupeOnSelection}
           snap={prefs.snap}
           movePoints={prefs.movePoints}
+          hiddenLines={hidden}
           ghost={ghost}
           tracing={trace !== null}
           tracePrompt={trace?.status === 'picking' ? promptFor(trace.mode) : null}
@@ -1227,6 +1274,8 @@ export function App() {
                 calibrated={!!calibration}
                 selectedCount={selectedPointCount}
                 onActivate={(id) => dispatch({ type: 'set-active-dataset', datasetId: id })}
+                hidden={hidden}
+                onToggleVisible={onToggleVisible}
                 onRename={(id, name) => dispatch({ type: 'rename-dataset', datasetId: id, name }, `rename:${id}`)}
                 onRecolor={(id, color) => dispatch({ type: 'recolor-dataset', datasetId: id, color }, `recolor:${id}`)}
                 onDelete={deleteDataset}

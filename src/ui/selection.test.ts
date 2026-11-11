@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { docReducer, newDoc, type DocState } from '../state/doc.ts';
-import type { Target } from './draw.ts';
+import { hitTest, type Target } from './draw.ts';
 import { nudgedAll } from './nudge.ts';
 import {
   EMPTY_SELECTION,
@@ -13,8 +13,9 @@ import {
   selectedPoints,
   selectionKeys,
   validSelection,
+  withoutHidden,
 } from './selection.ts';
-import { clampDelta } from './view.ts';
+import { IDENTITY_VIEW, clampDelta } from './view.ts';
 
 const image = { dataUrl: 'data:image/png;base64,', width: 200, height: 100, name: 'chart.png' };
 
@@ -77,6 +78,33 @@ describe('selection', () => {
     expect(pointsInRect(d, { px: 60, py: 0 }, { px: 140, py: 100 })).toEqual([]);
     expect(ids(linePoints(d, 'd2'))).toEqual(['x', 'y']);
     expect(linePoints(d, 'nope')).toEqual([]);
+  });
+});
+
+describe('hidden lines (the eye toggle)', () => {
+  const hidden = new Set(['d2']);
+
+  it('a marquee skips the points of hidden lines', () => {
+    const d = doc();
+    expect(ids(pointsInRect(d, { px: 10, py: 10 }, { px: 150, py: 90 }, hidden))).toEqual(['a', 'b']);
+    expect(pointsInRect(d, { px: 140, py: 80 }, { px: 160, py: 100 }, hidden)).toEqual([]);
+  });
+
+  it('a click never hits a hidden point, even right on it or over a visible neighbour', () => {
+    const d = docReducer(doc(), { type: 'set-active-dataset', datasetId: 'd2' });
+    // Unhidden, the active line's point wins the overlap at (52, 42); hidden, the other line's does.
+    expect(hitTest(d, IDENTITY_VIEW, 52, 42, 'data')).toEqual(pt('d2', 'x'));
+    expect(hitTest(d, IDENTITY_VIEW, 52, 42, 'data', hidden)).toEqual(pt('d1', 'b'));
+    expect(hitTest(d, IDENTITY_VIEW, 150, 90, 'data', hidden)).toBeNull();
+  });
+
+  it('drops the points of hidden lines from a selection, keeping refs and identity otherwise', () => {
+    const sel = [pt('d1', 'a'), pt('d2', 'x'), pt('d2', 'y')];
+    expect(withoutHidden(sel, hidden)).toEqual([pt('d1', 'a')]);
+    expect(withoutHidden(sel, new Set())).toBe(sel);
+    expect(withoutHidden(sel, new Set(['d3']))).toBe(sel);
+    const ref: Target = { kind: 'ref', ref: 'X1' };
+    expect(withoutHidden([ref], hidden)).toEqual([ref]);
   });
 });
 
