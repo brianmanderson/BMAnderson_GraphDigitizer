@@ -323,7 +323,7 @@ function component(mask: Uint8Array, w: number, h: number, start: number, eight:
 
 /**
  * Whether the hole next to the seed is a pocket between a long stroke and thinner ink of its
- * colour (a thick curve over gridlines and bar outlines, study image A14), not the inside of an
+ * colour (a thick curve over gridlines and bar outlines: a dose-response plot), not the inside of an
  * open marker: the seed's stroke — the ink at least ¾ as deep as at the seed, widened back to its
  * edges — runs out of the window and borders less than half of the hole. A ring bounds its whole
  * hole, whatever is attached to it; a thin stroke (1–2 px) is never told from thinner ink.

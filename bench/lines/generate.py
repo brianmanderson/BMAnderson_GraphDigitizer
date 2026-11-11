@@ -367,7 +367,7 @@ def build(i: int):
                 yerr[:, 0] = 0
                 lw = float(rng.uniform(1.2, 3.0))
                 ms = float(rng.uniform(5, 8))
-                # Office-style dashes (A22's): a dash about 3.3 line widths long, a gap about 4.
+                # Office-style dashes: a dash about 3.3 line widths long, a gap about 4.
                 dash = ls if k == 0 else (0, (3.3, 4.2))
                 ax.plot(fit_x, model(fit_x), color=color, lw=lw, ls=dash, zorder=2 + k)
                 ax.errorbar(xs, ys, yerr=yerr, fmt=marker, ls="none", color=color, ecolor=color, mec=color,
