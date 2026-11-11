@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the Graph Digitizer works</title>
+<style>
+  :root {
+    --ink: #1d1f23;
+    --muted: #5b6069;
+    --rule: #d8dbe0;
+    --page: #ffffff;
+    --panel: #f6f7f9;
+    --link: #1f4e9a;
+
+    --core: #2b5aa0;   --core-bg: #e6eef9;
+    --auto: #2f7a3a;   --auto-bg: #e3f1e3;
+    --worker: #6e3fa3; --worker-bg: #ece2f5;
+    --ui: #b8651b;     --ui-bg: #fbe9d4;
+    --verify: #55575c; --verify-bg: #ebebed;
+    --user: #333333;   --user-bg: #fafafa;
+    --a: #0b7f8a;      /* Auto-detect pipeline */
+    --b: #b3233b;      /* Auto-trace pipeline */
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--page);
+  }
+  code, .f, pre { font-family: Consolas, "SFMono-Regular", Menlo, "Liberation Mono", monospace; }
+  code { font-size: 0.92em; background: var(--panel); padding: 0 4px; border-radius: 3px; }
+  a { color: var(--link); }
+  h1 { font-size: 2rem; margin: 0 0 0.25rem; line-height: 1.2; }
+  h2 { font-size: 1.5rem; margin: 2.6rem 0 0.8rem; padding-top: 0.4rem; border-top: 3px solid var(--rule); }
+  h3 { font-size: 1.15rem; margin: 1.8rem 0 0.6rem; }
+  p { margin: 0.6rem 0; max-width: 78ch; }
+  .lede { font-size: 1.1rem; color: var(--muted); max-width: 90ch; }
+  .sub { color: var(--muted); }
+
+  header { padding: 2rem 24px 1rem; border-bottom: 1px solid var(--rule); background: var(--panel); }
+  header .inner { max-width: 1400px; margin: 0 auto; }
+
+  .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 32px; max-width: 1400px; margin: 0 auto; padding: 0 24px 4rem; }
+  nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto; padding: 1.2rem 0; font-size: 0.92rem; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 0.25rem 0; }
+  nav.toc a { text-decoration: none; color: var(--ink); display: block; padding: 2px 8px; border-left: 3px solid transparent; }
+  nav.toc a:hover { border-left-color: var(--link); background: var(--panel); }
+  nav.toc .toc-h { font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; padding: 0 8px; margin-bottom: 0.4rem; }
+  nav.toc ol ol { margin-left: 10px; font-size: 0.86rem; }
+  main { min-width: 0; }
+
+  /* ---- Box vocabulary ---- */
+  .box {
+    border: 1.5px solid var(--c, var(--user));
+    border-left-width: 6px;
+    background: var(--bg, var(--user-bg));
+    border-radius: 6px;
+    padding: 10px 12px 11px;
+    break-inside: avoid;
+  }
+  .box .t { font-weight: 700; line-height: 1.25; }
+  .box .f { font-size: 0.8rem; color: var(--muted); margin: 2px 0 6px; word-break: break-word; }
+  .box .d { font-size: 0.93rem; line-height: 1.4; }
+  .box .d:last-child { margin-bottom: 0; }
+  .core   { --c: var(--core);   --bg: var(--core-bg); }
+  .auto   { --c: var(--auto);   --bg: var(--auto-bg); }
+  .worker { --c: var(--worker); --bg: var(--worker-bg); }
+  .ui     { --c: var(--ui);     --bg: var(--ui-bg); }
+  .verify { --c: var(--verify); --bg: var(--verify-bg); }
+  .user   { --c: var(--user);   --bg: var(--user-bg); }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); font-size: 0.9rem; margin: 1rem 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 22px; height: 14px; border: 1.5px solid var(--c); border-left-width: 5px; background: var(--bg); border-radius: 3px; display: inline-block; }
+  .pill { display: inline-block; width: 20px; height: 20px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 0.8rem; text-align: center; line-height: 20px; }
+  .pill.a { background: var(--a); } .pill.b { background: var(--b); }
+
+  /* Horizontal flow */
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 1rem 0; }
+  .flow > .box { flex: 1 1 200px; max-width: 320px; }
+  .flow > .arr { align-self: center; color: var(--muted); font-size: 1.5rem; line-height: 1; padding: 0 2px; }
+
+  /* Vertical pipeline */
+  .pipe { list-style: none; margin: 1rem 0; padding: 0 0 0 44px; position: relative; counter-reset: stage; }
+  .pipe::before { content: ""; position: absolute; left: 15px; top: 14px; bottom: 14px; border-left: 3px solid var(--pc, var(--muted)); }
+  .pipe > li { position: relative; margin: 0 0 10px; }
+  .pipe > li::before { counter-increment: stage; content: counter(stage); position: absolute; left: -44px; top: 8px; width: 30px; height: 30px; border-radius: 50%; background: var(--pc, var(--muted)); color: #fff; font-weight: 700; text-align: center; line-height: 30px; font-size: 0.9rem; }
+  .pipe > li > .box { margin: 0; }
+  .pipe.a { --pc: var(--a); } .pipe.b { --pc: var(--b); }
+  .pipe .branch { margin: 6px 0 0 24px; padding-left: 14px; border-left: 2px dashed var(--pc, var(--muted)); font-size: 0.9rem; color: var(--muted); }
+
+  /* Layer grid */
+  .layer { margin: 1.4rem 0; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; break-inside: avoid; }
+  .layer > .lh { padding: 8px 14px; background: var(--bg); border-bottom: 1px solid var(--c); display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+  .layer > .lh .t { font-weight: 700; }
+  .layer > .lh .f { color: var(--muted); font-size: 0.85rem; }
+  .layer > .lh .tag { font-size: 0.78rem; border: 1px solid var(--c); color: var(--c); border-radius: 999px; padding: 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding: 12px; }
+
+  figure { margin: 1.2rem 0; }
+  figure svg { width: 100%; height: auto; display: block; border: 1px solid var(--rule); border-radius: 6px; }
+  figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 6px; max-width: 90ch; }
+
+  table { border-collapse: collapse; margin: 0.8rem 0; font-size: 0.93rem; width: 100%; max-width: 900px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+  th { background: var(--panel); }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .eq { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px; margin: 0.8rem 0; font-size: 1rem; overflow-x: auto; max-width: 900px; }
+  .eq .m { font-family: "Cambria Math", Cambria, "Times New Roman", serif; font-size: 1.1rem; }
+  .note { border-left: 4px solid var(--a); background: var(--panel); padding: 8px 14px; margin: 1rem 0; max-width: 90ch; }
+  .note.b { border-left-color: var(--b); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; align-items: start; }
+  ul.tight { margin: 0.4rem 0; padding-left: 1.2rem; } ul.tight li { margin: 0.2rem 0; }
+  footer { max-width: 1400px; margin: 0 auto; padding: 1rem 24px 3rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--rule); }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: static; max-height: none; border-bottom: 1px solid var(--rule); margin-bottom: 1rem; }
+    nav.toc ol { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+    nav.toc ol ol { display: none; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { grid-template-columns: 1fr; padding: 0 8mm; }
+    header { background: none; }
+    h2 { break-after: avoid; }
+    .box, .layer, figure, table, .eq { break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    body { font-size: 11pt; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <h1>How the Graph Digitizer works</h1>
+    <p class="lede">A reader's guide to a browser-only tool that turns a picture of a chart into a table of numbers: what the user does, which part of the code does what, how the two automatic helpers (axis detection and line tracing) reach their suggestions, the calibration mathematics, and how every change is verified.</p>
+    <p class="sub">Repository <code>BMAnderson_GraphDigitizer</code> (Vite + React + TypeScript, strict). Live at <code>brianmanderson.github.io/BMAnderson_GraphDigitizer/</code>. <code>docs/SPEC.md</code> is the source of truth; where this overview and the spec differ, the spec wins.</p>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <div class="toc-h">Contents</div>
+  <ol>
+    <li><a href="#overview">0. Reading this page</a></li>
+    <li><a href="#workflow">1. The user's workflow</a></li>
+    <li><a href="#architecture">2. Architecture</a>
+      <ol>
+        <li><a href="#arch-diagram">Architecture diagram</a></li>
+        <li><a href="#layers">Layers and files</a></li>
+      </ol>
+    </li>
+    <li><a href="#auto-detect">3. Auto-detect axes</a></li>
+    <li><a href="#auto-trace">4. Auto-trace</a>
+      <ol>
+        <li><a href="#trace-curve">Curve path</a></li>
+        <li><a href="#trace-markers">Markers path</a></li>
+      </ol>
+    </li>
+    <li><a href="#maths">5. Calibration maths</a>
+      <ol>
+        <li><a href="#transforms">Scale transforms</a></li>
+        <li><a href="#affine">Affine fit</a></li>
+        <li><a href="#pixels">Pixel convention</a></li>
+        <li><a href="#errors">Error kinds</a></li>
+      </ol>
+    </li>
+    <li><a href="#verification">6. Verification pipeline</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="overview">
+  <h2>0. Reading this page</h2>
+  <p>Every box names one piece of the system. Its first line is the <strong>name</strong> (a function, module or user action), the second line in monospace is the <strong>file it lives in</strong>, and the text under it says in plain language what it does. Boxes are colour-coded by the layer of the code they belong to:</p>
+  <div class="legend" aria-label="Legend">
+    <span><i class="sw core"></i> <b>src/core</b> — calibration engine (pure TypeScript, no DOM)</span>
+    <span><i class="sw auto"></i> <b>src/auto</b> — automatic analysis (pure TypeScript, no DOM)</span>
+    <span><i class="sw worker"></i> <b>workers + OCR</b> — Web Worker and Tesseract.js pool</span>
+    <span><i class="sw ui"></i> <b>state + UI</b> — reducer, history, canvas helpers, React components</span>
+    <span><i class="sw verify"></i> <b>verification</b> — tests, benchmarks, CI</span>
+    <span><i class="sw user"></i> <b>user action</b></span>
+    <span><i class="pill a">A</i> Auto-detect axes pipeline</span>
+    <span><i class="pill b">B</i> Auto-trace pipeline</span>
+  </div>
+  <p>Two facts shape everything below. First, <strong>the app is entirely client-side</strong>: the chart image is decoded in the browser, analysed in the browser, and never sent anywhere, because research figures may be unpublished. Second, <strong>nothing automatic is ever applied silently</strong>: both helpers only propose, draw their proposal as ghost markers, and wait for the user to press Accept.</p>
+</section>
+
+<section id="workflow">
+  <h2>1. The user's workflow in five steps</h2>
+  <p>The side panel walks through three tabs (Image → Axes → Data) and the table sits under them; the toolbar holds file, zoom, undo and precision tools. In terms of what the user does:</p>
+  <div class="flow">
+    <div class="box user"><div class="t">1 · Load image</div><div class="f">Image step · src/ui/loadImage.ts · src/ui/crop.ts</div><div class="d">Drop a file onto the workspace, paste from the clipboard, or use <em>Open image…</em>. Any raster format the browser decodes is accepted (PNG, JPG, GIF, WebP, BMP; SVG is refused). A multi-panel figure can be <em>cropped</em> to the panel of interest at any time; refs and points already placed move with the crop.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box user"><div class="t">2 · Choose axis scales</div><div class="f">Axes step · src/core/scales.ts</div><div class="d">X and Y are chosen independently: <code>linear</code>, <code>log10</code>, <code>ln</code>, <code>reciprocal</code> or <code>date/time</code>. The scale decides how a value is mapped to a straight-line coordinate before the geometry is fitted (section 5).</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box user"><div class="t">3 · Calibrate</div><div class="f">Axes step · src/components/AxesStep.tsx · src/core/calibrate.ts</div><div class="d">Click two points of known value on each axis (X1, X2, then Y1, Y2) and type their values; X1 and Y1 usually share the origin. Or press <em>Auto-detect axes</em>, review the suggested scales and values with their confidence badges, and press <em>Accept suggestion</em>. The fitted axes and gridlines are drawn over the image as a sanity check.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box user"><div class="t">4 · Digitize</div><div class="f">Data step · src/components/DataStep.tsx · src/components/Workspace.tsx</div><div class="d">The Data step opens with <em>Auto-trace line</em> on: one click on a plotted curve or marker proposes its points, to accept or discard. After Discard (or Esc) each click places a point by hand. Several named, colour-coded <em>lines</em> can be digitized; the <em>Move points</em> tool selects and drags; a loupe magnifies the cursor, <em>Snap</em> centres a new point on the nearest marker, and arrow keys nudge the selection by sub-pixel steps. Everything is undoable.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box user"><div class="t">5 · Output</div><div class="f">src/ui/table.ts · src/ui/export.ts · src/ui/autosave.ts</div><div class="d">A live table shows (x, y) per line and updates instantly when a scale or ref changes, because only pixels are stored. Export as CSV, copy as TSV (pastes into a spreadsheet), or download the whole project as JSON (image included) to reopen later. The work is autosaved to the browser's IndexedDB and restored on reload.</div></div>
+  </div>
+  <p class="sub">Values are never stored: points and refs are kept as image pixel coordinates, and every number in the table is recomputed through the calibration on demand. That is why recalibrating never moves a point.</p>
+</section>
+
+<section id="architecture">
+  <h2>2. Architecture</h2>
+  <p>The code is split by what may run where. Two modules, <code>src/core</code> and <code>src/auto</code>, are <strong>pure TypeScript with no DOM access</strong>: they are type-checked without the browser's DOM library, so they can run unchanged in a Web Worker, in Node for the unit tests and benchmarks, and on the main thread. Everything that touches the canvas, React or storage sits above them.</p>
+
+  <figure id="arch-diagram">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1420" width="180mm" height="142mm" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="arch-title arch-desc">
+  <title id="arch-title">Graph Digitizer: user workflow, browser-side architecture and the two automatic pipelines</title>
+  <desc id="arch-desc">Top row: the five-step user workflow. Below, inside a dashed box labelled Browser: the React UI, state and UI helpers on the main thread; the auto worker and the Tesseract.js OCR pool; the DOM-free analysis module src/auto and the DOM-free calibration engine src/core. Arrows A (Auto-detect axes) and B (Auto-trace) show the two automatic pipelines. A bottom row shows the verification gate that runs in CI before GitHub Pages deployment.</desc>
+  <defs>
+    <marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#333"/></marker>
+    <marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2f7a3a"/></marker>
+    <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0b7f8a"/></marker>
+    <marker id="ah-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#b3233b"/></marker>
+    <marker id="ah-ui" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#b8651b"/></marker>
+  </defs>
+  <rect width="1800" height="1420" fill="#ffffff"/>
+
+  <!-- ===== Workflow row ===== -->
+  <g font-size="25" fill="#222">
+    <rect x="30" y="30" width="316" height="180" rx="8" fill="#fafafa" stroke="#333" stroke-width="2.5"/>
+    <text x="48" y="68" font-size="30" font-weight="bold">1  Load image</text>
+    <text x="48" y="104"><tspan>Drop, paste or open a</tspan><tspan x="48" dy="31">PNG, JPG, GIF, WebP or</tspan><tspan x="48" dy="31">BMP; crop to one panel</tspan><tspan x="48" dy="31">when needed.</tspan></text>
+    <path d="M346 120 L384 120" stroke="#333" stroke-width="3" marker-end="url(#ah-dark)"/>
+
+    <rect x="386" y="30" width="316" height="180" rx="8" fill="#fafafa" stroke="#333" stroke-width="2.5"/>
+    <text x="404" y="68" font-size="30" font-weight="bold">2  Choose scales</text>
+    <text x="404" y="104"><tspan>X and Y independently:</tspan><tspan x="404" dy="31">linear, log10, ln,</tspan><tspan x="404" dy="31">reciprocal, date/time.</tspan></text>
+    <path d="M702 120 L740 120" stroke="#333" stroke-width="3" marker-end="url(#ah-dark)"/>
+
+    <rect x="742" y="30" width="316" height="180" rx="8" fill="#fafafa" stroke="#333" stroke-width="2.5"/>
+    <text x="760" y="68" font-size="30" font-weight="bold">3  Calibrate</text>
+    <text x="760" y="104"><tspan>Two known points per</tspan><tspan x="760" dy="31">axis (X1, X2, Y1, Y2)</tspan><tspan x="760" dy="31">by hand, or Auto-detect</tspan><tspan x="760" dy="31">axes → Accept.</tspan></text>
+    <path d="M1058 120 L1096 120" stroke="#333" stroke-width="3" marker-end="url(#ah-dark)"/>
+
+    <rect x="1098" y="30" width="316" height="180" rx="8" fill="#fafafa" stroke="#333" stroke-width="2.5"/>
+    <text x="1116" y="68" font-size="30" font-weight="bold">4  Digitize</text>
+    <text x="1116" y="104"><tspan>Auto-trace line (the</tspan><tspan x="1116" dy="31">default) or place points</tspan><tspan x="1116" dy="31">by hand; move, loupe,</tspan><tspan x="1116" dy="31">snap, nudge, undo.</tspan></text>
+    <path d="M1414 120 L1452 120" stroke="#333" stroke-width="3" marker-end="url(#ah-dark)"/>
+
+    <rect x="1454" y="30" width="316" height="180" rx="8" fill="#fafafa" stroke="#333" stroke-width="2.5"/>
+    <text x="1472" y="68" font-size="30" font-weight="bold">5  Output</text>
+    <text x="1472" y="104"><tspan>Live (x, y) table per</tspan><tspan x="1472" dy="31">line; CSV, TSV, JSON;</tspan><tspan x="1472" dy="31">project file; autosave</tspan><tspan x="1472" dy="31">in the browser.</tspan></text>
+  </g>
+
+  <!-- ===== Browser container ===== -->
+  <rect x="30" y="250" width="1740" height="810" rx="12" fill="none" stroke="#777" stroke-width="2.5" stroke-dasharray="14 8"/>
+  <text x="50" y="280" font-size="27" font-weight="bold" fill="#444">Browser: all computation runs on the user's machine; the image never leaves it</text>
+  <text x="1750" y="280" font-size="25" fill="#666" text-anchor="end">main thread</text>
+
+  <!-- UI layer -->
+  <g font-size="25" fill="#222">
+    <rect x="60" y="300" width="560" height="160" rx="8" fill="#fbe6cf" stroke="#b8651b" stroke-width="2.5"/>
+    <text x="78" y="336" font-size="30" font-weight="bold">src/components</text>
+    <text x="78" y="372"><tspan>React UI: canvas Workspace, Image / Axes /</tspan><tspan x="78" dy="31">Data steps, Auto-detect and Auto-trace</tspan><tspan x="78" dy="31">panels, live table and export buttons.</tspan></text>
+
+    <rect x="650" y="300" width="520" height="160" rx="8" fill="#fbe6cf" stroke="#b8651b" stroke-width="2.5"/>
+    <text x="668" y="336" font-size="30" font-weight="bold">src/state</text>
+    <text x="668" y="372"><tspan>doc.ts: DocState + pure reducer (every</tspan><tspan x="668" dy="31">edit is an action); history.ts: undo/redo</tspan><tspan x="668" dy="31">as whole-document snapshots.</tspan></text>
+
+    <rect x="1200" y="300" width="540" height="160" rx="8" fill="#fbe6cf" stroke="#b8651b" stroke-width="2.5"/>
+    <text x="1218" y="336" font-size="30" font-weight="bold">src/ui</text>
+    <text x="1218" y="372"><tspan>View transform (image ↔ screen), canvas</tspan><tspan x="1218" dy="31">drawing, loupe, snap, nudge, autosave</tspan><tspan x="1218" dy="31">(IndexedDB), table and data export.</tspan></text>
+  </g>
+
+  <!-- Worker layer -->
+  <g font-size="25" fill="#222">
+    <rect x="60" y="520" width="800" height="130" rx="8" fill="#e9ddf3" stroke="#6e3fa3" stroke-width="2.5"/>
+    <text x="78" y="556" font-size="30" font-weight="bold">src/workers/auto.worker.ts</text>
+    <text x="78" y="592"><tspan>Web Worker: runs detectAxes, autoCalibrate and traceLine off the</tspan><tspan x="78" dy="31">main thread; sends OCR requests back to the page's pool.</tspan></text>
+
+    <rect x="920" y="520" width="680" height="130" rx="8" fill="#e9ddf3" stroke="#6e3fa3" stroke-width="2.5"/>
+    <text x="938" y="556" font-size="30" font-weight="bold">src/ocr/pool.ts · src/ui/ocr.ts</text>
+    <text x="938" y="592"><tspan>Tesseract.js worker pool (lazy-loaded); its WASM and</tspan><tspan x="938" dy="31">language data are vendored under /tesseract/, no CDN.</tspan></text>
+  </g>
+
+  <!-- src/auto -->
+  <g font-size="25" fill="#222">
+    <rect x="60" y="710" width="1100" height="320" rx="8" fill="#eef7ee" stroke="#2f7a3a" stroke-width="2.5"/>
+    <text x="1140" y="750" font-size="30" font-weight="bold" text-anchor="end">src/auto: pure TS, no DOM</text>
+
+    <rect x="80" y="790" width="220" height="220" rx="6" fill="#dcefdc" stroke="#2f7a3a" stroke-width="2"/>
+    <text x="94" y="824" font-size="28" font-weight="bold">trace/</text>
+    <text x="94" y="857"><tspan>traceLine: colour</tspan><tspan x="94" dy="30">model and style,</tspan><tspan x="94" dy="30">column walk or</tspan><tspan x="94" dy="30">marker match,</tspan><tspan x="94" dy="30">then resample.</tspan></text>
+
+    <rect x="335" y="790" width="230" height="220" rx="6" fill="#dcefdc" stroke="#2f7a3a" stroke-width="2"/>
+    <text x="349" y="824" font-size="28" font-weight="bold">detect.ts</text>
+    <text x="349" y="857"><tspan>detectAxes: dark-</tspan><tspan x="349" dy="30">ness map, skew,</tspan><tspan x="349" dy="30">axis lines, plot</tspan><tspan x="349" dy="30">box, tick lattice.</tspan></text>
+
+    <rect x="600" y="790" width="305" height="220" rx="6" fill="#dcefdc" stroke="#2f7a3a" stroke-width="2"/>
+    <text x="614" y="824" font-size="28" font-weight="bold">labels · parseLabel</text>
+    <text x="614" y="857"><tspan>findLabels: the labels</tspan><tspan x="614" dy="30">beside each axis → OCR</tspan><tspan x="614" dy="30">crops → values; points</tspan><tspan x="614" dy="30">and minus signs put</tspan><tspan x="614" dy="30">back from the layout.</tspan></text>
+
+    <rect x="940" y="790" width="200" height="220" rx="6" fill="#dcefdc" stroke="#2f7a3a" stroke-width="2"/>
+    <text x="954" y="824" font-size="28" font-weight="bold">suggest.ts</text>
+    <text x="954" y="857"><tspan>suggestAxis:</tspan><tspan x="954" dy="30">consensus fit;</tspan><tspan x="954" dy="30">linear, log10</tspan><tspan x="954" dy="30">or date; then</tspan><tspan x="954" dy="30">crossCheck.</tspan></text>
+
+    <path d="M565 900 L596 900" stroke="#2f7a3a" stroke-width="3" marker-end="url(#ah-green)"/>
+    <path d="M905 900 L936 900" stroke="#2f7a3a" stroke-width="3" marker-end="url(#ah-green)"/>
+    <path d="M335 960 L304 960" stroke="#2f7a3a" stroke-width="3" marker-end="url(#ah-green)"/>
+    <text x="318" y="895" font-size="25" fill="#2f7a3a" text-anchor="middle" transform="rotate(-90 318 895)">plot box</text>
+  </g>
+
+  <!-- src/core -->
+  <g font-size="25" fill="#222">
+    <rect x="1200" y="710" width="540" height="320" rx="8" fill="#e8eff9" stroke="#2b5aa0" stroke-width="2.5"/>
+    <text x="1218" y="750" font-size="30" font-weight="bold">src/core: pure TS, no DOM</text>
+    <rect x="1220" y="780" width="245" height="110" rx="6" fill="#dbe7f7" stroke="#2b5aa0" stroke-width="2"/>
+    <text x="1234" y="812" font-size="28" font-weight="bold">scales.ts</text>
+    <text x="1234" y="845"><tspan>forward / inverse</tspan><tspan x="1234" dy="30">transform per scale.</tspan></text>
+    <rect x="1480" y="780" width="245" height="110" rx="6" fill="#dbe7f7" stroke="#2b5aa0" stroke-width="2"/>
+    <text x="1494" y="812" font-size="28" font-weight="bold">dates.ts</text>
+    <text x="1494" y="845"><tspan>UTC parsing and</tspan><tspan x="1494" dy="30">formatting only.</tspan></text>
+    <rect x="1220" y="905" width="245" height="110" rx="6" fill="#dbe7f7" stroke="#2b5aa0" stroke-width="2"/>
+    <text x="1234" y="937" font-size="28" font-weight="bold">calibrate.ts</text>
+    <text x="1234" y="970"><tspan>affine fit, typed</tspan><tspan x="1234" dy="30">errors, pixelToValue.</tspan></text>
+    <rect x="1480" y="905" width="245" height="110" rx="6" fill="#dbe7f7" stroke="#2b5aa0" stroke-width="2"/>
+    <text x="1494" y="937" font-size="28" font-weight="bold">project(File).ts</text>
+    <text x="1494" y="970"><tspan>Project model; load,</tspan><tspan x="1494" dy="30">validate, migrate.</tspan></text>
+  </g>
+
+  <!-- ===== Pipeline arrows ===== -->
+  <!-- B: Auto-trace -->
+  <g stroke="#b3233b" stroke-width="3.5" fill="none">
+    <path d="M240 460 L240 516" marker-end="url(#ah-b)"/>
+    <path d="M240 650 L240 786" marker-end="url(#ah-b)"/>
+    <path d="M300 786 L300 464" stroke-dasharray="10 7" marker-end="url(#ah-b)"/>
+  </g>
+  <circle cx="200" cy="488" r="19" fill="#b3233b"/><text x="200" y="497" font-size="25" font-weight="bold" fill="#fff" text-anchor="middle">B</text>
+  <text x="228" y="688" font-size="25" fill="#b3233b" text-anchor="end">click + image</text>
+  <text x="312" y="500" font-size="25" fill="#b3233b">points → Accept</text>
+
+  <!-- A: Auto-detect axes -->
+  <g stroke="#0b7f8a" stroke-width="3.5" fill="none">
+    <path d="M460 460 L460 516" marker-end="url(#ah-a)"/>
+    <path d="M460 650 L460 786" marker-end="url(#ah-a)"/>
+    <path d="M520 786 L520 464" stroke-dasharray="10 7" marker-end="url(#ah-a)"/>
+    <path d="M800 786 L800 680 L1000 680 L1000 654" marker-start="url(#ah-a)" marker-end="url(#ah-a)"/>
+    <path d="M1140 990 L1196 990" marker-end="url(#ah-a)"/>
+  </g>
+  <circle cx="600" cy="488" r="19" fill="#0b7f8a"/><text x="600" y="497" font-size="25" font-weight="bold" fill="#fff" text-anchor="middle">A</text>
+  <text x="448" y="688" font-size="25" fill="#0b7f8a" text-anchor="end">image</text>
+  <text x="532" y="500" font-size="25" fill="#0b7f8a">suggestion → Accept</text>
+  <text x="1012" y="688" font-size="25" fill="#0b7f8a">label crops ⇄ text + confidence</text>
+  <text x="1176" y="895" font-size="25" fill="#0b7f8a" text-anchor="middle" transform="rotate(-90 1176 895)">crossCheck</text>
+
+  <!-- UI → core: values for the table -->
+  <path d="M1680 460 L1680 706" stroke="#b8651b" stroke-width="3.5" fill="none" marker-end="url(#ah-ui)"/>
+  <text x="1662" y="590" font-size="25" fill="#b8651b" text-anchor="middle" transform="rotate(-90 1662 590)">pixelToValue()</text>
+
+  <!-- ===== Verification row ===== -->
+  <text x="30" y="1098" font-size="27" font-weight="bold" fill="#444">Verification gate (npm run verify): runs in CI on every push; main deploys to GitHub Pages</text>
+  <g font-size="25" fill="#222">
+    <rect x="30" y="1112" width="250" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="46" y="1146" font-size="28" font-weight="bold">typecheck</text>
+    <text x="46" y="1178"><tspan>tsc -b, with a</tspan><tspan x="46" dy="30">DOM-free check.</tspan></text>
+
+    <rect x="310" y="1112" width="110" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="326" y="1146" font-size="28" font-weight="bold">lint</text>
+    <text x="326" y="1178"><tspan>0 warn-</tspan><tspan x="326" dy="30">ings.</tspan></text>
+
+    <rect x="450" y="1112" width="200" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="466" y="1146" font-size="28" font-weight="bold">unit tests</text>
+    <text x="466" y="1178"><tspan>Vitest: engine,</tspan><tspan x="466" dy="30">detector, UI.</tspan></text>
+
+    <rect x="680" y="1112" width="250" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="696" y="1146" font-size="28" font-weight="bold">bench:axes</text>
+    <text x="696" y="1178"><tspan>axis charts; gated</tspan><tspan x="696" dy="30">against baseline.</tspan></text>
+
+    <rect x="960" y="1112" width="250" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="976" y="1146" font-size="28" font-weight="bold">bench:lines</text>
+    <text x="976" y="1178"><tspan>traced series; gated</tspan><tspan x="976" dy="30">against baseline.</tspan></text>
+
+    <rect x="1240" y="1112" width="220" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="1256" y="1146" font-size="28" font-weight="bold">e2e tests</text>
+    <text x="1256" y="1178"><tspan>Playwright, real</tspan><tspan x="1256" dy="30">OCR, no network.</tspan></text>
+
+    <path d="M1460 1167 L1498 1167" stroke="#333" stroke-width="3" marker-end="url(#ah-dark)"/>
+    <rect x="1500" y="1112" width="270" height="110" rx="8" fill="#e8e8ea" stroke="#55575c" stroke-width="2.5"/>
+    <text x="1516" y="1146" font-size="28" font-weight="bold">CI → Pages</text>
+    <text x="1516" y="1178"><tspan>gate + privacy check;</tspan><tspan x="1516" dy="30">Pages deploy on main.</tspan></text>
+  </g>
+
+  <!-- ===== Legend ===== -->
+  <g font-size="25" fill="#333">
+    <rect x="30" y="1250" width="34" height="24" fill="#dbe7f7" stroke="#2b5aa0" stroke-width="2"/><text x="74" y="1270">src/core engine</text>
+    <rect x="290" y="1250" width="34" height="24" fill="#dcefdc" stroke="#2f7a3a" stroke-width="2"/><text x="334" y="1270">src/auto analysis</text>
+    <rect x="570" y="1250" width="34" height="24" fill="#e9ddf3" stroke="#6e3fa3" stroke-width="2"/><text x="614" y="1270">workers + OCR</text>
+    <rect x="830" y="1250" width="34" height="24" fill="#fbe6cf" stroke="#b8651b" stroke-width="2"/><text x="874" y="1270">state + UI (main thread)</text>
+    <rect x="1190" y="1250" width="34" height="24" fill="#e8e8ea" stroke="#55575c" stroke-width="2"/><text x="1234" y="1270">verification</text>
+    <text x="1420" y="1270" fill="#666">pure TS: also runs in Node</text>
+    <circle cx="47" cy="1300" r="19" fill="#0b7f8a"/><text x="47" y="1309" font-size="25" font-weight="bold" fill="#fff" text-anchor="middle">A</text>
+    <text x="74" y="1308"><tspan>Auto-detect axes: image → detectAxes → findLabels → OCR → parse → suggestAxis → crossCheck (engine calibrate)</tspan><tspan x="74" dy="32">→ suggestion with confidence badges → user Accept → calibrate. The pipeline declines rather than guesses.</tspan></text>
+    <circle cx="47" cy="1370" r="19" fill="#b3233b"/><text x="47" y="1379" font-size="25" font-weight="bold" fill="#fff" text-anchor="middle">B</text>
+    <text x="74" y="1378"><tspan>Auto-trace: click → plot box → colour model → line style → column walk (curves) or marker match (markers)</tspan><tspan x="74" dy="32">→ step corners and hidden kinks → resample → points → user Accept → pixelToValue for the table.</tspan></text>
+  </g>
+</svg>
+    <figcaption>The user's workflow (top), the browser-side layers (middle) and the verification gate (bottom). Arrow <b style="color:var(--a)">A</b> is the Auto-detect axes pipeline and arrow <b style="color:var(--b)">B</b> the Auto-trace pipeline; both run in the Web Worker and return a proposal that the UI shows as ghost markers until the user accepts it.</figcaption>
+  </figure>
+
+  <h3 id="layers">Layers and files</h3>
+
+  <div class="layer core">
+    <div class="lh"><span class="t">Calibration engine</span><span class="f">src/core/</span><span class="tag">DOM-free</span><span class="tag">runs in worker + Node</span></div>
+    <div class="grid">
+      <div class="box core"><div class="t">Scales</div><div class="f">src/core/scales.ts</div><div class="d">The five scale types, their domain rules (log needs v &gt; 0, reciprocal v ≠ 0) and the forward/inverse transform that turns a value into a straight-line coordinate and back. Returns <code>null</code> instead of NaN when a value cannot be represented.</div></div>
+      <div class="box core"><div class="t">Dates (UTC)</div><div class="f">src/core/dates.ts</div><div class="d">Parses date/time text to epoch milliseconds and formats it back, always in UTC unless the text carries a zone, so the host computer's time zone and daylight-saving changes can never shift a value. Ambiguous forms such as <code>03/04/2024</code> are rejected rather than guessed.</div></div>
+      <div class="box core"><div class="t">Affine fit with typed errors</div><div class="f">src/core/calibrate.ts</div><div class="d"><code>calibrate(refs, xScale, yScale)</code> solves the pixel → value mapping from the four reference points and returns either a <code>Calibration</code> (with <code>pixelToValue</code> and <code>valueToPixel</code>) or a typed error with a user-facing message. Section 5 has the mathematics.</div></div>
+      <div class="box core"><div class="t">Project model and file migration</div><div class="f">src/core/project.ts · src/core/projectFile.ts</div><div class="d">The saved-project schema (image, calibration, datasets of pixel points, settings) with a version number. <code>parseProject</code> reads untrusted JSON (files and autosaves): it upgrades older versions step by step, validates every field, names the first damaged one, and refuses files from a newer version.</div></div>
+    </div>
+  </div>
+
+  <div class="layer auto">
+    <div class="lh"><span class="t">Automatic analysis</span><span class="f">src/auto/</span><span class="tag">DOM-free</span><span class="tag">runs in worker + Node</span><span class="tag">input: plain RGBA bytes</span></div>
+    <div class="grid">
+      <div class="box auto"><div class="t">Axis and tick detection</div><div class="f">src/auto/detect.ts · darkness.ts · skew.ts · lines.ts · frame.ts · ticks.ts</div><div class="d"><code>detectAxes</code> finds the X and Y axis lines, the plot box and the tick marks on each axis from the raw pixels, including on slightly rotated scans. Section 3 walks through it.</div></div>
+      <div class="box auto"><div class="t">Tick-label finding</div><div class="f">src/auto/labels.ts</div><div class="d"><code>findLabels</code> looks in the band beside each axis for the printed tick labels, groups glyphs into words, matches them to ticks and cuts out crops for OCR, remembering where decimal points and minus signs were seen.</div></div>
+      <div class="box auto"><div class="t">Label parsing</div><div class="f">src/auto/parseLabel.ts</div><div class="d">Turns OCR text into values: signs, thousands separators, <code>1e-3</code>, <code>10^3</code> and superscripts, percentages, years, month names dated from a year label on the same axis.</div></div>
+      <div class="box auto"><div class="t">Scale inference and cross-check</div><div class="f">src/auto/suggest.ts · src/auto/auto.ts</div><div class="d"><code>suggestAxis</code> fits value against position for each axis, decides linear vs log10 vs date, picks two reference ticks and rates its confidence; <code>crossCheck</code> runs the real engine on the proposal and demands that it reproduce every read label. <code>autoCalibrate</code> strings the whole pipeline together.</div></div>
+      <div class="box auto"><div class="t">Line-tracing engine</div><div class="f">src/auto/trace/ (index.ts, color.ts, region.ts, style.ts, curve.ts, kinks.ts, markers.ts, resample.ts, types.ts)</div><div class="d"><code>traceLine</code>: from one click on a plotted series, follow its centreline (or find every marker like the clicked one) and propose a set of points. Section 4 walks through it. <code>types.ts</code> is the fixed contract the UI codes against.</div></div>
+    </div>
+  </div>
+
+  <div class="layer worker">
+    <div class="lh"><span class="t">Workers and OCR</span><span class="f">src/workers/ · src/ocr/</span><span class="tag">off the main thread</span><span class="tag">offline</span></div>
+    <div class="grid">
+      <div class="box worker"><div class="t">Auto worker</div><div class="f">src/workers/auto.worker.ts · src/workers/traceImpl.ts</div><div class="d">A module Web Worker that receives the image's RGBA bytes and runs <code>autoCalibrate</code> or (for a trace) <code>detectAxes</code> followed by <code>traceLine</code>, so the page stays responsive. It cannot run Tesseract itself (nested workers are not available everywhere), so each OCR request is posted back to the page and answered with text and confidence.</div></div>
+      <div class="box worker"><div class="t">Tesseract.js pool</div><div class="f">src/ocr/pool.ts · src/ui/ocr.ts</div><div class="d">A small pool of Tesseract.js OCR workers shared by the app (browser) and the benchmark (Node). Each request carries its own character whitelist (numeric or free text) and page-segmentation mode, with fallbacks when a read comes back empty. The browser side is loaded lazily on first use, so it is not in the initial bundle.</div></div>
+      <div class="box worker"><div class="t">Vendored OCR assets</div><div class="f">vite.config.ts (plugin <code>tesseract-assets</code>) → /tesseract/</div><div class="d">Tesseract's worker script, WASM cores and English language data are served from the app's own <code>tesseract/</code> path and copied into the build. No CDN is contacted at runtime, so OCR works offline and the image data stays local; an end-to-end test asserts that no non-local request is made.</div></div>
+    </div>
+  </div>
+
+  <div class="layer ui">
+    <div class="lh"><span class="t">State and UI</span><span class="f">src/state/ · src/ui/ · src/components/</span><span class="tag">main thread</span></div>
+    <div class="grid">
+      <div class="box ui"><div class="t">Document state and pure reducer</div><div class="f">src/state/doc.ts</div><div class="d"><code>DocState</code> is the Project plus what it cannot hold yet (refs placed so far, chosen scales, the active line). Every edit is an action handled by a pure reducer, which rejects non-finite pixels; <code>toProject</code>/<code>fromProject</code> convert to and from the saved form.</div></div>
+      <div class="box ui"><div class="t">Undo/redo history</div><div class="f">src/state/history.ts</div><div class="d">Wraps the reducer with whole-document snapshots. Consecutive edits sharing a group key (one drag, typing into one field, repeated presses of one nudge key) collapse into a single undo step. Loading an image, opening a project, cropping, accepting a suggestion and deleting points are each one step.</div></div>
+      <div class="box ui"><div class="t">View transform</div><div class="f">src/ui/view.ts</div><div class="d"><code>screen = image · scale + offset</code>. Zoom about the cursor, pan, and Fit change only this transform; stored coordinates are always image pixels, converted once on input.</div></div>
+      <div class="box ui"><div class="t">Canvas drawing and hit testing</div><div class="f">src/ui/draw.ts · src/ui/ticks.ts · src/components/Workspace.tsx</div><div class="d">Draws the image, refs, points, selection rings, the calibrated axes and gridlines, the ghost suggestions and the crop rectangle. Hit testing is step-scoped: refs are live only in the Axes step, points only in the Data step with the Move tool on.</div></div>
+      <div class="box ui"><div class="t">Loupe, snap, nudge, selection</div><div class="f">src/ui/loupe.ts · snap.ts · nudge.ts · selection.ts</div><div class="d">The loupe copies source pixels nearest-neighbour at an integer device-pixel magnification so edges stay sharp. Snap finds the coverage-weighted centroid of the marker under the cursor and refuses anything line-sized, so clicks on a curve land where clicked. Nudging moves the whole selection by 1, 10 or 0.1 px.</div></div>
+      <div class="box ui"><div class="t">Autosave and export</div><div class="f">src/ui/autosave.ts · src/ui/table.ts · src/ui/export.ts · src/ui/crop.ts</div><div class="d">Autosave writes the project to IndexedDB shortly after each change and on page hide. Table rows and CSV/TSV cells come from the same helper with the same options (sort, pixel columns, significant figures, date format), so exports always match what is shown. Crop cuts the decoded image on a canvas and re-encodes it losslessly.</div></div>
+      <div class="box ui"><div class="t">Auto-detect and Auto-trace glue</div><div class="f">src/ui/autoDetect.ts · suggestion.ts · autoTrace.ts · trace.ts</div><div class="d">Starts the worker, holds the pending suggestion or trace as UI state tagged with the image it belongs to (never in the document, autosave or history), turns it into ghost markers, and on Accept dispatches one undoable action.</div></div>
+      <div class="box ui"><div class="t">React components</div><div class="f">src/App.tsx · src/components/*.tsx</div><div class="d"><code>App</code> owns the document, history and view; <code>Workspace</code> is the canvas; <code>AxesStep</code>, <code>DataStep</code>, <code>CropPanel</code>, <code>AutoDetectPanel</code>, <code>TracePanel</code>, <code>DataTable</code>, <code>AxesHelp</code> and <code>ThemeToggle</code> are the side panel and toolbar. Components never reimplement maths; they call the engine.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="auto-detect">
+  <h2>3. Data flow of <i class="pill a">A</i> Auto-detect axes</h2>
+  <p>Pressing <em>Auto-detect axes</em> sends the image to the worker, which runs <code>autoCalibrate</code>. The goal is a complete suggestion (scale type plus two labelled reference ticks per axis) that the user can accept with one click. The guiding rule is that <strong>a wrong suggestion is worse than none</strong>: whenever the evidence is inconsistent the pipeline declines (it reports tick positions with blank values, or nothing) rather than guess.</p>
+  <ol class="pipe a">
+    <li><div class="box ui"><div class="t">Image RGBA → worker</div><div class="f">src/ui/autoDetect.ts → src/workers/auto.worker.ts</div><div class="d">The decoded image's pixels are copied to the worker. From here on the page only answers OCR requests and shows progress.</div></div></li>
+    <li><div class="box auto"><div class="t">detectAxes: darkness map</div><div class="f">src/auto/darkness.ts</div><div class="d">Each pixel's darkness relative to the local mean, so a grey axis on a grey background still counts as ink and filled bars become outlines.</div></div></li>
+    <li><div class="box auto"><div class="t">detectAxes: skew estimate</div><div class="f">src/auto/skew.ts · src/auto/frame.ts</div><div class="d">A Hough transform over a few degrees finds the scan's tilt; all later profiles are taken in that rotated frame, so a slightly crooked scan is handled without resampling the image.</div></div></li>
+    <li><div class="box auto"><div class="t">detectAxes: axis lines and plot box</div><div class="f">src/auto/lines.ts · src/auto/detect.ts</div><div class="d">For every row and column, the longest gap-bridged run of ink: text never forms one, axes and frame lines do. Runs are continued past small occlusions (a marker drawn on the axis), their position refined to sub-pixel from clean cross-profiles, and the best horizontal × vertical pair that meets like an L, a Γ (an X axis along the top) or a cross becomes the axes. The plot box extends to the far axis ends or to a frame line.</div></div></li>
+    <li><div class="box auto"><div class="t">detectAxes: tick lattice</div><div class="f">src/auto/ticks.ts</div><div class="d">Short perpendicular marks on either side of each axis, fitted to an evenly spaced lattice of major ticks; shorter marks between them are minors, and minors at log spacing hint at a log10 axis. An axis without real tick marks gets no invented ticks and zero confidence.</div></div></li>
+    <li><div class="box auto"><div class="t">findLabels: bands, glyphs, rows, words, tick matching</div><div class="f">src/auto/labels.ts</div><div class="d">The band outside each axis (below a bottom X axis or above a top one, left of a left Y axis or right of a right one) is thresholded into glyph components (dropping marker-like blobs and colourful data), grouped into text rows and words, and each word is matched to the tick it is centred on (or nearest to, for Y). Without tick marks the label centres themselves stand in for tick positions.</div></div></li>
+    <li><div class="box worker"><div class="t">OCR: numeric pass, text pass, layout-restored marks</div><div class="f">src/auto/auto.ts → src/ocr/pool.ts (via the page)</div><div class="d">Each word crop is upscaled and read with a numeric whitelist first; a raised trailing group is read separately as an exponent. A free-text pass runs when the first is unconfident or does not parse. Because OCR drops small marks (it reads "1.0" as "10" with high confidence), decimal points and leading minus signs are located from the glyph layout and re-inserted by position. The axis note matplotlib prints (an offset like <code>+1e4</code> or a multiplier) is found and read too; an unreadable note makes the axis decline.</div>
+      <div class="branch">Side channel: the worker posts each crop to the page, the Tesseract.js pool answers with text and confidence, and the worker continues.</div></div></li>
+    <li><div class="box auto"><div class="t">parseLabel</div><div class="f">src/auto/parseLabel.ts</div><div class="d">Text → value: sign variants, thousands separators, scientific and <code>10^k</code> notation, percentages; full dates, years, and month names dated from the year label on the same axis. Bare day numbers are never dated, so such an axis is declined.</div></div></li>
+    <li><div class="box auto"><div class="t">suggestAxis: consensus fit</div><div class="f">src/auto/suggest.ts</div><div class="d">Every pair of read labels proposes a value-vs-position line; the line most labels agree with wins and is refined by least squares. Linear, log10 and date interpretations compete on how many labels agree; a log reading also needs a wide enough value span. The two most widely separated agreeing labels with confident OCR become the suggested X1/X2 or Y1/Y2 refs.</div></div></li>
+    <li><div class="box core"><div class="t">crossCheck: the engine must reproduce every label</div><div class="f">src/auto/suggest.ts → src/core/calibrate.ts</div><div class="d">The proposed scales and four refs are given to the real <code>calibrate</code>. It must succeed, and the resulting mapping must predict every agreeing labelled tick in two dimensions within tolerance; otherwise that axis drops to low confidence and no values are suggested for it.</div></div></li>
+    <li><div class="box ui"><div class="t">Suggestion with confidence badges</div><div class="f">src/components/AutoDetectPanel.tsx · src/ui/suggestion.ts</div><div class="d">The result is drawn as ghosts (dashed axis lines, a box per read label coloured by agreement, dashed refs labelled with their values) and a panel shows each axis's scale, a High / Medium / Low badge, the reason, and editable values.</div></div></li>
+    <li><div class="box user"><div class="t">User: Accept suggestion</div><div class="f">src/state/doc.ts (action <code>apply-suggestion</code>)</div><div class="d">Only now are the scales and refs applied, as one undo step; <em>Discard</em> drops the suggestion and refs already placed by hand are kept. A partial suggestion (positions without values) feeds the manual flow, which prompts for the missing values.</div></div></li>
+    <li><div class="box core"><div class="t">calibrate</div><div class="f">src/core/calibrate.ts</div><div class="d">The accepted refs go through the same engine as hand-placed ones; the table and overlay update immediately.</div></div></li>
+  </ol>
+  <div class="note">The axis benchmark (<code>bench:axes</code>) scores each axis as <em>correct</em> (the right scale and every held-out labelled tick predicted within 1 % of the axis range), <em>wrong</em> (a medium- or high-confidence suggestion that is not correct; the target is none) or <em>declined</em>. Declined axes are left to the user; the known causes are charts without drawn axis lines, low-resolution or JPEG labels that OCR misreads, tiny log exponents, date axes without a year, and unreadable offset notes.</div>
+</section>
+
+<section id="auto-trace">
+  <h2>4. Data flow of <i class="pill b">B</i> Auto-trace</h2>
+  <p>In the Data step a click on a plotted series is sent to the worker as a <em>seed</em>. The worker first runs <code>detectAxes</code> to get the plot box, then <code>traceLine</code>, which returns an ordered path, a list of suggested points with confidences, the series colour and (for curves) its line style. The UI draws the path and the points as ghosts in the line's colour until the user accepts. The request/response shapes in <code>src/auto/trace/types.ts</code> are a fixed contract between engine and UI; <code>traceLine</code> never throws and reports failures (click on background, on the frame, colour too close to the background) with a message.</p>
+
+  <h3 id="trace-curve">Curve path</h3>
+  <ol class="pipe b">
+    <li><div class="box user"><div class="t">Click on the series</div><div class="f">src/components/Workspace.tsx → src/ui/autoTrace.ts → auto.worker.ts</div><div class="d">The clicked image pixel (pixel-centre convention), the mode (Auto / Curve / Markers) and the point budget are sent with the image.</div></div></li>
+    <li><div class="box auto"><div class="t">Region: the plot box</div><div class="f">src/auto/trace/region.ts (+ detectAxes)</div><div class="d">Tracing is confined to the detected plot box when it contains the seed, else to the whole image. An axis or frame line along the box edge is removed only when it has the series' own colour, so a coloured curve lying on a black axis keeps its pixels.</div></div></li>
+    <li><div class="box auto"><div class="t">Colour model: background, ink, coverage α, occluders</div><div class="f">src/auto/trace/color.ts</div><div class="d">Each pixel is modelled as background + α·(ink − background) + residual. The background is the region's median colour; the seed is moved onto the nearest, strongest pixel of its own colour; the ink colour is scaled to the typical peak coverage of the stroke, since a thin or antialiased line never shows its full colour. A pixel is "on" when α is high and the residual small (tighter for black and grey, looser for saturated colours that JPEG washes out); ink of another colour is marked as a possible <em>occluder</em>.</div></div></li>
+    <li><div class="box auto"><div class="t">Style classification: solid / dashed / dotted / dash-dot</div><div class="f">src/auto/trace/style.ts</div><div class="d">The blobs of ink around the seed are chained along the stroke and their gaps measured. Regular gaps and piece lengths give dashed, dotted or dash-dot; an unbroken stretch gives solid. The style becomes a constraint: same-colour ink of another style is treated as an occluder, which is how two series of one colour, told apart only by their dashes, are kept separate. Gaps in a patterned seed's own line are filled for the walk and undone afterwards.</div></div></li>
+    <li><div class="box auto"><div class="t">Column walk: prediction, gap bridging, hidden kinks, retry at forks</div><div class="f">src/auto/trace/curve.ts (<code>traceColumns</code>)</div><div class="d">Column by column from the seed (right, then left primed with the right walk's slope, then right again), the next vertical run of "on" pixels is the one touching the previous or nearest the <em>prediction</em> (previous centre plus recent slope); after a long vertical run (a step), straight through first, else from the run's far end. Gaps over background are bridged up to a modest width, gaps hidden under another colour much further. Under a marker-sized blob of another colour a sharp slope change is allowed (a V under a marker). When a walk dies soon after a fork, the alternatives are walked and the branch that followed the most ink wins.</div></div></li>
+    <li><div class="box auto"><div class="t">columnsToPath: centroids, step corners, censor marks dropped</div><div class="f">src/auto/trace/curve.ts (<code>columnsToPath</code>)</div><div class="d">Each column becomes a coverage-weighted sub-pixel centroid. A thin vertical stroke entered at one end and left at the other is a step's riser and yields two corner points; a square same-colour blob sticking out past the curve is a marker and yields one point at its centroid; a thin blob sticking out on both sides (a Kaplan–Meier '+' censoring mark) is dropped and bridged.</div></div></li>
+    <li><div class="box auto"><div class="t">Hidden kinks</div><div class="f">src/auto/trace/kinks.ts</div><div class="d">Where the path bridged a compact blob of another colour that the straight stretches on both sides point at, the blob's centroid (or the stretches' intersection) is inserted as a vertex, so a polyline's data points under its markers are recovered; a line ending under a marker is extended to its centre.</div></div></li>
+    <li><div class="box auto"><div class="t">resample: ends, corners, extrema, budget</div><div class="f">src/auto/trace/resample.ts</div><div class="d">The suggested points are always both ends, every step corner, every prominent y extremum and every sharp kink, even beyond the budget (a KM curve may get many points rather than lose a corner); the rest of the budget is spread evenly in x over the non-vertical stretches and snapped to traced points.</div></div></li>
+    <li><div class="box ui"><div class="t">Review and Accept</div><div class="f">src/components/TracePanel.tsx · src/ui/trace.ts</div><div class="d">The panel names what was found (Curve, Markers or Nothing), the line style when read, the point count and the time; changing the budget or mode re-runs from the same seed. <em>Accept</em> adds the points to the active line (or to a new line coloured like the traced series) as one undo step; <em>Discard</em> changes nothing.</div></div></li>
+    <li><div class="box core"><div class="t">pixelToValue</div><div class="f">src/core/calibrate.ts</div><div class="d">Accepted points are ordinary pixel points; the table shows their values through the calibration like any hand-placed point.</div></div></li>
+  </ol>
+
+  <h3 id="trace-markers">Markers path ("Find points")</h3>
+  <p>In Markers mode, or in Auto mode when the seed's blob is small, roughly round and not part of a dash pattern, the engine looks for markers instead of a line:</p>
+  <ol class="pipe b">
+    <li><div class="box auto"><div class="t">Template from the clicked marker</div><div class="f">src/auto/trace/markers.ts (<code>markerTemplate</code>)</div><div class="d">The clicked marker's shape is cut out of its blob even when error bars, caps or lines are attached: for a filled marker, by a morphological opening wider than the attached strokes; for an open marker, from the hole it encloses plus the ring around it. The template records the ink to match, the background that defines the shape (an open marker's inside, a filled one's concave corners) and, for filled shapes, a clear margin that pins the size.</div></div></li>
+    <li><div class="box auto"><div class="t">findMarkers: match everywhere in the plot</div><div class="f">src/auto/trace/markers.ts (<code>findMarkers</code>)</div><div class="d">The template is compared at every position; pixels outside the plot or under ink of another colour are treated as unknown. A match needs most of the ink present, most of the defining background clear, and most of the margin clear. Nearby peaks merge into one marker with a sub-pixel centre; a clump of ink several markers large is split by k-means. Without a usable template, a simpler blob match by area and fill ratio is used.</div></div></li>
+    <li><div class="box auto"><div class="t">Legend samples excluded</div><div class="f">src/auto/trace/markers.ts (<code>legendSample</code>)</div><div class="d">A found marker with a word beside it (several letter-sized pieces of ink at its height, starting just past its edge) is a legend sample, not data, and is dropped.</div></div></li>
+    <li><div class="box ui"><div class="t">Every marker becomes a point</div><div class="f">src/components/TracePanel.tsx</div><div class="d">The point budget does not apply to markers: every match is proposed, and the user accepts or discards as for a curve.</div></div></li>
+  </ol>
+  <div class="note b">The line benchmark (<code>bench:lines</code>) scores every trace for the kind found, coverage of the series, centreline error against the drawn curve in pixels, wrong-series rate, step corners, markers and line style. Known weak spots are dense staircases in thick lines (lost corners), vertices under small markers in low-resolution JPEGs, a series hidden under another along a step, and markers no thicker than their error bars.</div>
+</section>
+
+<section id="maths">
+  <h2>5. The calibration mathematics</h2>
+  <p>Everything in this section lives in <code>src/core/</code> and is exercised by unit tests on synthetic charts with known geometry (axis-aligned, rotated, sheared, non-square, flipped, transposed) at tight tolerances.</p>
+
+  <h3 id="transforms">Forward transforms per scale</h3>
+  <p>A scale is a function <span class="m">f</span> from a data value to a coordinate on a straight line, with an inverse <span class="m">f⁻¹</span>. Each has a domain rule; a value outside it yields <code>null</code>, never NaN.</p>
+  <table>
+    <thead><tr><th>Scale</th><th>f(v)</th><th>f⁻¹(u)</th><th>Domain rule</th></tr></thead>
+    <tbody>
+      <tr><td><code>linear</code></td><td>v</td><td>u</td><td>any finite value</td></tr>
+      <tr><td><code>log10</code></td><td>log₁₀ v</td><td>10ᵘ</td><td>v &gt; 0</td></tr>
+      <tr><td><code>ln</code></td><td>ln v</td><td>eᵘ</td><td>v &gt; 0</td></tr>
+      <tr><td><code>reciprocal</code></td><td>1 / v</td><td>1 / u</td><td>v ≠ 0; the two calibration values must not straddle 0</td></tr>
+      <tr><td><code>date/time</code></td><td>epoch milliseconds (UTC)</td><td>the same, formatted</td><td>parseable date/time; UTC unless a zone is written</td></tr>
+    </tbody>
+  </table>
+  <p class="sub"><code>log10</code> and <code>ln</code> differ only by a constant factor, which the affine fit absorbs, so they give identical output; both are offered for familiarity and a test asserts they agree.</p>
+
+  <h3 id="affine">The affine fit: two 3×3 systems</h3>
+  <p>Let the four reference points have pixel positions X1, X2 (known x values x₁, x₂) and Y1, Y2 (known y values y₁, y₂). Write u = fₓ(x) and w = f_y(y) for the transformed values. The engine fits an <em>affine</em> map from image pixels (pₓ, p_y) to the transformed plane:</p>
+  <div class="eq"><span class="m">u = a·pₓ + b·p_y + c &nbsp;&nbsp;&nbsp;&nbsp; w = d·pₓ + e·p_y + g</span></div>
+  <p>Each of the two equations has three unknowns, so three constraints each are needed. The X refs fix u at two points, and the Y refs, which lie on one vertical line of the chart, must share one u. Symmetrically for w:</p>
+  <div class="eq"><span class="m">u(X1) = fₓ(x₁), &nbsp; u(X2) = fₓ(x₂), &nbsp; u(Y1) = u(Y2)</span><br><span class="m">w(Y1) = f_y(y₁), &nbsp; w(Y2) = f_y(y₂), &nbsp; w(X1) = w(X2)</span></div>
+  <p>Subtracting the equation pairs eliminates c and g and leaves two 2×2 systems that share one determinant, the cross product of the vectors X2 − X1 and Y2 − Y1: a solution exists exactly when the X refs and the Y refs lie along non-parallel directions. The value of a point is then (fₓ⁻¹(u), f_y⁻¹(w)). Because the map is affine in both pixel coordinates, it handles rotated, skewed and non-square scans, and the fact that image y grows downward is absorbed automatically. The inverse map (value → pixel) is exposed for drawing the gridline overlay.</p>
+
+  <h3 id="pixels">Pixel-centre convention</h3>
+  <div class="two">
+    <div>
+      <p>Integer coordinates are pixel <em>centres</em>: pixel column i covers the interval [i − ½, i + ½), so the image's outer edges are at −½ and width − ½. The pixel under the cursor is simply <code>Math.round(px)</code>, which the loupe uses, and the hand-labelled fixtures use the same convention (an axis drawn in column 134 is labelled 134). A uniform shift would cancel in the affine fit; the convention matters for display, fixtures and the automatic analysis, which all agree on it.</p>
+    </div>
+    <svg viewBox="0 0 360 150" width="360" height="150" role="img" aria-label="Pixel-centre convention: pixel i spans from i minus one half to i plus one half" style="max-width:100%;height:auto">
+      <g font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1d1f23">
+        <rect x="40" y="40" width="60" height="60" fill="#e6eef9" stroke="#2b5aa0"/>
+        <rect x="100" y="40" width="60" height="60" fill="#fbe9d4" stroke="#2b5aa0"/>
+        <rect x="160" y="40" width="60" height="60" fill="#e6eef9" stroke="#2b5aa0"/>
+        <circle cx="130" cy="70" r="3" fill="#b3233b"/>
+        <text x="130" y="30" text-anchor="middle">px = i (centre)</text>
+        <text x="100" y="120" text-anchor="middle">i − ½</text>
+        <text x="160" y="120" text-anchor="middle">i + ½</text>
+        <text x="70" y="75" text-anchor="middle" fill="#5b6069">i − 1</text>
+        <text x="190" y="75" text-anchor="middle" fill="#5b6069">i + 1</text>
+        <line x1="100" y1="100" x2="100" y2="108" stroke="#1d1f23"/>
+        <line x1="160" y1="100" x2="160" y2="108" stroke="#1d1f23"/>
+        <text x="250" y="60" fill="#5b6069">Image edge at −½</text>
+        <text x="250" y="80" fill="#5b6069">and width − ½</text>
+        <text x="250" y="100" fill="#5b6069">round(px) = pixel</text>
+      </g>
+    </svg>
+  </div>
+
+  <h3 id="errors">Error kinds</h3>
+  <p><code>calibrate</code> returns <code>{ ok: false, error }</code> with one of these kinds, checked in this order, each with a user-facing message naming the refs involved. The UI shows the message verbatim under the refs list; nothing downstream ever sees NaN or Infinity.</p>
+  <table>
+    <thead><tr><th>Kind</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td><code>invalid-pixel</code></td><td>A ref's pixel position is not finite.</td></tr>
+      <tr><td><code>invalid-value</code></td><td>A typed value is not a plain number, or not a parseable date on a date axis.</td></tr>
+      <tr><td><code>out-of-domain</code></td><td>The value is outside the scale's domain (log of 0 or a negative number, reciprocal of 0).</td></tr>
+      <tr><td><code>reciprocal-straddles-zero</code></td><td>On a reciprocal axis the two ref values have opposite signs.</td></tr>
+      <tr><td><code>equal-values</code></td><td>The two refs of one axis have the same value after the transform (e.g. <code>2</code> and <code>"2.0"</code>), so the axis has no extent.</td></tr>
+      <tr><td><code>coincident-points</code></td><td>The two refs of one axis sit on the same pixel. X1 and Y1 may share a pixel (the usual origin).</td></tr>
+      <tr><td><code>singular-system</code></td><td>The X-ref and Y-ref directions are parallel, so the fit has no unique solution.</td></tr>
+      <tr><td><code>numeric-overflow</code></td><td>The values are so extreme that the coefficients are not finite.</td></tr>
+    </tbody>
+  </table>
+  <p>After a successful fit, <code>pixelToValue</code> can still return <code>null</code> for a component the scale cannot represent (a reciprocal axis at u = 0, a log value that overflows, a date beyond the representable range); the table shows such cells as "—" and exports them blank.</p>
+</section>
+
+<section id="verification">
+  <h2>6. The verification pipeline</h2>
+  <p>A change is not done until <code>npm run verify</code> passes. It runs six steps in order, and the project's rules forbid easing a test, tolerance, fixture, corpus or baseline to make one pass. The same command runs in GitHub Actions on every push and pull request; only when it and the privacy check of the Pages build both pass on <code>main</code> is that checked build deployed.</p>
+  <div class="flow">
+    <div class="box verify"><div class="t">typecheck</div><div class="f">tsc -b · tsconfig.core.json · tsconfig.app.json · tsconfig.node.json · tsconfig.e2e.json</div><div class="d"><code>tsc -b</code> over the projects <code>tsconfig.json</code> references. The <em>core</em> project checks <code>src/core</code> and <code>src/auto</code> <strong>without the DOM library</strong>, so any browser API that creeps into the engine fails the build; the <em>app</em> project checks the UI with the DOM; the <em>node</em> project checks configs and unit tests; the <em>e2e</em> project checks the Playwright specs, scripts and benchmarks.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">lint</div><div class="f">eslint . --max-warnings 0</div><div class="d">ESLint with zero warnings allowed; it also bans browser globals inside <code>src/core</code> and <code>src/auto</code>.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">unit tests</div><div class="f">vitest run · src/**/*.test.ts</div><div class="d">Scale transforms and domains; date parsing tables, leap years and host-zone independence; the affine fit on synthetic geometries and all scale pairs; every error kind; project-file migration and damage messages; the real KM figure; detector, label, parser and suggestion tests; the reducer, history, snap, crop and table helpers.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">bench:axes</div><div class="f">bench/axes/run.ts · baseline.json</div><div class="d">Generated matplotlib charts varying scale, fonts, DPI, frame style, rotation and JPEG quality, plus real figures, scored for axis, plot-box and tick detection and for end-to-end auto-calibration with real OCR. Exits 1 on any gated metric falling below the committed baseline, overall or in any category.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">bench:lines</div><div class="f">bench/lines/run.ts · baseline.json</div><div class="d">Generated charts with crossing curves, markers, dashed/dotted styles, KM steps with censoring marks, same-colour pairs and scatter with error bars, plus real figures. Scores kind, coverage, centreline error, wrong-series rate, corners, markers and style; gated against its baseline the same way.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">e2e tests</div><div class="f">playwright test · e2e/*.spec.ts</div><div class="d">Playwright drives the real app in Chromium: loading, calibration on real and synthetic fixtures, date and log axes, the loupe at 2× device pixels, edit modes, crop, persistence (autosave, project files), auto-detect with real OCR and no network, auto-trace, find points, same-colour series and the theme.</div></div>
+    <span class="arr" aria-hidden="true">→</span>
+    <div class="box verify"><div class="t">CI and deploy</div><div class="f">.github/workflows/deploy.yml</div><div class="d">GitHub Actions runs the whole gate on every push and pull request, and a separate privacy check (<code>npm run privacy:check</code>) that builds the static site under the Pages subpath, drives a full session on it and fails on any request leaving the app's origin or that subpath. On <code>main</code>, once both pass, the deploy job takes that checked build, smoke-checks that the bundle and the vendored OCR worker are served, and deploys it to GitHub Pages.</div></div>
+  </div>
+  <p class="sub">Current scores are in <code>bench/axes/baseline.json</code> and <code>bench/lines/baseline.json</code>. The benchmarks gate <em>regressions</em>, not absolute scores: a run that lowers any gated metric fails, and the baseline may be rewritten only together with an explanation of the improvement or trade-off. Declining more doubtful suggestions is an allowed trade; suggesting wrong values is not.</p>
+</section>
+
+
+</main>
+</div>
+
+<footer>Self-contained page: inline CSS and SVG only, no scripts or external resources. Source of truth for the behaviour described here is <a href="SPEC.md"><code>docs/SPEC.md</code></a> in the repository.</footer>
+</body>
+</html>
