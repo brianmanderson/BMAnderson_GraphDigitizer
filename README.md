@@ -58,7 +58,10 @@ build` writes the production bundle to `dist/`; the GitHub Pages deployment buil
 `BASE_PATH=/BMAnderson_GraphDigitizer/` (see `.github/workflows/deploy.yml`).
 
 [docs/SPEC.md](docs/SPEC.md) is the source of truth for the workflow, the calibration maths, the
-data model and the design decisions.
+data model and the design decisions. [docs/how-it-works.html](docs/how-it-works.html) is an
+illustrated overview of the same ground — the workflow, the architecture diagram, both automatic
+pipelines step by step, the calibration maths and the verification gate — as one self-contained
+page (inline CSS and SVG, no scripts, no network requests); download it and open it in a browser.
 
 ## Reproducing the benchmarks
 
