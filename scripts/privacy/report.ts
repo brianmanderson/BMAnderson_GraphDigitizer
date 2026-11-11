@@ -61,6 +61,11 @@ export interface Verdict {
   foreign: CapturedRequest[];
   /** Failed requests to the app's own origin: a missing vendored file would be a bug, not a leak. */
   failed: CapturedRequest[];
+  /**
+   * Own-origin requests outside the base path. Under a subpath (GitHub Pages serves the app at
+   * /<repo>/ on an origin shared with other sites) anything else on the origin is not the app.
+   */
+  outsideBase: CapturedRequest[];
   /** True when every expected worker-initiated request was seen. */
   captureComplete: boolean;
   /** Labels of the expected worker-initiated requests that were not seen. */
@@ -125,12 +130,20 @@ export function countByOrigin(requests: readonly CapturedRequest[]): Record<stri
   return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-export function judge(requests: readonly CapturedRequest[], previewOrigin: string): Verdict {
+/** Whether an own-origin URL's path lies under the base path ('/' contains every path). */
+export function underBase(url: string, basePath: string): boolean {
+  const base = basePath.endsWith('/') ? basePath : `${basePath}/`;
+  const path = new URL(url).pathname;
+  return path.startsWith(base) || `${path}/` === base;
+}
+
+export function judge(requests: readonly CapturedRequest[], previewOrigin: string, basePath = '/'): Verdict {
   const foreign = requests.filter((r) => {
     const o = originOf(r.url);
     return o !== previewOrigin && o !== 'data:' && o !== 'blob:';
   });
   const failed = requests.filter((r) => originOf(r.url) === previewOrigin && (r.error !== null || (r.status !== null && r.status >= 400)));
+  const outsideBase = requests.filter((r) => originOf(r.url) === previewOrigin && !underBase(r.url, basePath));
   const missing = EXPECTED_WORKER_REQUESTS.filter(
     (e) => !requests.some((r) => e.pattern.test(r.url) && (e.target === undefined || r.target === e.target)),
   ).map((e) => e.label);
@@ -138,8 +151,9 @@ export function judge(requests: readonly CapturedRequest[], previewOrigin: strin
   if (requests.length === 0) reasons.push('no requests were captured at all');
   if (foreign.length > 0) reasons.push(`${foreign.length} request(s) left the app's origin: ${[...new Set(foreign.map((r) => originOf(r.url)))].join(', ')}`);
   if (failed.length > 0) reasons.push(`${failed.length} request(s) to the app's own origin failed: ${failed.map((r) => `${r.url} (${r.error ?? r.status})`).join(', ')}`);
+  if (outsideBase.length > 0) reasons.push(`${outsideBase.length} request(s) on the app's origin left its base path ${basePath}: ${outsideBase.map((r) => r.url).join(', ')}`);
   if (missing.length > 0) reasons.push(`capture incomplete, worker-initiated requests not seen: ${missing.join('; ')}`);
-  return { pass: reasons.length === 0, foreign, failed, captureComplete: missing.length === 0, missing, reasons };
+  return { pass: reasons.length === 0, foreign, failed, outsideBase, captureComplete: missing.length === 0, missing, reasons };
 }
 
 export function buildReport(
@@ -149,7 +163,7 @@ export function buildReport(
   error: string | null = null,
 ): PrivacyReport {
   const list = [...requests];
-  const verdict = judge(list, meta.previewOrigin);
+  const verdict = judge(list, meta.previewOrigin, meta.basePath);
   if (error !== null) {
     verdict.pass = false;
     verdict.reasons.unshift(`the session did not complete: ${error}`);
@@ -185,6 +199,6 @@ export function summarize(report: PrivacyReport): string {
           : ''),
     );
   }
-  lines.push(verdict.pass ? 'PASS: every request stayed on the app origin and the workers were captured.' : `FAIL: ${verdict.reasons.join('; ')}`);
+  lines.push(verdict.pass ? `PASS: every request stayed on the app origin under ${meta.basePath} and the workers were captured.` : `FAIL: ${verdict.reasons.join('; ')}`);
   return lines.join('\n');
 }

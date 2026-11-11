@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReport, countByOrigin, judge, originOf, summarize, type CapturedRequest, type ReportMeta } from './report.ts';
+import { buildReport, countByOrigin, judge, originOf, summarize, underBase, type CapturedRequest, type ReportMeta } from './report.ts';
 
 const ORIGIN = 'http://localhost:4173';
 
@@ -70,7 +70,7 @@ describe('originOf', () => {
 describe('judge', () => {
   it('passes a complete, same-origin session', () => {
     const v = judge(healthy(), ORIGIN);
-    expect(v).toMatchObject({ pass: true, foreign: [], failed: [], captureComplete: true, missing: [], reasons: [] });
+    expect(v).toMatchObject({ pass: true, foreign: [], failed: [], outsideBase: [], captureComplete: true, missing: [], reasons: [] });
   });
 
   it('fails on any request to another origin, naming it', () => {
@@ -122,6 +122,35 @@ describe('judge', () => {
     expect(v.pass).toBe(false);
     expect(v.failed).toEqual([missing, aborted]);
     expect(v.reasons.join('\n')).toContain('net::ERR_ABORTED');
+  });
+
+  it('under a base path, passes a session that stays inside it', () => {
+    const base = '/BMAnderson_GraphDigitizer/';
+    const list = healthy().map((r) => (r.url.startsWith(`${ORIGIN}/`) ? { ...r, url: r.url.replace(`${ORIGIN}/`, `${ORIGIN}${base}`) } : r));
+    expect(judge(list, ORIGIN, base)).toMatchObject({ pass: true, outsideBase: [], reasons: [] });
+  });
+
+  it('under a base path, fails on an own-origin request outside it (another site on a shared origin)', () => {
+    const base = '/BMAnderson_GraphDigitizer/';
+    const inside = healthy().map((r) => (r.url.startsWith(`${ORIGIN}/`) ? { ...r, url: r.url.replace(`${ORIGIN}/`, `${ORIGIN}${base}`) } : r));
+    const root = req(`${ORIGIN}/tesseract/eng.traineddata.gz`, { target: 'worker', targetUrl: OCR_WORKER, resourceType: 'Fetch' });
+    const v = judge([...inside, root], ORIGIN, base);
+    expect(v.pass).toBe(false);
+    expect(v.foreign).toEqual([]);
+    expect(v.outsideBase).toEqual([root]);
+    expect(v.reasons.join('\n')).toContain(`left its base path ${base}`);
+    // The same root request is fine when the app itself is served at '/'.
+    expect(judge(healthy(), ORIGIN).outsideBase).toEqual([]);
+  });
+
+  it('underBase: the base itself, with or without its trailing slash, and paths below it', () => {
+    const base = '/BMAnderson_GraphDigitizer/';
+    expect(underBase(`${ORIGIN}/BMAnderson_GraphDigitizer/`, base)).toBe(true);
+    expect(underBase(`${ORIGIN}/BMAnderson_GraphDigitizer`, base)).toBe(true);
+    expect(underBase(`${ORIGIN}/BMAnderson_GraphDigitizer/assets/x.js?v=1`, base)).toBe(true);
+    expect(underBase(`${ORIGIN}/BMAnderson_GraphDigitizerX/x.js`, base)).toBe(false);
+    expect(underBase(`${ORIGIN}/favicon.ico`, base)).toBe(false);
+    expect(underBase(`${ORIGIN}/anything`, '/')).toBe(true);
   });
 
   it('fails an empty capture rather than passing vacuously', () => {

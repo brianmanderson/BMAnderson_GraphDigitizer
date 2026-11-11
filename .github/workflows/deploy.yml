@@ -1,8 +1,9 @@
-# Verifies every push and pull request with the repo's own gate (npm run verify) and, on main
-# or a manual run, builds the app under /BMAnderson_GraphDigitizer/ and deploys dist/ to GitHub Pages
-# (https://brianmanderson.github.io/BMAnderson_GraphDigitizer/). Pages must be set to deploy from
-# "GitHub Actions" in the repository settings. BASE_PATH is read by vite.config.ts; see
-# CLAUDE.md → Commands.
+# Verifies every push and pull request with the repo's own gate (npm run verify) and the privacy
+# check, which builds the app under /BMAnderson_GraphDigitizer/ (the Pages subpath) and proves no
+# request leaves it. On main or a manual run, once both pass, deploys that same checked dist/ to
+# GitHub Pages (https://brianmanderson.github.io/BMAnderson_GraphDigitizer/). Pages must be set to
+# deploy from "GitHub Actions" in the repository settings. BASE_PATH is read by vite.config.ts;
+# see CLAUDE.md → Commands.
 name: Verify and deploy
 
 on:
@@ -42,9 +43,13 @@ jobs:
           retention-days: 7
 
   privacy:
-    name: Privacy check (no request leaves the app's origin)
+    name: Privacy check of the Pages build (no request leaves the app's origin or base path)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # The build that is deployed: the check builds, serves and drives it under this subpath, and
+      # fails on any request outside it (the github.io origin is shared with other sites).
+      BASE_PATH: /BMAnderson_GraphDigitizer/
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -65,10 +70,19 @@ jobs:
           path: privacy-report.json
           if-no-files-found: ignore
           retention-days: 90
+      # Only a build that passed is kept; deploy publishes exactly these files, not a rebuild.
+      - name: Keep the checked build for deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: checked-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
 
   deploy:
-    name: Build and deploy to GitHub Pages
-    needs: verify
+    name: Deploy the checked build to GitHub Pages
+    # Nothing is deployed unless the gate and the privacy check of this very build both passed.
+    needs: [verify, privacy]
     # Only main is ever deployed, whether by a push or a manual run started on another branch.
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
@@ -89,9 +103,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # Vite is still needed for the smoke check's `vite preview`; nothing is rebuilt.
       - run: npm ci
-      - name: Build under the Pages subpath
-        run: npm run build
+      - name: Fetch the build the privacy job checked
+        uses: actions/download-artifact@v4
+        with:
+          name: checked-dist
+          path: dist/
       - name: Smoke-check the subpath build
         # The built page must reference its bundle under the prefix, and `vite preview` (which
         # honours the same base) must serve the app and the vendored Tesseract worker there.

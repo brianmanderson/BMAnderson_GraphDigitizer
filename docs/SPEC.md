@@ -480,8 +480,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   copy (`cacheMethod: 'none'`). The e2e spec aborts every non-localhost request and asserts
   none; `npm run privacy:check` (`scripts/privacy-check.ts`) records every request of a full
   session on the production build — page and worker targets, over CDP — into
-  `privacy-report.json` and fails on any foreign origin. The base is `BASE_PATH` at build time (default `/`; `/BMAnderson_GraphDigitizer/` for the
-  GitHub Pages deployment in `.github/workflows/deploy.yml`).
+  `privacy-report.json` and fails on any foreign origin or any own-origin request outside the
+  base path. The base is `BASE_PATH` at build time (default `/`; `/BMAnderson_GraphDigitizer/`
+  for GitHub Pages). In `.github/workflows/deploy.yml` the `privacy` job checks the build at that
+  subpath, and `deploy` needs `verify` and `privacy` and publishes that same checked `dist/`.
 - **Finding labels**: the band outside each axis — on its far side from the plot: below a bottom
   X axis, above a top one; left of a left Y axis, right of a right one — sampled in the
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
