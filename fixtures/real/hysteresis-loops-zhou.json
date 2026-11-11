@@ -1,0 +1,89 @@
+{
+  "image": "hysteresis-loops-zhou.png",
+  "description": "Magnetic hysteresis loops (M-H) of seven anisotropic SmFe10V2 bulks pressed at 0.4-4.0 GPa (seven coloured lines, legend inside at the top left), internal field -24.5..24.5 kOe, magnetization -95..95 emu/g: a true four-quadrant chart in a closed Origin box frame with black zero lines through the origin. Inward major ticks every 5 kOe / 20 emu/g and minor ticks halfway, mirrored on the top and right frame lines. Journal figure (Zhou et al. 2024, Nanomaterials 14:1329, Fig. 6 panel a; crop x 0-1835, y 0-1458 of the publisher's 3832x1458 PNG), 1835x1458 PNG. The source is pixel-doubled (rows and columns repeat in pairs), so edges move in 2 px steps. Hand-labelled by pixel analysis (Pillow/NumPy/SciPy): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": {"left": 248.86, "right": 1744.17, "top": 43.98, "bottom": 1249.93},
+  "plotBox": [[248.86, 43.98], [1744.17, 43.98], [1744.17, 1249.93], [248.86, 1249.93]],
+  "zeroLines": {"row": 646.91, "col": 995.78},
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 1249.93,
+    "tickMarks": true,
+    "notes": "axisLineRow is the bottom frame line (black, ~5 px), which carries the ticks; the black zero line (row 646.91, ~4 px) through the middle carries none. Inward majors (~14 px) at -20..20 every 5 kOe, inward minors (~8 px) halfway; mirrored on the top frame line. Labels -20 ... 20 below the frame; the frame corners are -24.5 / 24.5 kOe (no tick).",
+    "ticks": [
+      {"value": -20, "px": 384.81, "label": "-20"},
+      {"value": -15, "px": 537.35, "label": "-15"},
+      {"value": -10, "px": 690.94, "label": "-10"},
+      {"value": -5, "px": 842.85, "label": "-5"},
+      {"value": 0, "px": 995.25, "label": "0"},
+      {"value": 5, "px": 1148.92, "label": "5"},
+      {"value": 10, "px": 1300.93, "label": "10"},
+      {"value": 15, "px": 1453.22, "label": "15"},
+      {"value": 20, "px": 1605.62, "label": "20"},
+      {"value": -22.5, "px": 308.42, "minor": true},
+      {"value": -17.5, "px": 461.47, "minor": true},
+      {"value": -12.5, "px": 613.83, "minor": true},
+      {"value": -7.5, "px": 766.33, "minor": true},
+      {"value": -2.5, "px": 919.92, "minor": true},
+      {"value": 2.5, "px": 1071.88, "minor": true},
+      {"value": 7.5, "px": 1224.22, "minor": true},
+      {"value": 12.5, "px": 1377.89, "minor": true},
+      {"value": 17.5, "px": 1530.25, "minor": true},
+      {"value": 22.5, "px": 1682.21, "minor": true}
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 248.86,
+    "tickMarks": true,
+    "notes": "axisLineCol is the left frame line (black, ~5 px), which carries the ticks; the vertical zero line (col 995.78) carries none. Inward majors at -80..80 every 20 emu/g, minors at the odd tens (+/-90 included); mirrored on the right frame line. The left marks at 80 and -80 merge with curves; -80 is taken from the right frame line (1153.64), 80 from the left.",
+    "ticks": [
+      {"value": 80, "py": 139.42, "label": "80"},
+      {"value": 60, "py": 265.25, "label": "60"},
+      {"value": 40, "py": 393.09, "label": "40"},
+      {"value": 20, "py": 519.82, "label": "20"},
+      {"value": 0, "py": 646.55, "label": "0"},
+      {"value": -20, "py": 774.41, "label": "-20"},
+      {"value": -40, "py": 900.22, "label": "-40"},
+      {"value": -60, "py": 1027.83, "label": "-60"},
+      {"value": -80, "py": 1153.64, "label": "-80"},
+      {"value": 90, "py": 75.67, "minor": true},
+      {"value": 70, "py": 202.32, "minor": true},
+      {"value": 50, "py": 330.21, "minor": true},
+      {"value": 30, "py": 456.0, "minor": true},
+      {"value": 10, "py": 583.62, "minor": true},
+      {"value": -10, "py": 709.44, "minor": true},
+      {"value": -30, "py": 837.36, "minor": true},
+      {"value": -50, "py": 964.05, "minor": true},
+      {"value": -70, "py": 1090.79, "minor": true},
+      {"value": -90, "py": 1218.59, "minor": true}
+    ]
+  },
+  "paperValues": [
+    {
+      "quantity": "Hc, AP-35 (3.5 GPa, red)",
+      "paper": "9.86 kOe",
+      "pixels": "zero crossings at -9.96 and +9.75 kOe (cols ~691.3 / 1293.1 on the zero row) -> Hc 9.86 kOe",
+      "agrees": true
+    },
+    {
+      "quantity": "Hc, AP-04 (0.4 GPa, cyan)",
+      "paper": "0.13 kOe",
+      "pixels": "both branches inside one ~15 px (0.5 kOe) stroke at M = 0, centred at +0.04 kOe; not resolvable",
+      "agrees": null
+    },
+    {
+      "quantity": "Ms at 23 kOe, anisotropic bulks",
+      "paper": "73-79 emu/g",
+      "pixels": "curves at the right frame edge between ~74 and ~81 emu/g",
+      "agrees": null
+    }
+  ],
+  "pitfalls": [
+    "Four-quadrant: the black zero lines (row 646.91, col 995.78) cross the box like a second pair of axes but carry no ticks; the ticks hang on the bottom/left frame lines.",
+    "The legend (\"Pressure (GPa)\" and seven line samples with labels 4.0 ... 0.4) sits inside the top-left quadrant and the horizontal zero line passes through it between the 1.0 and 0.8 entries.",
+    "Seven loops of similar colours overlap heavily (4.0 dark grey, 3.5 red, 2.6 blue, 1.5 green, 1.0 purple, 0.8 olive, 0.4 cyan); the loops are not single-valued in x.",
+    "Minus signs are short dashes; labels are a serif font; Y title \"Magnetization (emu/g)\", X title \"Internal field (kOe)\".",
+    "Pixel-doubled source: every row and column appears twice.",
+    "Panel letter \"(a)\" at the top left outside the frame."
+  ]
+}

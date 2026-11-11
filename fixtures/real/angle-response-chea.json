@@ -1,0 +1,139 @@
+{
+  "image": "angle-response-chea.png",
+  "description": "Angular response of three detectors relative to an ionization chamber (Excel line chart with circle markers; blue PTW 60019, orange PTW 60023, red SN Edge) vs gantry angle -60..60 deg, deviations +4 % .. -12 %. The X axis line runs through the middle of the plot at 0 % with its labels just below it; the Y axis line is the left edge at -60 deg. No tick marks on either axis; light-grey gridlines at every labelled value. Journal figure (Chea et al. 2024, Radiat Oncol 19:40, Fig. 10 panel a; crop x 0-980, y 0-642 of the publisher's 1960x642 PNG), 980x642 PNG. Hand-labelled by pixel analysis (Pillow/NumPy/SciPy): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": {"left": 98.75, "right": 955.16, "top": 9.22, "bottom": 631.48},
+  "plotBox": [[98.75, 9.22], [955.16, 9.22], [955.16, 631.48], [98.75, 631.48]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 164.31,
+    "position": "middle (y = 0 %)",
+    "tickMarks": false,
+    "notes": "axisLineRow is the horizontal axis line at 0 % (grey ~190, 2-3 px, darker than the gridlines ~217), in the middle of the plot; labels -60 ... 60 sit just below it (rows 186-200), crossed by the curves. No tick marks: tick px are the vertical gridline centres (the -60 one is the Y axis line). The rendering is not exactly affine: gridlines AND markers at -60..-30 sit 2 px right of the line through the others (spacing 141 px between -40 and -20, 143 px elsewhere).",
+    "ticks": [
+      {"value": -60, "px": 98.75},
+      {"value": -40, "px": 241.85},
+      {"value": -20, "px": 382.93},
+      {"value": 0, "px": 525.97},
+      {"value": 20, "px": 669.09},
+      {"value": 40, "px": 812.1},
+      {"value": 60, "px": 955.16}
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 98.75,
+    "tickMarks": false,
+    "notes": "axisLineCol is the vertical axis line at -60 deg (grey ~190). No tick marks: tick py are the horizontal gridline centres, values in percent (labels carry a \"%\" suffix: \"4%\" ... \"-12%\"). The -12 % gridline is drawn at row 631.48, 2 px below the value position 629.4 given by the other gridlines and by its own label centre (628.75); the label is used.",
+    "ticks": [
+      {"value": 4, "py": 9.22, "label": "4%"},
+      {"value": 2, "py": 86.74, "label": "2%"},
+      {"value": 0, "py": 164.31, "label": "0%"},
+      {"value": -2, "py": 241.82, "label": "-2%"},
+      {"value": -4, "py": 319.35, "label": "-4%"},
+      {"value": -6, "py": 396.85, "label": "-6%"},
+      {"value": -8, "py": 474.38, "label": "-8%"},
+      {"value": -10, "py": 551.97, "label": "-10%"},
+      {"value": -12, "py": 629.4, "label": "-12%"}
+    ]
+  },
+  "knownValues": [
+    {
+      "series": "SN Edge",
+      "description": "Red marker at 60 deg (text: -11.9 %)",
+      "x": [60, 60],
+      "y": -11.9,
+      "py": 625.54
+    },
+    {
+      "series": "PTW 60023",
+      "description": "Orange marker at 60 deg (text: -6.6 %)",
+      "x": [60, 60],
+      "y": -6.62,
+      "py": 420.92
+    },
+    {
+      "series": "PTW 60019",
+      "description": "Blue marker at 60 deg, lower half under the \"60\" label (text: -0.5 %)",
+      "x": [60, 60],
+      "y": -0.51,
+      "py": 184.0
+    },
+    {
+      "series": "PTW 60019",
+      "description": "Blue marker at -60 deg, on the top gridline (text: +4 %; pixels 3.95 %, 1.9 px)",
+      "x": [-60, -60],
+      "y": 3.95,
+      "py": 11.1
+    }
+  ],
+  "markerSeries": [
+    {
+      "series": "PTW 60019, blue circles",
+      "markerSizePx": 13,
+      "seed": [884, 180],
+      "markers": [
+        [98.7, 11.1],
+        [170.3, 45.2],
+        [242.1, 74.0],
+        [313.5, 106.0],
+        [382.9, 123.0],
+        [454.5, 138.0],
+        [597.8, 162.3],
+        [668.8, 174.1],
+        [740.5, 181.8],
+        [812.2, 185.0],
+        [884.0, 180.0],
+        [955.1, 184.0]
+      ]
+    },
+    {
+      "series": "PTW 60023, orange circles",
+      "markerSizePx": 13,
+      "seed": [812, 286],
+      "markers": [
+        [99.1, 113.0],
+        [170.5, 102.8],
+        [242.0, 103.0],
+        [313.5, 116.7],
+        [383.1, 119.0],
+        [454.5, 132.8],
+        [597.8, 176.5],
+        [669.1, 201.8],
+        [740.8, 240.3],
+        [812.1, 285.8],
+        [883.9, 341.6],
+        [955.0, 420.9]
+      ]
+    },
+    {
+      "series": "SN Edge, red circles",
+      "markerSizePx": 13,
+      "seed": [812, 397],
+      "markers": [
+        [99.1, 158.3],
+        [170.5, 112.5],
+        [242.1, 85.0],
+        [313.5, 89.0],
+        [382.9, 102.9],
+        [454.5, 122.9],
+        [526.1, 164.4],
+        [597.6, 200.2],
+        [669.1, 249.9],
+        [740.8, 319.6],
+        [812.2, 397.2],
+        [883.7, 496.5],
+        [955.1, 625.5]
+      ]
+    }
+  ],
+  "markerNotes": "Markers are 13 px circles at every 10 deg, joined by 3 px lines of their own colour, drawn blue, then orange, then red on top. Centres of clean markers: centroid of the colour after a 3 px opening; partly hidden ones (blue at -40, -30, -20, -10, 40, 60; orange at -50, -10, 20) by matching the visible half of a clean marker of the same colour (+/- 1 px; blue at -20 shows only its lower rim, +/- 2 px). Not listed because fully hidden under the red marker: blue and orange at 0 deg (all three series are 0 % at 0 deg by construction).",
+  "legendSamples": [[170, 509], [170, 559], [170, 609]],
+  "pitfalls": [
+    "The X axis line is at 0 % in the middle of the plot (axis-through-middle); its labels -60 ... 60 sit just below it inside the plot, where the curves cross them; the blue markers at 40 and 60 deg are partly covered by the \"40\" and \"60\" labels.",
+    "No tick marks on either axis (Excel default): only gridlines and labels.",
+    "Y labels carry a \"%\" suffix (\"4%\", \"-12%\"); minus signs are short hyphen-like dashes.",
+    "The bottom gridline (row 631.48) is 2 px below the -12 % value position (629.4); x positions -60..-30 are 2 px right of an affine fit through the rest (both in the source image).",
+    "A three-entry legend with line+marker samples sits inside the plot at the bottom left (rows ~500-620, columns 130-370), over the gridlines; \"Angle (deg)\" axis title inside the plot at the top right of the 0 % line; panel title \"MRIdian (a)\" inside the plot at the top.",
+    "All three series meet at (0, 0 %); blue/orange/red markers overlap at -40 ... -10 deg."
+  ]
+}

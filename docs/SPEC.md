@@ -467,6 +467,22 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   95.3 %, tick recall 85.9 %, minor recall 69.5 %, precision 98.7 % (Takata's unlabelled
   10-month minors count against precision, as before). Rebaselined for the corpus change, not
   for a detector change.
+- **Negative-value figures (2026-11-10)**: six CC BY figures whose data span negative X and/or Y
+  were added (80 images; provenance in `fixtures/real/PROVENANCE.md`; categories
+  `four-quadrant`, `negative-x`, `negative-y`, `axis-through-middle`, `zero-lines`, `u2212`, …).
+  No detector change: every earlier image's result is unchanged and the baseline was re-recorded
+  only because the new figures join `real`, `journal`, `png`, `jpeg`, `frame`, `minor-ticks`.
+  Results: `bland-altman-rabe` (matplotlib box, inward ticks on four sides) lines within 0.02 px,
+  6/6 + 8/9 majors and 20/20 + 27/28 minors (the 0 and 45 marks are hidden inside the bias /
+  LoA lines, which presumably accounts for the misses); the three Origin four-quadrant frames
+  with black zero lines (`hysteresis-loops-zhou`, `moke-loops-nayyef`,
+  `hysteresis-ferrite-tahir`) all choose the bottom/left frame lines, not the zero lines
+  (≤ 0.44 px), boxes found, 8/9 + 7/9, 7/7 + 5/5 and 9/9 + 11/11 majors (Nayyef and Tahir 2
+  extra Y ticks each); `beam-profile-pittet`
+  (Excel L axes, JPEG) both axes, 9/9 + 2/3 majors but 0/20 X minors (inward 1-mm marks).
+  **Known failure**: `angle-response-chea` (Excel, no tick marks, X axis line at 0 % through the
+  middle of the plot, Y axis at the left edge) — the Y axis is found (0.09 px), the middle X axis
+  is not (a line ~310 px away is chosen; box off by 110 px); no false ticks on its bare axes.
 - **KM label correction** (history): pixel analysis in Phase 4 found very faint 3-px x tick marks (grey
   ~170–200) at every label of the then-fixture `km-pericardial-effusion.jpg` (removed in the release corpus), which had been labelled
   "no x tick marks"; the label now says `tickMarks: true` (positions unchanged, within 1 px).
@@ -593,6 +609,17 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   charts only). `x-axis:top` 81.3 % of axes correct (13/16), 5 of 8 charts end to end; declined:
   c61's two-decade log Y (no ticks found), c62's low-resolution `10⁻¹` labels, c63's Y (tangled
   note). `y-axis:right`: c68 both axes; c69's right log axis not found (see Axis detection).
+- **Negative-value figures (2026-11-10)**: with the six new real figures (80 images) 67.5 % of
+  axes correct, **0 wrong**, 51.2 % of images end to end; earlier results unchanged. Correct:
+  Rabe both high (0.06 / 0.50 %; U+2212 minus read; bias / LoA 1.74 / 46.11 / −42.12 →
+  2.03 / 46.15 / −41.60, within 0.52 ≈ 1 px), Tahir X medium + Y high (0.03 / 0.08 %; ±Ms at
+  ±2 kOe all within 0.01 emu/g), Zhou X medium + Y high (0.17 / 0.12 %), Nayyef Y medium
+  (0.02 %). Misread labels were outvoted on these (Zhou's −20, −15, −10 kOe read without the
+  minus, its −20 emu/g read "-2.0"; Tahir's −1.5 / −1.0 without the minus). **Known failures**
+  (declined, not wrong): minus signs dropped by OCR — Nayyef's bold X labels read
+  900 600 300 0 300 600 900, Pittet's −20 … −5 read 20 … 5; Pittet's Y (only "1" and "0.5" read,
+  both rejected); Chea (no X axis found, no labels read). `knownMaxError` in categories holding
+  Chea or Pittet is 1 (their known values are not predicted).
 
 ## Auto-trace (line tracing engine)
 
@@ -953,6 +980,19 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   dash-dot); a series running inside the axis stroke is lost there with the axis (`l110/s0`, a
   pink line under the black top axis for its first 40 %: coverage 64 %); a dashed trace stops at
   an open marker whose cap it entered (A22 from most seeds stops at 0.5 Gy).
+- **Negative-value figures (2026-11-10)**: three of the six new real figures have truth the line
+  formats can express (279 traces; every earlier trace unchanged; rebaselined for the new
+  members of `real`, `png`, `jpeg`, `find-points`, `series:*`, `color:*`). `bland-altman-rabe`:
+  bias (solid black, 6 px) and both limits of agreement (grey dashed) as `knownValues`
+  horizontal segments — curve, 100 % coverage, 0.16 / 0.00 / 0.33 px, styles right, markers of
+  four colours crossing them. `beam-profile-pittet`: the SciFi dot series' flat top and its two
+  tails on the X axis as segments — the flat top is traced (0.09 px) but the tails, lying in the
+  axis stroke, are lost (coverage 35.8 %). `angle-response-chea` (`markerSeries`, three colours
+  of identical 13-px circles joined by lines of their own colour): **known failure** — Find
+  points matches the other colours' circles (30 % of found markers are of another series; recall
+  75.6 %, precision 54.0 %; blue 7/12, orange 9/12, red 10/13 found). The hysteresis loops (Zhou,
+  Nayyef, Tahir) are not single-valued in x and no truth format here covers them; they are in
+  `bench:axes` only.
 
 ## Auto-trace — UI
 
@@ -1083,7 +1123,10 @@ listed in `bench/lines/real/manifest.json`). Label from measured pixels, includi
 **Licensing (decided 2026-11-07)**: only figures published under CC BY may be in the public
 repository, each with its source, DOI, PMC id, figure/panel and crop box, licence wording and
 URL, attribution, date obtained and labeller recorded in
-[`fixtures/real/PROVENANCE.md`](../fixtures/real/PROVENANCE.md). The current four:
+[`fixtures/real/PROVENANCE.md`](../fixtures/real/PROVENANCE.md). Six figures with negative
+values were added on 2026-11-10 (`angle-response-chea`, `hysteresis-loops-zhou`,
+`moke-loops-nayyef`, `bland-altman-rabe`, `beam-profile-pittet`, `hysteresis-ferrite-tahir`;
+described in the provenance file and in their labels' `pitfalls`). The first four:
 `km-pericardial-pao.png` (Pao 2020 fig. 1c, KM-style cumulative incidence, black + grey, zero
 lines inside L-shaped axes), `km-sas-frame-ikawa.png` (Ikawa 2022 fig. 1a, SAS closed frame not
 at zero, four series in two colours × two styles, censor ticks, risk table below),
