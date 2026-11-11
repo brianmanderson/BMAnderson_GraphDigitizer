@@ -289,6 +289,18 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   every point. Selecting a point (the last one of a multi-selection) or adding one expands its
   line and scrolls its row into view; collapsing a line whose point is selected keeps it
   collapsed.
+- **Hiding a line on the canvas (decided 2026-11-10)**: an eye button in each line row (after the
+  colour swatch; "Hide Line 1" / "Show Line 1", open or struck-through eye, the row's swatch,
+  name and count dimmed while hidden) hides that line's points to cut clutter while placing
+  others. A hidden line's points are not drawn (canvas and loupe) and are inert: never hit,
+  hovered, box-selected, nudged, dragged or deleted with the selection; hiding a line drops its
+  points from the selection (they stay unselected when it is shown again). It is display only:
+  the table, CSV, TSV and JSON keep every point. Points are never placed out of sight: a line
+  that becomes active (its radio or name, a pick in its table rows, a new line, an undo, a
+  restore) is shown, and so is the active line when a click or an accepted trace adds points
+  to it. The active line may still be hidden by its eye until then. An Auto-trace ghost is drawn
+  whatever the visibility, so a suggestion is never accepted unseen. Like collapsing: UI state
+  only (no format bump, not in the history), kept in the autosave record, not in project files.
 - **Panel layout — step controls first (decided after Auto-trace)**: the step's controls (in Data:
   prompt, every line row, "+ Add line", "Delete N points", the Auto-trace buttons and the
   open Auto-trace panel) take their full height and never shrink; the points table gets the rest
@@ -347,8 +359,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   Undo, shown only while that action is still the newest step. Caveat: the autosave then holds the new state, so after a
   reload the replaced work is gone unless it was saved as a project file.
 - **Autosave** (`src/ui/autosave.ts`): IndexedDB database `graph-digitizer`, store `autosave`,
-  key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, savedAt }` (`collapsed`:
-  ids of lines whose point lists are collapsed), written 400 ms after
+  key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, hidden, savedAt }`
+  (`collapsed`: ids of lines whose point lists are collapsed; `hidden`: ids of lines hidden on the
+  canvas, absent in older records), written 400 ms after
   the last change and on `pagehide`/tab hidden. On start it is read through `parseProject` and
   restored unless the user already loaded something — in which case that document is saved as
   soon as the read finishes (it missed the debounced save, which waits for the read); the step

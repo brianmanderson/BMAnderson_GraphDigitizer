@@ -8,6 +8,9 @@ interface Props {
   /** Points selected (on the canvas or in the table), of any lines. */
   selectedCount: number;
   onActivate: (datasetId: string) => void;
+  /** Lines hidden on the canvas (their eye is shut); the table and exports still hold them. */
+  hidden: ReadonlySet<string>;
+  onToggleVisible: (datasetId: string) => void;
   onRename: (datasetId: string, name: string) => void;
   onRecolor: (datasetId: string, color: string) => void;
   onDelete: (datasetId: string) => void;
@@ -19,7 +22,7 @@ interface Props {
   trace: Omit<ComponentProps<typeof TracePanel>, 'activeName' | 'activeHasPoints'>;
 }
 
-export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, movePoints, trace }: Props) {
+export function DataStep({ doc, calibrated, selectedCount, onActivate, hidden, onToggleVisible, onRename, onRecolor, onDelete, onAdd, onDeleteSelected, movePoints, trace }: Props) {
   const active = doc.datasets.find((d) => d.id === doc.activeDatasetId);
   const open = trace.trace;
   return (
@@ -45,7 +48,7 @@ export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename,
 
       <ul className="datasets" aria-label="Lines">
         {doc.datasets.map((d) => (
-          <li key={d.id} className={d.id === doc.activeDatasetId ? 'active' : undefined}>
+          <li key={d.id} className={rowClass(d.id === doc.activeDatasetId, hidden.has(d.id))}>
             <input
               type="radio"
               name="active-dataset"
@@ -59,6 +62,15 @@ export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename,
               onChange={(e) => onRecolor(d.id, e.target.value)}
               aria-label={`Colour of ${d.name}`}
             />
+            <button
+              type="button"
+              className="small icon eye"
+              onClick={() => onToggleVisible(d.id)}
+              aria-label={`${hidden.has(d.id) ? 'Show' : 'Hide'} ${d.name}`}
+              title={`${hidden.has(d.id) ? 'Show' : 'Hide'} ${d.name}'s points on the chart`}
+            >
+              <EyeIcon open={!hidden.has(d.id)} />
+            </button>
             <input
               type="text"
               className="name"
@@ -93,5 +105,21 @@ export function DataStep({ doc, calibrated, selectedCount, onActivate, onRename,
       </div>
       <TracePanel {...trace} activeName={active?.name ?? ''} activeHasPoints={(active?.points.length ?? 0) > 0} />
     </section>
+  );
+}
+
+function rowClass(active: boolean, hidden: boolean): string | undefined {
+  const names = [active && 'active', hidden && 'line-hidden'].filter(Boolean);
+  return names.length > 0 ? names.join(' ') : undefined;
+}
+
+/** Open eye: the line's points are drawn; struck through: they are hidden. */
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {!open && <path d="M3 3l18 18" />}
+    </svg>
   );
 }
