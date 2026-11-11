@@ -34,8 +34,9 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
   serves the build on :4173).
 - `npm run build` — type-check + bundle in `dist/` (Tesseract's files go to `dist/tesseract/`).
   `BASE_PATH` (default `/`) sets Vite's `base` for `build`/`preview` only — never for dev or
-  e2e, which assume `/`. `.github/workflows/deploy.yml` runs the gate on every push/PR and, on
-  `main`, builds with `BASE_PATH=/BMAnderson_GraphDigitizer/` and deploys `dist/` to GitHub Pages
+  e2e, which assume `/`. `.github/workflows/deploy.yml` runs the gate (`verify`) and the privacy
+  check (`privacy`, on a `BASE_PATH=/BMAnderson_GraphDigitizer/` build) on every push/PR; on
+  `main`, `deploy` needs both and publishes that checked `dist/` to GitHub Pages
   (https://brianmanderson.github.io/BMAnderson_GraphDigitizer/).
 - **Verification gate** — a change is done only when `npm run verify` passes: `typecheck`,
   `lint`, `test`, `bench:axes` (~8 s; exits 1 on any regression vs `bench/axes/baseline.json`),
@@ -44,7 +45,9 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
 - `test:e2e` needs `npx playwright install chromium` once and runs its own server on :5174.
 - `npm run privacy:check` (not in `verify`; own CI job) builds, serves `dist/` on a free port
   and records every request of a scripted session — page and workers, over CDP — into
-  `privacy-report.json`; exit 1 on any foreign origin or if the worker requests were not seen.
+  `privacy-report.json`; exit 1 on any foreign origin, any request outside `BASE_PATH`, or if
+  the worker requests were not seen. Honours `BASE_PATH` (in PowerShell: `$env:BASE_PATH=…`;
+  Git Bash rewrites a leading `/` unless `MSYS_NO_PATHCONV=1`).
 
 ## The skills are the operational manual
 

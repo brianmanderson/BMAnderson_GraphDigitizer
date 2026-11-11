@@ -81,20 +81,36 @@ export function validSelection(doc: DocState, sel: Selection): Selection {
   return valid.length === sel.length ? sel : valid;
 }
 
+/** The selection without the points of `hidden` lines; `sel` itself when none is dropped. */
+export function withoutHidden(sel: Selection, hidden: ReadonlySet<string>): Selection {
+  if (sel.length === 0 || hidden.size === 0) return sel;
+  const kept = sel.filter((t) => t.kind === 'ref' || !hidden.has(t.datasetId));
+  return kept.length === sel.length ? sel : kept;
+}
+
 /** Every point of one line, in placement order. */
 export function linePoints(doc: DocState, datasetId: string): PointTarget[] {
   const d = doc.datasets.find((x) => x.id === datasetId);
   return d ? d.points.map((p) => ({ kind: 'point', datasetId: d.id, pointId: p.id })) : [];
 }
 
-/** Every point, of any line, inside the rectangle with corners `a` and `b` (image px, edges included). */
-export function pointsInRect(doc: DocState, a: { px: number; py: number }, b: { px: number; py: number }): PointTarget[] {
+/**
+ * Every point, of any line but the `hidden` ones, inside the rectangle with corners `a` and `b`
+ * (image px, edges included).
+ */
+export function pointsInRect(
+  doc: DocState,
+  a: { px: number; py: number },
+  b: { px: number; py: number },
+  hidden: ReadonlySet<string> = new Set(),
+): PointTarget[] {
   const x0 = Math.min(a.px, b.px);
   const x1 = Math.max(a.px, b.px);
   const y0 = Math.min(a.py, b.py);
   const y1 = Math.max(a.py, b.py);
   const out: PointTarget[] = [];
   for (const d of doc.datasets) {
+    if (hidden.has(d.id)) continue;
     for (const p of d.points) {
       if (p.px >= x0 && p.px <= x1 && p.py >= y0 && p.py <= y1) out.push({ kind: 'point', datasetId: d.id, pointId: p.id });
     }

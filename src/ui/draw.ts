@@ -49,7 +49,11 @@ export interface DrawInput {
   marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
   /** The crop being chosen (Image step, crop mode): whole-pixel columns x0…x1−1, rows y0…y1−1. */
   crop?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Lines hidden with their eye toggle: their points are not drawn (UI state, never in the document). */
+  hidden?: ReadonlySet<string>;
 }
+
+const NO_LINES: ReadonlySet<string> = new Set();
 
 export function drawWorkspace(input: DrawInput): void {
   const { ctx, width, height, dpr, view, image, doc } = input;
@@ -82,7 +86,9 @@ export function drawWorkspace(input: DrawInput): void {
 
   const selected = selectionKeys(input.selected);
   const hovered = input.hovered ? targetKey(input.hovered) : null;
+  const hidden = input.hidden ?? NO_LINES;
   for (const d of doc.datasets) {
+    if (hidden.has(d.id)) continue;
     for (const p of d.points) {
       const key = `${d.id}/${p.id}`;
       drawPoint(ctx, imageToScreen(view, p.px, p.py), d.color, selected.has(key), hovered === key);
@@ -407,9 +413,16 @@ export const HIT_RADIUS = 9;
 /**
  * The marker under screen point (x, y). Only the current step's markers are live: refs while
  * calibrating, data points otherwise, so a click in one step cannot move the other's markers.
- * Among overlapping points the active dataset's win.
+ * Among overlapping points the active dataset's win. Points of `hidden` lines are never hit.
  */
-export function hitTest(doc: DocState, view: View, x: number, y: number, step: DrawInput['step']): Target | null {
+export function hitTest(
+  doc: DocState,
+  view: View,
+  x: number,
+  y: number,
+  step: DrawInput['step'],
+  hidden: ReadonlySet<string> = NO_LINES,
+): Target | null {
   let best: Target | null = null;
   let bestD = Infinity;
   const consider = (target: Target, px: number, py: number, bias: number) => {
@@ -427,6 +440,7 @@ export function hitTest(doc: DocState, view: View, x: number, y: number, step: D
     }
   } else if (step === 'data') {
     for (const d of doc.datasets) {
+      if (hidden.has(d.id)) continue;
       const bias = d.id === doc.activeDatasetId ? 0 : 2;
       for (const p of d.points) consider({ kind: 'point', datasetId: d.id, pointId: p.id }, p.px, p.py, bias);
     }

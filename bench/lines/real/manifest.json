@@ -5,6 +5,9 @@
     { "truth": "../../../fixtures/real/km-sas-frame-ikawa.json", "tags": ["km", "png", "four-series", "same-colour"] },
     { "truth": "../../../fixtures/real/km-same-colour-styles.json", "tags": ["km", "jpeg", "same-colour"] },
     { "truth": "../../../fixtures/real/scatter-errorbars-glowa.json", "tags": ["png", "find-points", "errorbars", "two-colours"] },
+    { "truth": "../../../fixtures/real/angle-response-chea.json", "tags": ["png", "find-points", "line-markers", "three-colours", "negative-y"] },
+    { "truth": "../../../fixtures/real/bland-altman-rabe.json", "tags": ["png", "bland-altman", "negative-y", "dashed-bounds"] },
+    { "truth": "../../../fixtures/real/beam-profile-pittet.json", "tags": ["jpeg", "beam-profile", "negative-x", "dotted-markers"] },
     {
       "truth": "../../../fixtures/synthetic/synthetic-linear.json",
       "source": "fixture",

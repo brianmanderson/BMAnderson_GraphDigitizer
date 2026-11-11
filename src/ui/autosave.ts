@@ -16,6 +16,8 @@ export interface AutosaveRecord {
   activeDatasetId: string;
   /** Lines whose point lists are collapsed in the table. */
   collapsed: string[];
+  /** Lines hidden on the canvas with their eye toggle (absent in records from older versions). */
+  hidden: string[];
   savedAt: number;
 }
 

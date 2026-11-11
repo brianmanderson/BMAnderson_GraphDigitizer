@@ -575,6 +575,20 @@ kbd {
   min-width: 22px;
   text-align: right;
 }
+.datasets button.eye {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+.datasets li.line-hidden button.eye {
+  color: var(--text);
+}
+/* A hidden line's row is dimmed; its eye and delete buttons stay at full strength. */
+.datasets li.line-hidden input[type='color'],
+.datasets li.line-hidden .name,
+.datasets li.line-hidden .count {
+  opacity: 0.5;
+}
 
 /* ---------- Table ---------- */
 

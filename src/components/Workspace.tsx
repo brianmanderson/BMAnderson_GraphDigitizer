@@ -58,6 +58,8 @@ interface Props {
    * select and drags move points; nothing is placed.
    */
   movePoints: boolean;
+  /** Lines hidden with their eye toggle: not drawn, never hit, hovered or box-selected. */
+  hiddenLines: ReadonlySet<string>;
   /** A pending auto-detect suggestion to draw (Axes step only). */
   ghost?: Ghost | null;
   /**
@@ -178,7 +180,10 @@ export function Workspace(props: Props) {
     const ctx = loupeRef.current?.getContext('2d');
     if (!ctx || !loupe || !doc || !image) return;
     const markers: LoupeMarker[] = [];
-    for (const d of doc.datasets) for (const p of d.points) markers.push({ px: p.px, py: p.py, color: d.color });
+    for (const d of doc.datasets) {
+      if (props.hiddenLines.has(d.id)) continue;
+      for (const p of d.points) markers.push({ px: p.px, py: p.py, color: d.color });
+    }
     for (const [name, r] of Object.entries(doc.refs)) {
       if (r) markers.push({ px: r.px, py: r.py, color: REF_COLORS[name[0] as 'X' | 'Y'] });
     }
@@ -276,6 +281,7 @@ export function Workspace(props: Props) {
       trace: props.traceGhost ?? null,
       marquee,
       crop: cropping ? (props.crop?.rect ?? null) : null,
+      hidden: props.hiddenLines,
     });
   });
 
@@ -293,7 +299,7 @@ export function Workspace(props: Props) {
     } else if (e.button === 0 && cropping) {
       gesture.current = { kind: 'crop', startX: x, startY: y, start: screenToImage(view, x, y) };
     } else if (e.button === 0) {
-      const hit = markersLive ? hitTest(doc, view, x, y, step) : null;
+      const hit = markersLive ? hitTest(doc, view, x, y, step, props.hiddenLines) : null;
       const movingPoints = step === 'data' && markersLive;
       if (hit && movingPoints && e.shiftKey) {
         gesture.current = { kind: 'toggle', target: hit, startX: x, startY: y };
@@ -338,7 +344,7 @@ export function Workspace(props: Props) {
     props.onCursor(isOnImage(at.px, at.py, doc.image.width, doc.image.height) ? at : null);
     const g = gesture.current;
     if (!g) {
-      setHovered(markersLive ? hitTest(doc, view, x, y, step) : null);
+      setHovered(markersLive ? hitTest(doc, view, x, y, step, props.hiddenLines) : null);
       return;
     }
     if (g.kind === 'pan') {
@@ -392,7 +398,7 @@ export function Workspace(props: Props) {
       return;
     }
     if (g.kind === 'marquee') {
-      if (!clicked) props.onSelect(pointsInRect(doc, screenToImage(view, g.startX, g.startY), at), g.additive ? 'add' : 'replace', false);
+      if (!clicked) props.onSelect(pointsInRect(doc, screenToImage(view, g.startX, g.startY), at, props.hiddenLines), g.additive ? 'add' : 'replace', false);
       else if (!g.additive) props.onSelect([], 'replace', false);
       return;
     }

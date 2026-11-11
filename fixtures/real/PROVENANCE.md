@@ -97,6 +97,147 @@ top-left); crop boxes are given in the source image's pixels as `x0–x1, y0–y
   1.56; 2 Fx 1.58, 2.01, 2.21, 1.99 — which the labelled centres reproduce through the ticks
   within 0.01 RBE / 0.5 keV/µm. The horizontal bars' half-widths are not tabulated.
 
+## Negative-value figures (added 2026-11-10)
+
+Six figures whose data span negative X and/or Y values, chosen from a research shortlist and
+approved by the owner. Each licence was re-read on the publisher's article page on 2026-11-10.
+The full-size images were downloaded on 2026-11-10 from the URLs given; SHA-256 of each
+downloaded file is recorded so the crop can be reproduced. All crops are whole-pixel boxes of the
+source, no resampling. The Springer Nature licence sentence (A, C, D, F) reads: "Open Access This
+article is licensed under a Creative Commons Attribution 4.0 International License, which permits
+use, sharing, adaptation, distribution and reproduction in any medium or format, as long as you
+give appropriate credit to the original author(s) and the source, provide a link to the Creative
+Commons licence, and indicate if changes were made." Labelled by pixel analysis (Pillow, NumPy,
+SciPy) in the negative-axis Claude Code session, 2026-11-10.
+
+### angle-response-chea.png (980 × 642, PNG)
+
+- **Source**: Chea M, Croisé M, Huet C, Bassinet C, Benadjaoud M-A, Jenny C. MR compatible
+  detectors assessment for a 0.35 T MR-linac commissioning. *Radiation Oncology* 2024;19:40.
+- **DOI**: 10.1186/s13014-024-02431-8 — **PMC**: PMC10956263
+- **Figure / panel / crop**: Fig. 10, panel **a** (angular response of three detectors relative
+  to the PTW31010 chamber at the MRIdian, an Excel chart); crop `0–980, 0–642` of the publisher's
+  full-size figure `MediaObjects/13014_2024_2431_Fig10_HTML.png` (1960 × 642, SHA-256
+  `b8bce527…`) from `media.springernature.com/full/springer-static/image/…`.
+- **Licence**: CC BY 4.0 — Springer Nature sentence above — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Chea M et al. (2024), Radiat Oncol 19:40, doi:10.1186/s13014-024-02431-8,
+  Fig. 10a. © The Author(s) 2024. Licensed under CC BY 4.0. Cropped to panel a.
+- **Obtained**: 2026-11-10 from the publisher (Springer Nature media server).
+- **Labelled by**: truth in `angle-response-chea.json` (axis lines, 7 + 9 value positions, no
+  tick marks; 36 visible marker centres of three series; 4 known values). The text gives the
+  deviations at 60° as −0.5, −6.6 and −11.9 % (PTW 60019, PTW 60023, SN Edge) and +4 % at −60°
+  (PTW 60019); the marker centres read −0.51, −6.62, −11.90 and +3.95 % through the labelled
+  gridlines (the last within the text's whole-percent rounding, 1.9 px).
+
+### hysteresis-loops-zhou.png (1835 × 1458, PNG)
+
+- **Source**: Zhou TH, Zhang B, Zheng X, Song Y, Si P, Choi C-J, Cho Y-R, Park J. Anisotropic
+  SmFe10V2 Bulk Magnets with Enhanced Coercivity via Ball Milling Process. *Nanomaterials*
+  2024;14(16):1329.
+- **DOI**: 10.3390/nano14161329 — **PMC**: PMC11357663
+- **Figure / panel / crop**: Fig. 6, panel **a** (demagnetization-corrected hysteresis loops of
+  seven anisotropic bulks, AP-04 … AP-40); crop `0–1835, 0–1458` of the publisher's figure
+  `nanomaterials-14-01329-g006.png` (3832 × 1458, SHA-256 `1cb00e4c…`) from
+  `mdpi-res.com/nanomaterials/nanomaterials-14-01329/article_deploy/html/images/`.
+- **Licence**: CC BY 4.0 — "This article is an open access article distributed under the terms
+  and conditions of the Creative Commons Attribution (CC BY) license
+  (https://creativecommons.org/licenses/by/4.0/)."
+- **Attribution**: Zhou TH et al. (2024), Nanomaterials 14(16):1329, doi:10.3390/nano14161329,
+  Fig. 6a. © 2024 by the authors. Licensee MDPI. Licensed under CC BY 4.0. Cropped to panel a.
+- **Obtained**: 2026-11-10 from the publisher (MDPI resource server).
+- **Labelled by**: truth in `hysteresis-loops-zhou.json` (frame lines, 9 + 9 major and 10 + 10
+  minor ticks, zero lines). The text gives Hc = 9.86 kOe for AP-35 (3.5 GPa, red) and 0.13 kOe
+  for AP-04 (0.4 GPa, cyan), and Ms at 23 kOe of 73–79 emu/g; the red loop's zero crossings read
+  −9.96 / +9.75 kOe from the pixels, Hc 9.86 kOe; the cyan loop's two branches lie inside one
+  ~15 px stroke at M = 0 (≈ 0.5 kOe), so 0.13 kOe cannot be read. No `knownValues` (the values
+  are on the X axis or ranges).
+
+### moke-loops-nayyef.png (942 × 865, PNG)
+
+- **Source**: Nayyef H, Świerkosz E, Janus W, Klimeczek A, Szpytma M, Zając M, Dróżdż P,
+  Kozioł-Rachwał A, Ślęzak T, Ślęzak M. Tunable interplay between exchange coupling and uniaxial
+  magnetic anisotropy in epitaxial CoO/Au/Fe trilayers. *Scientific Reports* 2023;13:10902.
+- **DOI**: 10.1038/s41598-023-38098-6 — **PMC**: PMC10322835
+- **Figure / panel / crop**: Fig. 4, panel **a** (three MOKE hysteresis loops: 300 K, 80 K ZFC,
+  80 K FC); crop `0–942, 0–865` of the publisher's full-size figure
+  `MediaObjects/41598_2023_38098_Fig4_HTML.png` (2007 × 1725, SHA-256 `f7602bf3…`).
+- **Licence**: CC BY 4.0 — Springer Nature sentence above — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Nayyef H et al. (2023), Sci Rep 13:10902, doi:10.1038/s41598-023-38098-6,
+  Fig. 4a. © The Author(s) 2023. Licensed under CC BY 4.0. Cropped to panel a.
+- **Obtained**: 2026-11-10 from the publisher (Springer Nature media server).
+- **Labelled by**: truth in `moke-loops-nayyef.json` (frame lines, 7 + 5 major and 6 + 4 minor
+  ticks, zero lines). The text gives HEB ≈ 180 Oe and MR = 1 after field cooling at 80 K (Fig.
+  4c/d). **Disagreement**: the red FC loop in panel a crosses M = 0 at about −31 and +467 Oe in
+  the pixels (marker clouds ±10 Oe), a loop shift of ≈ 218 Oe, not 180; recorded, not forced.
+  MR = 1 agrees: at H = 0 the red ascending branch sits on its −1.0 plateau.
+
+### bland-altman-rabe.png (975 × 482, PNG)
+
+- **Source**: Rabe M, Dietrich O, Forbrig R, Niyazi M, Belka C, Corradini S, Landry G, Kurz C.
+  Repeatability quantification of brain diffusion-weighted imaging for future clinical
+  implementation at a low-field MR-linac. *Radiation Oncology* 2024;19:31.
+- **DOI**: 10.1186/s13014-024-02424-7 — **PMC**: PMC10916154
+- **Figure / panel / crop**: Fig. 3, panel **c** (Bland–Altman plot, highSNR variant,
+  cylindrical ROIs; matplotlib); crop `0–975, 482–964` of the publisher's full-size figure
+  `MediaObjects/13014_2024_2424_Fig3_HTML.png` (1961 × 964, SHA-256 `60875fc6…`). The shared
+  marker legend above panel a is not in the crop.
+- **Licence**: CC BY 4.0 — Springer Nature sentence above — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Rabe M et al. (2024), Radiat Oncol 19:31, doi:10.1186/s13014-024-02424-7,
+  Fig. 3c. © The Author(s) 2024. Licensed under CC BY 4.0. Cropped to panel c.
+- **Obtained**: 2026-11-10 from the publisher (Springer Nature media server).
+- **Labelled by**: truth in `bland-altman-rabe.json` (frame lines, 6 + 9 major and 20 + 28 minor
+  ticks; bias and limits-of-agreement lines). The text gives bias +2 with LoA [−42, +46]
+  × 10⁻⁶ mm²/s for the highSNR ROIs; the drawn lines read +1.74, −42.12 and +46.11 through the
+  ticks (within ±1 px of the text's integers).
+
+### beam-profile-pittet.jpg (1264 × 936, JPEG)
+
+- **Source**: Pittet P, Esteves J, Galvan J-M, Lu G-N, Blanc F, Haefeli G, Hopchev P, Rit S,
+  Desbat L, Ribouton J, Jalade P. SciFi detector and associated method for real-time
+  determination of profile and output factor for small fields in stereotactic radiotherapy.
+  *Medical Physics* 2020;47(4):1930–1939.
+- **DOI**: 10.1002/mp.14019 — **PMC**: PMC7216919
+- **Figure / panel / crop**: Fig. 8, panel **b** (15-mm circular field: SciFi profile as blue
+  dots vs EBT3 film as an orange line; Excel chart), without the reconstructed-image and film
+  thumbnails at the right and without the "(b)" caption; crop `0–1264, 1008–1944` of the
+  publisher's figure `mp14019-fig-0008-m.jpg` (2128 × 3053, progressive JPEG, 4:4:4, SHA-256
+  `ef6abf86…`) from `aapm.onlinelibrary.wiley.com/cms/asset/8878b6e7-bb64-40a2-a3d3-bb862b49b451/`.
+  **Re-encoded**: no lossless JPEG cropper was available, so the crop (top-left on the 8-px block
+  grid) was decoded and re-saved as a baseline JPEG with the source's own quantization tables and
+  4:4:4 sampling (Pillow); against the decoded source crop 2.8 % of samples differ, by at most 7
+  grey levels (mean 0.04).
+- **Licence**: CC BY 4.0 — "This is an open access article under the terms of the Creative
+  Commons Attribution License, which permits use, distribution and reproduction in any medium,
+  provided the original work is properly cited." — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Pittet P et al. (2020), Med Phys 47(4):1930–1939, doi:10.1002/mp.14019,
+  Fig. 8b. © 2020 The Authors. Medical Physics published by Wiley Periodicals, Inc. on behalf of
+  AAPM. Licensed under CC BY 4.0. Cropped to panel b.
+- **Obtained**: 2026-11-10 from the publisher (Wiley Online Library).
+- **Labelled by**: truth in `beam-profile-pittet.json` (L-shaped axes, 9 + 3 major and 20 + 9
+  minor ticks; SciFi flat top and tails as known values). Table 2 (15 mm) gives FWHM 14.77 mm
+  (SciFi) / 15.07 mm (EBT3) and 20–80 % penumbra 2.24 / 2.03 mm. From the pixels: SciFi FWHM
+  14.76 mm (agrees); **disagreements** recorded, not forced: SciFi penumbra 2.05 mm (both sides)
+  vs 2.24, EBT3 FWHM 14.79 mm vs 15.07 (half of the plotted 1.0 level).
+
+### hysteresis-ferrite-tahir.png (968 × 809, PNG)
+
+- **Source**: Tahir W, Zeeshan T, Waseem S, Ali MD, Kayani Z, Aftab Z-H, Mehtab SMT, Ezzine S.
+  Impact of silver substitution on the structural, magnetic, optical, and antibacterial
+  properties of cobalt ferrite. *Scientific Reports* 2023;13:15730.
+- **DOI**: 10.1038/s41598-023-41729-7 — **PMC**: PMC10514321
+- **Figure / panel / crop**: Fig. 13 (hysteresis loops of AgxCo1−xFe2O4, x = 0, 0.05, 0.1,
+  0.15), the whole figure as served (`MediaObjects/41598_2023_41729_Fig13_HTML.png`, 968 × 809,
+  SHA-256 `1859a9d7…`); the file is the publisher's, byte for byte.
+- **Licence**: CC BY 4.0 — Springer Nature sentence above — http://creativecommons.org/licenses/by/4.0/
+- **Attribution**: Tahir W et al. (2023), Sci Rep 13:15730, doi:10.1038/s41598-023-41729-7,
+  Fig. 13. © The Author(s) 2023. Licensed under CC BY 4.0.
+- **Obtained**: 2026-11-10 from the publisher (Springer Nature media server).
+- **Labelled by**: truth in `hysteresis-ferrite-tahir.json` (frame lines, 9 + 11 major and 8 +
+  10 minor ticks, zero lines, 8 known values). Table 9 gives Ms 48.34, 29.06, 40.69, 45.85 emu/g
+  (x = 0, 0.05, 0.1, 0.15); the curve ends at ±2 kOe read +48.48 / −48.34, +29.16 / −28.95,
+  +40.65 / −40.61, +46.04 / −45.91 (within 1.2 px). Table 9's coercivity column is in the wrong
+  unit ("Oe", values 0.02–0.05) and is not used.
+
 ## Removed (release hygiene, 2026-11-07)
 
 Three figures used during development were not CC BY and were removed from the tree before the

@@ -1,0 +1,113 @@
+{
+  "image": "beam-profile-pittet.jpg",
+  "description": "Small-field beam profile (Excel): relative dose vs off-axis position -20..20 mm for a 15-mm circular field, SciFi detector as blue dots (one every 0.2 mm, 10 px, merging into a band on the flat top) and EBT3 film as a noisy thin orange line; the two series nearly coincide. L-shaped axes (no frame): outward majors every 5 mm below the X axis and inward minors every 1 mm above it; outward majors at 0.5 / 1 left of the Y axis and inward minors every 0.1 right of it (the Y axis ends at 1.1). A legend entry \"EBT3 film\" sits inside the plot area at the right. Journal figure (Pittet et al. 2020, Med Phys 47(4):1930, Fig. 8 panel b without the thumbnails and the \"(b)\" caption; crop x 0-1264, y 1008-1944 of the publisher's 2128x3053 JPEG, re-encoded with the source quantization tables), 1264x936 JPEG. Hand-labelled by pixel analysis (Pillow/NumPy/SciPy): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotBox": [[131.22, 5.34], [1205.21, 5.34], [1205.21, 799.0], [131.22, 799.0]],
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 799.0,
+    "tickMarks": true,
+    "notes": "axisLineRow is the X axis line (black, 1 px core + 2 antialiased rows) at relative dose 0. Outward majors (~9 px) at -20..20 every 5 mm (the -20 one is the Y axis line continuing below), inward marks (~6 px) every 1 mm above the line; the inward marks at |x| >= 13 mm are hidden under the SciFi dots lying on the axis, so only -12 ... 12 are labelled as minors.",
+    "ticks": [
+      {"value": -20, "px": 131.22, "label": "-20"},
+      {"value": -15, "px": 266.22, "label": "-15"},
+      {"value": -10, "px": 400.23, "label": "-10"},
+      {"value": -5, "px": 534.22, "label": "-5"},
+      {"value": 0, "px": 668.22, "label": "0"},
+      {"value": 5, "px": 803.19, "label": "5"},
+      {"value": 10, "px": 937.21, "label": "10"},
+      {"value": 15, "px": 1071.2, "label": "15"},
+      {"value": 20, "px": 1205.21, "label": "20"},
+      {"value": -12, "px": 346.67, "minor": true},
+      {"value": -11, "px": 373.06, "minor": true},
+      {"value": -9, "px": 427.42, "minor": true},
+      {"value": -8, "px": 453.65, "minor": true},
+      {"value": -7, "px": 480.86, "minor": true},
+      {"value": -6, "px": 507.07, "minor": true},
+      {"value": -4, "px": 561.43, "minor": true},
+      {"value": -3, "px": 587.68, "minor": true},
+      {"value": -2, "px": 614.86, "minor": true},
+      {"value": -1, "px": 642.04, "minor": true},
+      {"value": 1, "px": 695.43, "minor": true},
+      {"value": 2, "px": 722.64, "minor": true},
+      {"value": 3, "px": 748.85, "minor": true},
+      {"value": 4, "px": 776.03, "minor": true},
+      {"value": 6, "px": 829.44, "minor": true},
+      {"value": 7, "px": 856.65, "minor": true},
+      {"value": 8, "px": 883.82, "minor": true},
+      {"value": 9, "px": 910.03, "minor": true},
+      {"value": 11, "px": 964.32, "minor": true},
+      {"value": 12, "px": 990.7, "minor": true}
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 131.22,
+    "tickMarks": true,
+    "notes": "axisLineCol is the Y axis line (black, ~2 px). Outward majors left of it at 0.5 and 1 (0 is the X axis continuing to the left), inward marks right of it every 0.1 up to 1.1, where the axis ends. Labels \"0\", \"0.5\", \"1\".",
+    "ticks": [
+      {"value": 1, "py": 78.18, "label": "1"},
+      {"value": 0.5, "py": 438.62, "label": "0.5"},
+      {"value": 0, "py": 799.0, "label": "0"},
+      {"value": 1.1, "py": 5.34, "minor": true},
+      {"value": 0.9, "py": 150.08, "minor": true},
+      {"value": 0.8, "py": 221.97, "minor": true},
+      {"value": 0.7, "py": 293.88, "minor": true},
+      {"value": 0.6, "py": 366.74, "minor": true},
+      {"value": 0.4, "py": 510.49, "minor": true},
+      {"value": 0.3, "py": 582.36, "minor": true},
+      {"value": 0.2, "py": 654.23, "minor": true},
+      {"value": 0.1, "py": 727.12, "minor": true}
+    ]
+  },
+  "knownValues": [
+    {
+      "series": "SciFi",
+      "description": "Blue dots, flat top at 1.0 (columns 601-735, dot rows 74-83); the EBT3 line wiggles across it",
+      "x": [-2.5, 2.5],
+      "y": 1.0,
+      "py": 78.3
+    },
+    {
+      "series": "SciFi",
+      "description": "Blue dots, left tail on the X axis (top rim at row 791, lower half under the axis line)",
+      "x": [-19.5, -15],
+      "y": 0.005,
+      "py": 795.5
+    },
+    {
+      "series": "SciFi",
+      "description": "Blue dots, right tail on the X axis",
+      "x": [15, 19.5],
+      "y": 0.005,
+      "py": 795.5
+    }
+  ],
+  "paperValues": [
+    {
+      "quantity": "FWHM, SciFi (15 mm cone)",
+      "paper": "14.77 mm",
+      "pixels": "14.76 mm (dot centres interpolated at 0.5: -7.23 / +7.53 mm)",
+      "agrees": true
+    },
+    {
+      "quantity": "FWHM, EBT3",
+      "paper": "15.07 mm",
+      "pixels": "14.79 mm at half of the plotted 1.0 level (-7.25 / +7.53 mm)",
+      "agrees": false
+    },
+    {
+      "quantity": "Penumbra 20-80 %, SciFi",
+      "paper": "2.24 mm",
+      "pixels": "2.05 mm left, 2.04 mm right",
+      "agrees": false
+    }
+  ],
+  "pitfalls": [
+    "Negative X: labels -20, -15, -10, -5 with hyphen-like minus signs; the Y axis is at the left edge (-20 mm), not at 0.",
+    "The SciFi dots lie on the X axis line for |x| > 13 mm and hide its inward minor ticks there.",
+    "Two near-identical series: blue dots and a thin orange line cross each other all along the profile and on the flat top.",
+    "Legend entry \"EBT3 film\" (orange line sample, two lines of text) inside the plot area at the right (orange sample from column ~1045, text columns 1086-1156, rows 460-528).",
+    "Majors outward, minors inward on both axes (Excel \"cross\"-like mix); the Y axis ends at 1.1 with a minor mark.",
+    "Re-encoded JPEG (artifacts around the dots and text)."
+  ]
+}

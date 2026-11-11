@@ -1,0 +1,66 @@
+{
+  "image": "moke-loops-nayyef.png",
+  "description": "Three MOKE hysteresis loops as marker clouds (blue down-triangles 300 K, black squares 80 K ZFC, red diamonds 80 K FC; each with a thin dashed line of its colour), field -1000..1000 Oe, normalized signal -1.25..1.25: a four-quadrant Origin chart in a closed box frame with light-grey gridlines and black zero lines through the origin; the FC loop is shifted right of the origin (exchange bias). Outward ticks on the bottom and left frame lines (majors every 300 Oe / 0.5, minors halfway), majors mirrored inward on the top frame line, majors and minors inward on the right one. Journal figure (Nayyef et al. 2023, Sci Rep 13:10902, Fig. 4 panel a; crop x 0-942, y 0-865 of the publisher's 2007x1725 PNG), 942x865 PNG. Hand-labelled by pixel analysis (Pillow/NumPy/SciPy): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": {"left": 122.15, "right": 908.58, "top": 81.65, "bottom": 714.9},
+  "plotBox": [[122.15, 81.65], [908.58, 81.65], [908.58, 714.9], [122.15, 714.9]],
+  "zeroLines": {"row": 398.34, "col": 515.37},
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 714.9,
+    "tickMarks": true,
+    "notes": "axisLineRow is the bottom frame line (black, 3 px), which carries the ticks; the black zero line (row 398.34) carries none. Outward majors (8 px) at -900..900 every 300 Oe, outward minors (4 px) halfway; majors mirrored inward on the top frame. Bold labels -900 ... 900 below; frame corners are -1000 / 1000 Oe (no tick).",
+    "ticks": [
+      {"value": -900, "px": 161.46, "label": "-900"},
+      {"value": -600, "px": 279.37, "label": "-600"},
+      {"value": -300, "px": 397.44, "label": "-300"},
+      {"value": 0, "px": 515.36, "label": "0"},
+      {"value": 300, "px": 633.29, "label": "300"},
+      {"value": 600, "px": 751.34, "label": "600"},
+      {"value": 900, "px": 869.26, "label": "900"},
+      {"value": -750, "px": 220.51, "minor": true},
+      {"value": -450, "px": 338.4, "minor": true},
+      {"value": -150, "px": 456.33, "minor": true},
+      {"value": 150, "px": 574.4, "minor": true},
+      {"value": 450, "px": 692.31, "minor": true},
+      {"value": 750, "px": 810.37, "minor": true}
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 122.15,
+    "tickMarks": true,
+    "notes": "axisLineCol is the left frame line (black, 3 px), which carries the ticks; the vertical zero line (col 515.37) carries none. Outward majors at -1.0..1.0 every 0.5, minors at the quarters; all mirrored inward on the right frame line. Bold labels \"1.0\" ... \"-1.0\"; frame corners are +/-1.25.",
+    "ticks": [
+      {"value": 1.0, "py": 144.88, "label": "1.0"},
+      {"value": 0.5, "py": 271.62, "label": "0.5"},
+      {"value": 0.0, "py": 398.32, "label": "0.0"},
+      {"value": -0.5, "py": 524.99, "label": "-0.5"},
+      {"value": -1.0, "py": 651.66, "label": "-1.0"},
+      {"value": 0.75, "py": 208.37, "minor": true},
+      {"value": 0.25, "py": 335.06, "minor": true},
+      {"value": -0.25, "py": 461.56, "minor": true},
+      {"value": -0.75, "py": 588.27, "minor": true}
+    ]
+  },
+  "paperValues": [
+    {
+      "quantity": "HEB, 80 K after field cooling",
+      "paper": "~180 Oe (text; Fig. 4d shows ~187 Oe at 80 K)",
+      "pixels": "red FC loop crosses M = 0 at about -31 and +467 Oe (marker clouds, +/- 10 Oe): shift ~218 Oe",
+      "agrees": false
+    },
+    {
+      "quantity": "MR after field cooling",
+      "paper": "1",
+      "pixels": "at H = 0 the red ascending branch is on its -1.0 plateau (row ~651)",
+      "agrees": true
+    }
+  ],
+  "pitfalls": [
+    "Four-quadrant: the black zero lines (row 398.34, col 515.37) cross the frame but carry no ticks; the ticks hang on the bottom/left frame lines (outward) and are mirrored inward on the top/right.",
+    "Header text above the frame with numbers in it: \"a.\" and \"dFe = 70 A   dAu = 4 A\" (subscripts) - not tick labels.",
+    "Legend with marker samples and dashed-line samples inside the frame at the top left (300 K, 80 K ZFC, 80 K FC).",
+    "Series are dense marker clouds (hundreds of overlapping markers) joined by thin dashed lines; the three loops overlap near the origin and are not single-valued in x.",
+    "Bold Times-like labels; minus signs are hyphen-like dashes; light-grey gridlines at every major."
+  ]
+}

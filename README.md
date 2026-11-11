@@ -39,11 +39,12 @@ Kaplan–Meier figure, Auto-detect axes with OCR, accept, Auto-trace the curve, 
 CSV, Save project and Download session log) while recording every network request over the DevTools Protocol — from
 the page *and* from every worker — and writes `privacy-report.json` (requests with origin,
 target type, status and bytes; counts by origin; verdict). It exits 1 if any request leaves the
-app's origin (`data:` and `blob:` excepted), if one fails, or if the worker-initiated Tesseract
-requests were not captured. `-- --no-build` checks the `dist/` already there; `-- --out path`
+app's origin (`data:` and `blob:` excepted) or, under a `BASE_PATH`, the app's base path, if one
+fails, or if the worker-initiated Tesseract requests were not captured. `-- --no-build` checks the `dist/` already there; `-- --out path`
 moves the report. It needs `npx playwright install chromium` once and takes about half a
 minute. It is not part of `npm run verify`; CI runs it as its own job (`privacy` in
-`.github/workflows/deploy.yml`) and keeps the report as a build artifact.
+`.github/workflows/deploy.yml`) on the build served at the Pages subpath, keeps the report as a
+build artifact, and deploys only that checked build, only when this job and `verify` pass.
 
 ## Development
 
@@ -54,11 +55,15 @@ npm run verify     # typecheck, lint, unit tests, benchmarks, e2e — the gate e
 ```
 
 `npm run test:e2e` (part of `verify`) needs `npx playwright install chromium` once. `npm run
-build` writes the production bundle to `dist/`; the GitHub Pages deployment builds it with
-`BASE_PATH=/BMAnderson_GraphDigitizer/` (see `.github/workflows/deploy.yml`).
+build` writes the production bundle to `dist/`; for GitHub Pages the privacy job builds it with
+`BASE_PATH=/BMAnderson_GraphDigitizer/` and the deploy job publishes that build (see
+`.github/workflows/deploy.yml`).
 
 [docs/SPEC.md](docs/SPEC.md) is the source of truth for the workflow, the calibration maths, the
-data model and the design decisions.
+data model and the design decisions. [docs/how-it-works.html](docs/how-it-works.html) is an
+illustrated overview of the same ground — the workflow, the architecture diagram, both automatic
+pipelines step by step, the calibration maths and the verification gate — as one self-contained
+page (inline CSS and SVG, no scripts, no network requests); download it and open it in a browser.
 
 ## Reproducing the benchmarks
 
