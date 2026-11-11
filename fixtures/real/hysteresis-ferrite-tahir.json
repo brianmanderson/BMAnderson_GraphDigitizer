@@ -1,0 +1,126 @@
+{
+  "image": "hysteresis-ferrite-tahir.png",
+  "description": "Magnetic hysteresis loops (M-H) of AgxCo1-xFe2O4 nanoparticles, four thick solid lines (black x=0, red x=0.05, blue x=0.1, magenta x=0.15) with a boxed legend inside the top-left corner; applied field -2.1..2.1 kOe, magnetization -55..55 emu/gm. Four-quadrant Origin chart in a closed box frame with thin black zero lines through the origin; outward ticks on the bottom and left frame lines only (majors every 0.5 kOe / 10 emu/gm, minors halfway). Journal figure (Tahir et al. 2023, Sci Rep 13:15730, Fig. 13, whole figure as served), 968x809 PNG. Hand-labelled by pixel analysis (Pillow/NumPy/SciPy): positions are image pixels, origin top-left, integer = pixel centre, +/- ~1 px. Provenance and licence: fixtures/real/PROVENANCE.md.",
+  "plotFrame": {"left": 106.65, "right": 956.29, "top": 12.27, "bottom": 696.07},
+  "plotBox": [[106.65, 12.27], [956.29, 12.27], [956.29, 696.07], [106.65, 696.07]],
+  "zeroLines": {"row": 354.52, "col": 531.68},
+  "xAxis": {
+    "scale": "linear",
+    "axisLineRow": 696.07,
+    "tickMarks": true,
+    "notes": "axisLineRow is the bottom frame line (black, 2 px), which carries the ticks; the thin zero line (col 531.68) carries none. Outward majors (8 px) at -2.0..2.0 every 0.5 kOe, outward minors (5 px) halfway. Labels \"-2.0\" ... \"2.0\" (title says \"KOe\").",
+    "ticks": [
+      {"value": -2.0, "px": 126.86, "label": "-2.0"},
+      {"value": -1.5, "px": 227.87, "label": "-1.5"},
+      {"value": -1.0, "px": 329.03, "label": "-1.0"},
+      {"value": -0.5, "px": 430.21, "label": "-0.5"},
+      {"value": 0.0, "px": 531.66, "label": "0.0"},
+      {"value": 0.5, "px": 632.78, "label": "0.5"},
+      {"value": 1.0, "px": 733.79, "label": "1.0"},
+      {"value": 1.5, "px": 834.98, "label": "1.5"},
+      {"value": 2.0, "px": 936.08, "label": "2.0"},
+      {"value": -1.75, "px": 177.52, "minor": true},
+      {"value": -1.25, "px": 278.72, "minor": true},
+      {"value": -0.75, "px": 379.84, "minor": true},
+      {"value": -0.25, "px": 480.83, "minor": true},
+      {"value": 0.25, "px": 582.05, "minor": true},
+      {"value": 0.75, "px": 683.27, "minor": true},
+      {"value": 1.25, "px": 784.3, "minor": true},
+      {"value": 1.75, "px": 885.55, "minor": true}
+    ]
+  },
+  "yAxis": {
+    "scale": "linear",
+    "axisLineCol": 106.65,
+    "tickMarks": true,
+    "notes": "axisLineCol is the left frame line (black, 2 px), which carries the ticks; the thin zero line (row 354.52) carries none. Outward majors at -50..50 every 10 emu/gm, outward minors at the fives.",
+    "ticks": [
+      {"value": 50, "py": 43.21, "label": "50"},
+      {"value": 40, "py": 105.45, "label": "40"},
+      {"value": 30, "py": 167.78, "label": "30"},
+      {"value": 20, "py": 229.75, "label": "20"},
+      {"value": 10, "py": 292.02, "label": "10"},
+      {"value": 0, "py": 354.39, "label": "0"},
+      {"value": -10, "py": 416.33, "label": "-10"},
+      {"value": -20, "py": 478.69, "label": "-20"},
+      {"value": -30, "py": 540.61, "label": "-30"},
+      {"value": -40, "py": 602.92, "label": "-40"},
+      {"value": -50, "py": 665.26, "label": "-50"},
+      {"value": 45, "py": 74.6, "minor": true},
+      {"value": 35, "py": 136.47, "minor": true},
+      {"value": 25, "py": 198.92, "minor": true},
+      {"value": 15, "py": 261.16, "minor": true},
+      {"value": 5, "py": 323.05, "minor": true},
+      {"value": -5, "py": 385.31, "minor": true},
+      {"value": -15, "py": 447.23, "minor": true},
+      {"value": -25, "py": 509.67, "minor": true},
+      {"value": -35, "py": 571.88, "minor": true},
+      {"value": -45, "py": 633.79, "minor": true}
+    ]
+  },
+  "knownValues": [
+    {
+      "series": "x=0",
+      "description": "Black curve end at +1.98 kOe (Table 9 Ms 48.34)",
+      "x": [1.98, 1.98],
+      "y": 48.48,
+      "py": 52.8
+    },
+    {
+      "series": "x=0.05",
+      "description": "Red curve end at +1.98 kOe (Table 9 Ms 29.06)",
+      "x": [1.98, 1.98],
+      "y": 29.16,
+      "py": 173.0
+    },
+    {
+      "series": "x=0.1",
+      "description": "Blue curve end at +1.99 kOe (Table 9 Ms 40.69)",
+      "x": [1.99, 1.99],
+      "y": 40.65,
+      "py": 101.5
+    },
+    {
+      "series": "x=0.15",
+      "description": "Magenta curve end at +1.98 kOe (Table 9 Ms 45.85)",
+      "x": [1.98, 1.98],
+      "y": 46.04,
+      "py": 68.0
+    },
+    {
+      "series": "x=0",
+      "description": "Black curve end at -1.99 kOe (Table 9 Ms 48.34)",
+      "x": [-1.99, -1.99],
+      "y": -48.34,
+      "py": 655.1
+    },
+    {
+      "series": "x=0.05",
+      "description": "Red curve end at -1.99 kOe (Table 9 Ms 29.06)",
+      "x": [-1.99, -1.99],
+      "y": -28.95,
+      "py": 534.5
+    },
+    {
+      "series": "x=0.1",
+      "description": "Blue curve end at -1.99 kOe (Table 9 Ms 40.69)",
+      "x": [-1.99, -1.99],
+      "y": -40.61,
+      "py": 607.0
+    },
+    {
+      "series": "x=0.15",
+      "description": "Magenta curve end at -1.99 kOe (Table 9 Ms 45.85)",
+      "x": [-1.99, -1.99],
+      "y": -45.91,
+      "py": 640.0
+    }
+  ],
+  "pitfalls": [
+    "Four-quadrant: thin black zero lines (row 354.52, col 531.68) cross the frame and the X zero line runs into the \"0\" label row; they carry no ticks.",
+    "Boxed legend (x=0 ... x=0.15 with thick line samples) in the top-left corner of the frame, touching the frame lines.",
+    "Labels with decimals (\"-2.0\", \"-0.5\", \"0.0\") and hyphen-like minus signs; axis title unit \"KOe\" (capital K), Y unit \"emu/gm\".",
+    "Loops are not single-valued in x and the four nearly vertical branches crowd at the origin.",
+    "Low resolution (968x809, Arial-like labels ~15 px tall); ticks only on the bottom and left frame lines."
+  ]
+}

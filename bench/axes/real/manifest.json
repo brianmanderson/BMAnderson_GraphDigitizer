@@ -16,6 +16,30 @@
     {
       "truth": "../../../fixtures/real/scatter-errorbars-glowa.json",
       "tags": ["journal", "scatter", "frame", "minor-ticks", "errorbars", "png"]
+    },
+    {
+      "truth": "../../../fixtures/real/angle-response-chea.json",
+      "tags": ["journal", "excel", "png", "four-quadrant", "negative-x", "negative-y", "axis-through-middle", "no-tickmarks", "percent-labels", "legend-inside"]
+    },
+    {
+      "truth": "../../../fixtures/real/hysteresis-loops-zhou.json",
+      "tags": ["journal", "origin", "png", "frame", "minor-ticks", "four-quadrant", "negative-x", "negative-y", "zero-lines", "legend-inside", "pixel-doubled"]
+    },
+    {
+      "truth": "../../../fixtures/real/moke-loops-nayyef.json",
+      "tags": ["journal", "origin", "png", "frame", "minor-ticks", "four-quadrant", "negative-x", "negative-y", "zero-lines", "legend-inside"]
+    },
+    {
+      "truth": "../../../fixtures/real/bland-altman-rabe.json",
+      "tags": ["journal", "matplotlib", "png", "frame", "minor-ticks", "negative-y", "u2212", "bland-altman"]
+    },
+    {
+      "truth": "../../../fixtures/real/beam-profile-pittet.json",
+      "tags": ["journal", "excel", "jpeg", "minor-ticks", "negative-x", "legend-inside", "beam-profile"]
+    },
+    {
+      "truth": "../../../fixtures/real/hysteresis-ferrite-tahir.json",
+      "tags": ["journal", "origin", "png", "frame", "minor-ticks", "four-quadrant", "negative-x", "negative-y", "zero-lines", "legend-inside"]
     }
   ]
 }
