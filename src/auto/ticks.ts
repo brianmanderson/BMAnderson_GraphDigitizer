@@ -29,6 +29,8 @@ interface Segment {
   along: number;
   length: number;
   mass: number;
+  /** Ink spreads sideways just beyond the mark's tip: it may be a label glyph touching the line. */
+  glyph?: boolean;
 }
 
 export interface TickOptions {
@@ -80,6 +82,36 @@ export function scanSide(map: DarknessMap, frame: Frame, line: LineCandidate, si
   }
   const segments: Segment[] = [];
   const maxWidth = Math.max(4, Math.ceil(2 * line.thickness) + 2);
+  // A mark must stick out past the line's edge by at least half the line's thickness: a thick
+  // hand-ruled or scanned line wobbles by a few pixels along its length, and those bumps are not
+  // ticks (a drawn tick is several line widths long).
+  const minExt = Math.max(2, 0.5 * line.thickness);
+  // A tick ends in a free tip. A tick label written against the line (hand-lettered labels, or
+  // labels close to a thick blurred line) also makes a short mark, but there the ink spreads
+  // sideways just beyond the mark's far end, where its own columns are empty: the rest of the
+  // glyph. (A lighter gridline continuing a tick, or a line parallel to the axis at its tip, runs
+  // on through the tick's own columns; neighbouring ticks of the same length end where this one
+  // does, and a longer tick beside it starts at the line; none of these counts.)
+  const pad = Math.max(2, Math.ceil(line.thickness));
+  const isMark = (t: number) => (extents[t - from]?.ext ?? 0) >= minExt || (extents[t - 1 - from]?.ext ?? 0) >= minExt;
+  const glyphAtTip = (t0: number, t1: number, longest: number) => {
+    let n = 0;
+    for (let k = longest + 1; k <= longest + pad; k++) {
+      // Something running on through the mark's own columns here (a lighter gridline, or a line
+      // parallel to the axis that the tick runs into) is no glyph: skip this depth.
+      let own = 0;
+      for (let t = t0; t <= t1; t++) own = Math.max(own, at(t, k));
+      if (own >= 0.5 * tau) continue;
+      for (let d = 1; d <= pad; d++) {
+        // A column that starts at the line is another tick (a longer major beside a minor).
+        const l = t0 - d;
+        const r = t1 + 1 + d;
+        if (at(l, k) >= tau && !isMark(l)) n++;
+        if (at(r, k) >= tau && !isMark(r)) n++;
+      }
+    }
+    return n >= 2;
+  };
   let i = 0;
   while (i < extents.length) {
     const e = extents[i];
@@ -91,14 +123,18 @@ export function scanSide(map: DarknessMap, frame: Frame, line: LineCandidate, si
     while (j + 1 < extents.length && (extents[j + 1]?.ext ?? 0) >= 2) j++;
     const group = extents.slice(i, j + 1);
     const longest = Math.max(...group.map((g) => g.ext));
-    if (group.length <= maxWidth && longest < opts.maxTickLength + 1) {
+    const t0 = from + i;
+    const t1 = from + j + 1; // each extent sums columns t and t + 1
+    if (group.length <= maxWidth && longest >= minExt && longest < opts.maxTickLength + 1) {
       let sw = 0;
       let st = 0;
       for (const g of group) {
         sw += g.mass;
         st += g.mass * g.along;
       }
-      segments.push({ along: st / sw, length: longest + Math.abs(base - line.offset) - 0.5, mass: sw });
+      const seg: Segment = { along: st / sw, length: longest + Math.abs(base - line.offset) - 0.5, mass: sw };
+      if (glyphAtTip(t0, t1, longest)) seg.glyph = true;
+      segments.push(seg);
     }
     i = j + 1;
   }
@@ -187,6 +223,10 @@ export function analyseMarks(frame: Frame, line: LineCandidate, marks: Segment[]
   const point = (m: Segment): Point => familyPoint(frame, line.family, m.along, line.offset);
   const none: TickSet = { ...EMPTY, rejected: marks.map(point) };
   if (marks.length < 2) return none;
+  // Most marks on this side run into ink beyond their tips: tick labels written against the line
+  // (hand-lettered, or close to a thick blurred line), not ticks. A real tick touched by data now
+  // and then does not matter.
+  if (marks.filter((m) => m.glyph).length > 0.5 * marks.length) return none;
   // Candidate major-tick lengths: the distinct mark lengths, longest first. A log axis often shows
   // only two decade ticks among many minor ones, so the reference cannot simply be the commonest
   // length; and blur can shorten one major by a pixel, so a shorter reference is tried too. The
@@ -258,6 +298,11 @@ function analyseWith(
   }
   if (minors.length < Math.max(2, majors.length - 1)) minors = [];
   if (majors.length < 3 && minors.length < 3) return none;
+  // Ticks run along the whole axis. A few evenly spaced marks on a short stretch of a long line,
+  // with most of the lattice's other positions along the line empty, are chance (bumps on a
+  // hand-ruled scan), not ticks.
+  const axisSlots = Math.floor((line.end - lattice.anchor) / p) - Math.ceil((line.start - lattice.anchor) / p) + 1;
+  if (minors.length < 3 && majors.length < 0.5 * axisSlots) return none;
 
   const tol = tolerance(p);
   const nTerm = Math.min(1, (majors.length - 1) / 4);

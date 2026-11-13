@@ -181,3 +181,35 @@ describe('crossCheck', () => {
     expect(r.y.status).toBe('calibrated');
   });
 });
+
+describe('suggestAxis on labels written against the axis, and labels-only fallbacks', () => {
+  it('never uses the reading of a label that may be cut off ("80" read as "8")', () => {
+    const r = reading('y', [100, 200, 300, 400], ['8', '6', '4', '2']);
+    const clipped = { ...r, labels: { ...r.labels, mode: 'labels-only' as const, labels: r.labels.labels.map((l) => ({ ...l, clipped: true })) } };
+    // The same readings unclipped would agree on a (wrong, ×0.1) linear scale.
+    expect(suggestAxis(r).status).toBe('calibrated');
+    const s = suggestAxis({ ...clipped, tickPoints: [] });
+    expect(s.status).not.toBe('calibrated');
+    expect(s.message).toMatch(/4 touch the axis line/);
+    expect(s.labels.map((l) => l.text)).toEqual(['8', '6', '4', '2']);
+  });
+
+  it('suggests labelled gridlines as positions when a labels-only axis cannot be read', () => {
+    const r = reading('x', xs, ['', '?', '', '', '', '']);
+    const s = suggestAxis({
+      ...r,
+      labels: { ...r.labels, mode: 'labels-only' },
+      tickPoints: [{ x: 200, y: 400 }, { x: 400, y: 400 }],
+      positionsFrom: 'gridlines',
+    });
+    expect(s.status).toBe('positions');
+    expect(s.refs?.map((q) => q.px)).toEqual([200, 400]);
+    expect(s.message).toMatch(/labelled gridlines/);
+  });
+
+  it('says when the labels look hand-lettered', () => {
+    const r = reading('x', xs, ['', '', '', '', '', '']);
+    const s = suggestAxis({ ...r, labels: { ...r.labels, labels: r.labels.labels.map((l) => ({ ...l, slanted: true })) } });
+    expect(s.message).toMatch(/hand-lettered or italic/);
+  });
+});

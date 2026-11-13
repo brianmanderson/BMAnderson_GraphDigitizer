@@ -81,11 +81,14 @@ async function readNote(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel | null>
 function readingBase(det: AxisDetection, labels: AxisLabels): Omit<AxisReading, 'numeric' | 'text' | 'note'> {
   const ax = labels.axis === 'x' ? det.xAxis : det.yAxis;
   const ticks = ax && labels.mode === 'ticks' ? ax.ticks.ticks.filter((t) => t.kind === 'major').sort((a, b) => a.along - b.along) : [];
+  // Without tick marks, the labels that sit on gridlines give exact positions to fall back on.
+  const onGrid = labels.mode === 'labels-only' ? labels.labels.filter((l) => l.gridline) : [];
   return {
     labels,
     logHint: ax?.ticks.pattern === 'log',
     line: ax ? { p1: ax.line.p1, p2: ax.line.p2 } : null,
-    tickPoints: ticks.map((t) => t.point),
+    tickPoints: ticks.length ? ticks.map((t) => t.point) : onGrid.length >= 2 ? onGrid.map((l) => l.point) : [],
+    positionsFrom: ticks.length ? 'ticks' : 'gridlines',
   };
 }
 

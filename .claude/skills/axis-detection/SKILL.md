@@ -25,7 +25,8 @@ description: >
    accept and document the failure. Correcting a *wrong label* is fine with pixel evidence
    (that is how a former KM fixture's faint x ticks got `tickMarks: true`) — say so in the commit.
 4. **No invented ticks.** An axis without tick marks must come back with `ticks: []`,
-   `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern.
+   `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern, nor do a few
+   even marks on a short stretch of a long axis (a lattice fills half its positions, or has minors).
 5. **Gate**: `npm run bench:axes` is part of `npm run verify` and exits 1 if any gated metric
    (axes found, box found, tick recall, minor recall, tick precision; or more ticks on bare axes —
    and since Phase 5 the calibration metrics, see `auto-calibration`) gets worse than
@@ -65,8 +66,9 @@ family — the inputs Phase 5's OCR and scale inference need.
 ## Corpus and labels
 
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
-  writes `synthetic/cNN.{png,jpg,json}` — 70 seeded charts (c60–c69, axes at the top/right,
-  were appended; new charts go at the end so earlier ones stay byte-identical). Pixel snapping is off so the truth
+  writes `synthetic/cNN.{png,jpg,json}` — 76 seeded charts (c60–c69, axes at the top/right, and
+  c70–c75, old scans with hand-lettered labels and a heavy grid, were appended; new charts go at
+  the end so earlier ones stay byte-identical — check `git status` after regenerating). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.
 - `real/manifest.json` lists real figures: `{ "truth": "<label.json relative to manifest>",
@@ -98,3 +100,7 @@ ggplot-style charts (grey panel, no axis lines: 0/3); ticks hidden behind bars o
 thick axis line (`kind:bar` tick recall ~62 %); the tick at the corner hides in the other axis;
 log axes with only two decades and invisible minors return no ticks; free axis ends with
 projecting line caps put box corners ~half a line width out.
+
+Gridded old scans (c70–c75; SPEC → Old scanned figures): the frame beats a heavier gridline
+because the crossing axis runs on to it; ticks need to stick out half a line thickness; a side
+whose marks mostly run into glyphs has none. Keep the `bare` column at 0 there too.
