@@ -169,10 +169,31 @@ export function detectAxesInMap(map: DarknessMap): AxisDetection {
       const hEndsRight = () => rightExt <= meetTol || unbroken(map, frame, h, v.offset + v.thickness / 2 + 1, 1) <= meetTol;
       const vEndsBelow = () => downExt <= meetTol || unbroken(map, frame, v, h.offset + h.thickness / 2 + 1, 1) <= meetTol;
       const vEndsAbove = () => upExt <= meetTol || unbroken(map, frame, v, h.offset - h.thickness / 2 - 1, -1) <= meetTol;
+      // A gridline inside a frame: the other axis runs on past it to a frame line of similar
+      // darkness that spans the same plot, so that frame line, not this one, is the axis.
+      const vFramed = (o: Orientation) =>
+        !(o.ySide === 1 ? hEndsLeft() : hEndsRight()) &&
+        vs.some(
+          (c) =>
+            c !== v &&
+            c.contrast >= FRAME_CONTRAST * v.contrast &&
+            (o.ySide === 1 ? c.offset < v.offset && Math.abs(c.offset - h.start) <= meetTol : c.offset > v.offset && Math.abs(c.offset - h.end) <= meetTol) &&
+            (o.xSide === 1 ? c.start <= v.start + meetTol && c.end >= h.offset - meetTol : c.start <= h.offset + meetTol && c.end >= v.end - meetTol),
+        );
+      const hFramed = (o: Orientation) =>
+        !(o.xSide === 1 ? vEndsBelow() : vEndsAbove()) &&
+        hs.some(
+          (c) =>
+            c !== h &&
+            c.contrast >= FRAME_CONTRAST * h.contrast &&
+            (o.xSide === 1 ? c.offset > h.offset && Math.abs(c.offset - v.end) <= meetTol : c.offset < h.offset && Math.abs(c.offset - v.start) <= meetTol) &&
+            (o.ySide === 1 ? c.start <= v.offset + meetTol && c.end >= h.end - meetTol : c.start <= h.start + meetTol && c.end >= v.offset - meetTol),
+        );
       for (const o of ORIENTATIONS) {
         const intoX = o.ySide === 1 ? rightExt : leftExt;
         const intoY = o.xSide === 1 ? upExt : downExt;
         if (intoX < 0.3 * hLen || intoY < 0.3 * vLen) continue;
+        if (vFramed(o) || hFramed(o)) continue;
         const tx = ticksOf(h, outside('horizontal', o)).confidence;
         const ty = ticksOf(v, outside('vertical', o)).confidence;
         let moved = 0;

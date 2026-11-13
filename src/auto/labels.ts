@@ -26,7 +26,7 @@
 
 import { INK_THRESHOLD, sample, type DarknessMap } from './darkness.ts';
 import { familyPoint, makeFrame, toFrame, type Frame } from './frame.ts';
-import type { AxisDetection, DetectedAxis, Point, RgbaImage } from './types.ts';
+import type { AxisDetection, AxisPosition, DetectedAxis, LineCandidate, Point, RgbaImage } from './types.ts';
 
 /** A connected ink component in patch coordinates (inclusive bounds). */
 interface Glyph {
@@ -69,6 +69,18 @@ export interface FoundLabel {
   point: Point;
   /** Index into the axis's tick list, or null when the label itself gave the position. */
   tick: number | null;
+  /**
+   * Labels only: the label sits on a gridline (or the other axis) that meets this axis, so its
+   * position is that line's, exact, rather than the label's centre.
+   */
+  gridline?: boolean;
+  /** The text is slanted (italic or hand-lettered) and was sheared upright for OCR. */
+  slanted?: boolean;
+  /**
+   * Labels only: the word runs into the band's edge next to the axis, i.e. it was written against
+   * (or over) the line and may be cut off ("60" read as "6"), so its reading is not used as a value.
+   */
+  clipped?: boolean;
   /** The whole word, upscaled for OCR (dark text on white). */
   crop: RgbaImage;
   /** When the word ends in a raised exponent: the base and exponent cut separately. */
@@ -391,12 +403,64 @@ function layout(word: LabelWord, p: Patch): Layout {
   };
 }
 
+/** Shears tried for italic text (horizontal shift per pixel of height, top to the right). */
+const SLANTS = Array.from({ length: 17 }, (_, i) => i * 0.05);
+/** Below this shear (about 8.5°) text is treated as upright. */
+const MIN_SLANT = 0.15;
+/** Slant is only measured on text at least this tall (px): small glyphs are too coarse. */
+const SLANT_MIN_HEIGHT = 10;
+/** The best shear must sharpen the column profile (sum of squares) by this factor. */
+const SLANT_GAIN = 1.05;
+
+/**
+ * The slant of italic or hand-lettered text: the shear that makes the glyphs' strokes most
+ * vertical (the column profile of the sheared ink is then most peaked). 0 for upright text, for
+ * small text, and when shearing does not clearly sharpen the profile. Tesseract reads slanted
+ * digits poorly ("170" as "70"), so crops are sheared upright before OCR.
+ */
+function slantOf(p: Patch, glyphs: Glyph[], bodyHeight: number): number {
+  if (bodyHeight < SLANT_MIN_HEIGHT) return 0;
+  const x0 = Math.min(...glyphs.map((g) => g.x0));
+  const y1 = Math.max(...glyphs.map((g) => g.y1));
+  const y0 = Math.min(...glyphs.map((g) => g.y0));
+  const span = Math.max(...glyphs.map((g) => g.x1)) - x0 + 1 + Math.ceil((SLANTS[SLANTS.length - 1] as number) * (y1 - y0 + 1));
+  const offset = Math.ceil((SLANTS[SLANTS.length - 1] as number) * (y1 - y0 + 1));
+  const bins = new Float64Array(span + 2);
+  const score = (k: number) => {
+    bins.fill(0);
+    for (const g of glyphs) {
+      for (const idx of g.pixels) {
+        const x = idx % p.width;
+        const y = (idx - x) / p.width;
+        const b = Math.round(x - x0 + offset + k * (y - y1));
+        bins[b] = (bins[b] ?? 0) + (p.dark[idx] ?? 0);
+      }
+    }
+    let s = 0;
+    for (const b of bins) s += b * b;
+    return s;
+  };
+  const upright = score(0);
+  let best = 0;
+  let bestScore = upright;
+  for (const k of SLANTS) {
+    const s = score(k);
+    if (s > bestScore) {
+      best = k;
+      bestScore = s;
+    }
+  }
+  return best >= MIN_SLANT && bestScore >= SLANT_GAIN * upright ? best : 0;
+}
+
 /**
  * Cut glyphs out of the patch as an upscaled grey image: black text on white, the glyphs' box
  * with a 1-px border, bilinear upscaling so the body height is about
  * OCR_TEXT_HEIGHT, and a white margin. Contrast is normalised to the glyphs' darkest stroke.
+ * `slant` > 0 shears italic text upright (rows shift left in proportion to their height above
+ * the box's bottom).
  */
-function cut(p: Patch, glyphs: Glyph[], bodyHeight: number): RgbaImage {
+function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0): RgbaImage {
   const x0 = Math.min(...glyphs.map((g) => g.x0)) - 1;
   const x1 = Math.max(...glyphs.map((g) => g.x1)) + 1;
   const y0 = Math.min(...glyphs.map((g) => g.y0)) - 1;
@@ -405,7 +469,9 @@ function cut(p: Patch, glyphs: Glyph[], bodyHeight: number): RgbaImage {
   for (const g of glyphs) for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
   const scale = Math.min(10, Math.max(1, OCR_TEXT_HEIGHT / Math.max(1, bodyHeight)));
   const margin = Math.round(0.5 * OCR_TEXT_HEIGHT);
-  const cw = Math.max(1, Math.round((x1 - x0 + 1) * scale));
+  // Upright x = x + slant·(y − y1): the box's bottom row stays put, its top moves left.
+  const xu0 = x0 - slant * (y1 - y0);
+  const cw = Math.max(1, Math.round((x1 - xu0 + 1) * scale));
   const ch = Math.max(1, Math.round((y1 - y0 + 1) * scale));
   const width = cw + 2 * margin;
   const height = ch + 2 * margin;
@@ -418,7 +484,7 @@ function cut(p: Patch, glyphs: Glyph[], bodyHeight: number): RgbaImage {
     const iy = Math.floor(fy);
     const ay = fy - iy;
     for (let i = 0; i < cw; i++) {
-      const fx = x0 - 0.5 + (i + 0.5) / scale;
+      const fx = xu0 - 0.5 + (i + 0.5) / scale + slant * (y1 - fy);
       const ix = Math.floor(fx);
       const ax = fx - ix;
       const d =
@@ -451,24 +517,86 @@ interface Row {
   half: number;
 }
 
+/**
+ * Labels without tick marks sit beside the line they name when the figure has a grid (or at the
+ * other axis, for the label at the corner): such a label takes that line's position, which is
+ * exact, instead of its own centre (a hand-lettered or italic label's centre can be off by a
+ * good part of its width). A line qualifies when it runs into the plot from this axis (one end
+ * at the axis line, or a little past it) and lies within 15 % of the label spacing and 20 % of
+ * the label's extent of the label's centre; labels between gridlines keep their centres.
+ */
+function snapToGridlines<T extends { word: LabelWord; along: number }>(
+  chosen: T[],
+  line: AxisGeometry,
+  position: AxisPosition,
+  crossing: LineCandidate[],
+  extent: (wd: LabelWord) => number,
+): (T & { gridline?: boolean })[] {
+  if (chosen.length < 2) return chosen;
+  const alongs = chosen.map((c) => c.along).sort((a, b) => a - b);
+  const spacing = median(alongs.slice(1).map((a, i) => a - (alongs[i] as number)));
+  // How far the crossing line runs past the axis, away from the plot (negative: it stops short).
+  // It must reach the axis; a hand-ruled grid may poke out a little into the labels.
+  const beyond = (c: LineCandidate) => (position === 'bottom' || position === 'right' ? c.end - line.offset : line.offset - c.start);
+  const reach = 3 + line.thickness;
+  const meeting = crossing.filter(
+    (c) => beyond(c) >= -(reach + c.thickness) && beyond(c) <= 0.5 * spacing && c.offset >= line.start - reach && c.offset <= line.end + reach,
+  );
+  return chosen.map((c) => {
+    // Tight: a label beside the frame (c19's first label sits half its width inside it) must keep
+    // its centre; a label written over its gridline is off by a small part of its extent.
+    const tol = Math.min(0.15 * spacing, 0.2 * extent(c.word));
+    let best: LineCandidate | null = null;
+    for (const g of meeting) {
+      const d = Math.abs(g.offset - c.along);
+      if (d <= tol && (!best || d < Math.abs(best.offset - c.along))) best = g;
+    }
+    return best ? { ...c, along: best.offset, gridline: true } : c;
+  });
+}
+
 function labelsFor(
   map: DarknessMap,
   img: RgbaImage,
   frame: Frame,
   which: 'x' | 'y',
   ax: DetectedAxis,
+  crossing: LineCandidate[],
   avoid: Row | null = null,
+): AxisLabels {
+  const majors = ax.ticks.ticks.map((t, i) => ({ t, i })).filter(({ t }) => t.kind === 'major');
+  const tickMode: AxisLabels['mode'] = majors.length >= 2 ? 'ticks' : 'labels-only';
+  const viaTicks = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing);
+  // Marks that no two labels sit at are not the labelled ticks (glyphs touching the axis, a
+  // scanned line's bumps): the labels themselves give the positions then.
+  if (tickMode === 'ticks' && viaTicks.labels.length < 2) {
+    const viaLabels = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing);
+    if (viaLabels.labels.length >= 2) return viaLabels;
+  }
+  return viaTicks;
+}
+
+function labelsWith(
+  map: DarknessMap,
+  img: RgbaImage,
+  frame: Frame,
+  which: 'x' | 'y',
+  ax: DetectedAxis,
+  avoid: Row | null,
+  mode: AxisLabels['mode'],
+  majors: { t: DetectedAxis['ticks']['ticks'][number]; i: number }[],
+  crossing: LineCandidate[],
 ): AxisLabels {
   const { width: W, height: H } = map;
   const line: AxisGeometry = ax.line;
   // The labels' side: below a bottom X axis / above a top one; left of a left Y axis / right of
   // a right one. "Near" = the patch edge next to the axis.
   const flipped = ax.position === 'top' || ax.position === 'right';
-  const majors = ax.ticks.ticks.map((t, i) => ({ t, i })).filter(({ t }) => t.kind === 'major');
-  const mode: AxisLabels['mode'] = majors.length >= 2 ? 'ticks' : 'labels-only';
   const outsideLen =
     mode === 'ticks' && ax.ticks.side !== 'inside' ? Math.max(...majors.map(({ t }) => t.length)) : 0;
-  const d0 = Math.max(line.thickness / 2, outsideLen) + 1;
+  // Past the line's edge by half its thickness again: a thick scanned or hand-ruled line wobbles
+  // by that much, and labels touching it must not join it into one long component.
+  const d0 = Math.max(line.thickness / 2, outsideLen) + 1 + (mode === 'labels-only' ? Math.max(0, line.thickness / 2 - 1) : 0);
   const short = Math.min(W, H);
   const margin = Math.max(20, 0.08 * (line.end - line.start));
   const maxTextHeight = Math.max(12, 0.08 * short);
@@ -551,11 +679,14 @@ function labelsFor(
     }
   }
 
-  const found = (word: LabelWord, q: Patch, along: number, tick: number | null): FoundLabel => {
+  const found = (word: LabelWord, q: Patch, along: number, tick: number | null, italic = false): FoundLabel => {
     const l = layout(word, q);
     const bodyH = Math.max(1, l.baseline - l.baseTop + 1);
-    const hasExp = l.exponent.length > 0;
-    const expBodies = l.exponent.filter((g) => !isDash(g, bodyH));
+    const slant = italic ? slantOf(q, word.glyphs, bodyH) : 0;
+    // Slanted (italic, hand-lettered) labels are read whole: their uneven glyphs often end above
+    // the baseline, which is no sign of an exponent.
+    const hasExp = l.exponent.length > 0 && slant === 0;
+    const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
     const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
     const bodies = word.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
     const cx = (word.x0 + word.x1) / 2;
@@ -566,19 +697,41 @@ function labelsFor(
       along,
       point,
       tick,
-      crop: cut(q, word.glyphs, bodyH),
-      base: hasExp ? cut(q, l.base, bodyH) : null,
-      exponent: hasExp ? cut(q, l.exponent, expH) : null,
+      crop: cut(q, word.glyphs, bodyH, slant),
+      base: hasExp ? cut(q, l.base, bodyH, slant) : null,
+      exponent: hasExp ? cut(q, l.exponent, expH, slant) : null,
       minus: l.minus,
-      exponentMinus: l.exponentMinus,
+      exponentMinus: hasExp && l.exponentMinus,
       // One glyph no wider than it is tall (two touching digits make one wide component).
       singleChar: bodies.length === 1 && !hasExp && word.x1 - word.x0 + 1 <= 0.8 * bodyH,
       exponentSingleChar: expBodies.length === 1,
       marks: l.marks,
       box: { center, width: word.x1 - word.x0 + 1, height: word.y1 - word.y0 + 1 },
+      ...(slant > 0 ? { slanted: true } : {}),
+      // Only without ticks: then the band starts at the line, and a word reaching its edge was
+      // written against the line. (With ticks the band starts past them; a label grazing that
+      // edge is usually whole.)
+      ...(mode === 'labels-only' && q === p && touchesAxisSide(word) ? { clipped: true } : {}),
     };
   };
-  const labels = chosen.map(({ word, along, tick }) => found(word, p, along, tick));
+  const touchesAxisSide = (wd: LabelWord) =>
+    which === 'x' ? (flipped ? wd.y1 >= p.height - 1 : wd.y0 <= 0) : flipped ? wd.x0 <= 0 : wd.x1 >= p.width - 1;
+  // A sliver of the line's own ragged edge (a thick scanned line), 1–2 px across and touching
+  // the band's axis side, is no label.
+  const sliver = (wd: LabelWord) => touchesAxisSide(wd) && (which === 'x' ? wd.y1 - wd.y0 + 1 : wd.x1 - wd.x0 + 1) <= 2;
+  const kept = mode === 'labels-only' ? chosen.filter((c) => !sliver(c.word)) : chosen;
+  const snapped: (typeof chosen[number] & { gridline?: boolean })[] = mode === 'labels-only' ? snapToGridlines(kept, line, ax.position, crossing, which === 'x' ? (wd) => wd.x1 - wd.x0 + 1 : (wd) => wd.y1 - wd.y0 + 1) : kept;
+  // Italic or hand-lettered labels: most of the axis's labels are slanted. A single upright "7"
+  // or "/"-like digit can look slanted on its own, so the decision is the axis's, not the word's.
+  const slanted = snapped.filter(({ word }) => {
+    const l = layout(word, p);
+    return slantOf(p, word.glyphs, Math.max(1, l.baseline - l.baseTop + 1)) > 0;
+  }).length;
+  const italic = snapped.length >= 2 && slanted > 0.5 * snapped.length;
+  const labels = snapped.map(({ word, along, tick, gridline }) => {
+    const l = found(word, p, along, tick, italic);
+    return gridline ? { ...l, gridline } : l;
+  });
   labels.sort((a, b) => a.along - b.along);
 
   // The offset/multiplier note, only next to an axis whose labels were found. Its words (`+`,
@@ -647,7 +800,7 @@ function labelsFor(
 /** Tick labels beside both detected axes (empty lists when an axis was not found). */
 export function findLabels(map: DarknessMap, img: RgbaImage, det: AxisDetection): { x: AxisLabels; y: AxisLabels } {
   const frame = makeFrame((det.skewDegrees * Math.PI) / 180);
-  const x: AxisLabels = det.xAxis ? labelsFor(map, img, frame, 'x', det.xAxis) : { axis: 'x', mode: 'labels-only', labels: [], note: null };
+  const x: AxisLabels = det.xAxis ? labelsFor(map, img, frame, 'x', det.xAxis, det.candidates.vertical) : { axis: 'x', mode: 'labels-only', labels: [], note: null };
   // A top X axis's label row runs over the Y axis's top end, where the Y note is looked for.
   let avoid: Row | null = null;
   if (det.xAxis?.position === 'top' && x.labels.length) {
@@ -656,6 +809,6 @@ export function findLabels(map: DarknessMap, img: RgbaImage, det: AxisDetection)
   }
   return {
     x,
-    y: det.yAxis ? labelsFor(map, img, frame, 'y', det.yAxis, avoid) : { axis: 'y', mode: 'labels-only', labels: [], note: null },
+    y: det.yAxis ? labelsFor(map, img, frame, 'y', det.yAxis, det.candidates.horizontal, avoid) : { axis: 'y', mode: 'labels-only', labels: [], note: null },
   };
 }

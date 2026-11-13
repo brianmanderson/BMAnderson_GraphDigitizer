@@ -445,8 +445,24 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   interval give `pattern: 'log'` (a scale hint for Phase 5). **Fewer than three majors without
   three minors to back them means no ticks and confidence 0** — an axis with labels only must not
   get invented ticks. Confidences are heuristics in 0–1 (documented in `ticks.ts`/`detect.ts`).
-- **Corpus** (`bench/axes/`): 70 matplotlib charts from `generate.py` (seeded; Python 3.12 +
-  matplotlib 3.10; output committed, ~1.7 MB) — c60–c69 appended so the first 60 are unchanged:
+- **Old scanned figures with a heavy grid** (decided 2026-11-13, from tester feedback on a 1928
+  dose-response figure: hand-lettered labels, black gridlines as heavy as the frame, no tick
+  marks, a frame beyond the labelled range). Three rules: (1) a pair whose axis is *crossed* by
+  the other axis, which runs on to a parallel line of similar darkness (≥ 60 %) spanning the same
+  plot, is a gridline inside a frame and is skipped — the frame is the axis (consistent with "the
+  axis line is the line the ticks hang on" for frames with zero inside). (2) A tick must stick out
+  past the line's edge by at least half the line's thickness: a thick hand-ruled or scanned line
+  wobbles by that much and its bumps had given every line ~0.4–0.6 tick confidence. (3) A mark
+  whose tip runs into ink spreading sideways beyond it (not another tick, not a line running on
+  through the mark) is probably a label glyph written against the line; when most marks on a
+  side are such, that side has no ticks (a single tick touched by data does not matter).
+  Synthetic charts c70–c75 imitate such figures.
+- **Corpus** (`bench/axes/`): 76 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~4.3 MB) — c70–c75 (old-scan look-alikes: hand-lettered or
+  italic labels in Windows script/italic fonts, no tick marks, a heavy black grid on every second
+  label, a frame one label step beyond the labels, gridlines poking past the frame, blur, paper
+  tone, noise and specks; tags `handlettered`, `heavy-grid`, `frame-beyond-labels`, `scanned`)
+  were appended after c60–c69, which were appended so the first 60 are unchanged:
   X axis at the top (c60–c67: three "Γ" frames, five closed frames with ticks only on top; linear,
   log10 and date X, linear and log10 Y; tags `x-axis:top`, `frame:top`/`frame:box-top`) and Y axis
   at the right (c68–c69, `y-axis:right`) — varying scale (linear/log10/date), gridlines,
@@ -550,14 +566,29 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   X = the row with most words centred on ticks (nearest the axis on a tie); Y = per tick the
   axis-nearest word of the level row, within 3 text heights of the axis (the number-at-risk tables of the Pao and Ikawa figures fail these tests).
   Without tick marks: the X row nearest the axis with ≥ 3 words, or the Y words aligned at the
-  axis; positions are then label centres (looser tolerance).
+  axis; positions are then label centres (looser tolerance). When fewer than two labels sit at
+  the found ticks, those marks were not the labelled ticks (glyphs touching the axis, a scanned
+  line's bumps) and the labels-only search is used instead. Without ticks the band starts one
+  line thickness past the line's centre (a thick line's ragged edge would otherwise join labels
+  written against it into one long component); 1–2 px slivers of that edge are dropped. A label
+  centred on a gridline (or the other axis) that meets this axis takes that line's position,
+  which is exact: within 15 % of the label spacing and 20 % of the label's own extent (a label
+  half its width inside a frame keeps its centre). A label reaching the band's axis-side edge
+  was written against the line and may be cut off ("60" read as "6": three such labels once
+  agreed on a scale off by ten), so its reading is shown but never used as a value.
 - **OCR**: crops are the word box upscaled bilinearly to a 28 px body height (best of 24/28/32/40
   on the corpus), dark on white, contrast-normalised. Pass 1 uses a numeric whitelist
   (`0-9 . , - + e E × x %`), page-segmentation mode 7, falling back to 6 (and 10 for single
   characters) when a read is empty — Tesseract returns nothing for a lone "0" in 7/10 and misreads
   lone exponent digits in 6. A raised trailing group is an exponent, read separately and joined
   as `base^exp`. Pass 2 (free text) runs when pass 1 is not confident or a label did not parse;
-  the better interpretation wins.
+  the better interpretation wins. **Italic or hand-lettered labels** are sheared upright before
+  OCR: per word, the shear (0–0.8 px per px of height) that makes the column profile of its ink
+  most peaked, applied when ≥ 0.15 and sharpening the profile by ≥ 5 %, and only when most labels
+  of the axis are slanted (a lone upright "7" can look slanted); slanted words are read whole
+  (no exponent split). Tesseract still reads hand-lettered digits poorly ("70" as "10" at 85 %),
+  so the consensus and the cross-check remain the only safeguard; the decline message says the
+  labels look hand-lettered.
 - **Layout beats OCR for small marks**: Tesseract reads a small "1.0" as "10" at 96 % confidence,
   which would scale an axis by ten with a perfect fit. Decimal points/commas are found from the
   column profile at half the darkest stroke (a run ≤ 0.4 text heights wide with ink only near the
@@ -596,7 +627,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   tolerance). A failure makes that axis "low".
 - **Confidence**: high = ≥ 3 read labels agree, at most one (or 20 %) disagrees, the scale is
   certain and mean OCR confidence ≥ 0.6; medium = ≥ 3 agree otherwise; low = no usable calibration
-  → status `positions` (refs at the outermost major ticks, values blank) or `none`.
+  → status `positions` (refs at the outermost major ticks, values blank; without tick marks, at
+  the outermost labels that sit on gridlines) or `none`.
 - **UI**: "Auto-detect axes" in the Axes step, below the refs (see Axes step layout). The result is drawn as ghost markers
   (dashed axis lines, a box per read label — teal agrees, red disagrees — and dashed refs labelled
   `X1 = 20`) and a panel with the scale, a confidence badge (High/Medium/Low; the score is in its

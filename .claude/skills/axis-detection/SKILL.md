@@ -65,8 +65,9 @@ family — the inputs Phase 5's OCR and scale inference need.
 ## Corpus and labels
 
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
-  writes `synthetic/cNN.{png,jpg,json}` — 70 seeded charts (c60–c69, axes at the top/right,
-  were appended; new charts go at the end so earlier ones stay byte-identical). Pixel snapping is off so the truth
+  writes `synthetic/cNN.{png,jpg,json}` — 76 seeded charts (c60–c69, axes at the top/right, and
+  c70–c75, old scans with hand-lettered labels and a heavy grid, were appended; new charts go at
+  the end so earlier ones stay byte-identical — check `git status` after regenerating). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.
 - `real/manifest.json` lists real figures: `{ "truth": "<label.json relative to manifest>",
@@ -98,3 +99,7 @@ ggplot-style charts (grey panel, no axis lines: 0/3); ticks hidden behind bars o
 thick axis line (`kind:bar` tick recall ~62 %); the tick at the corner hides in the other axis;
 log axes with only two decades and invisible minors return no ticks; free axis ends with
 projecting line caps put box corners ~half a line width out.
+
+Gridded old scans (c70–c75; SPEC → Old scanned figures): the frame beats a heavier gridline
+because the crossing axis runs on to it; ticks need to stick out half a line thickness; a side
+whose marks mostly run into glyphs has none. Keep the `bare` column at 0 there too.

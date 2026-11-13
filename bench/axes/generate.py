@@ -9,7 +9,12 @@ Run offline and commit the output; the benchmark itself never needs Python:
 Everything is seeded per chart, so a rerun reproduces the same files (given the same
 matplotlib/font versions). Charts c60-c69 were appended later (axes moved to the top/right), so
 the first 60 are unchanged: c60-c67 have the X axis at the top (a "Γ" frame without a bottom
-line, or a box frame with ticks and labels only on top), c68-c69 the Y axis at the right. Do not edit the output by hand and do not change a chart because the
+line, or a box frame with ticks and labels only on top), c68-c69 the Y axis at the right.
+Charts c70-c75 (`build_handlettered`, appended after tester feedback on a 1928 dose-response
+figure) look like old scanned figures: hand-lettered or italic tick labels (Windows script and
+italic fonts, offline), no tick marks, a heavy black grid on every second label, a frame one
+label step beyond the labelled range, gridlines poking past the frame, and a scan's blur, paper
+tone, noise and specks. Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -40,6 +45,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker as mticker  # noqa: E402
+import matplotlib.transforms as mtransforms  # noqa: E402
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
@@ -64,6 +71,16 @@ NO_X_TICKMARKS = {6, 19, 32, 45, 58}   # x tick labels without tick marks (like 
 TOP_X = {60: ("linear", "linear"), 61: ("linear", "log10"), 62: ("linear", "log10"), 63: ("linear", "linear"),
          64: ("log10", "linear"), 65: ("linear", "log10"), 66: ("date", "linear"), 67: ("linear", "log10")}
 RIGHT_Y = {68: ("linear", "linear"), 69: ("linear", "log10")}
+# Appended old-scan look-alikes (build_handlettered): label font (family, style), label step on
+# X and Y, first labelled X value, whether Y's lowest label sits on the bottom frame line.
+HANDLETTERED = {
+    70: (("Segoe Script", "normal"), 10, 10, 150, True),
+    71: (("Ink Free", "normal"), 5, 20, 25, True),
+    72: (("Lucida Handwriting", "italic"), 0.5, 10, 1.5, False),
+    73: (("Times New Roman", "italic"), 20, 5, 60, True),
+    74: (("Bradley Hand ITC", "normal"), 10, 25, 50, False),
+    75: (("Comic Sans MS", "italic"), 2, 10, 6, True),
+}
 
 
 @dataclass
@@ -277,6 +294,114 @@ def build(i: int) -> tuple[Image.Image, dict, int]:
     return img, doc, jpeg_q
 
 
+def build_handlettered(i: int) -> tuple[Image.Image, dict, int]:
+    """An old scanned figure: hand-lettered labels without tick marks, a heavy grid on every second
+    label, a frame one label step beyond the labelled range. Truth = the labelled values."""
+    rng = np.random.default_rng(1000 + i)
+    (font, style), sx, sy, x_first, y_on_frame = HANDLETTERED[i]
+    nx = int(rng.integers(7, 10))  # labels on X
+    ny = int(rng.integers(6, 11))  # labels on Y
+    x_labels = [x_first + k * sx for k in range(nx)]
+    y_labels = [k * sy for k in range(ny)]
+    # Frame: one label step beyond the labels on X; one or two steps above the top label on Y;
+    # at the lowest label or one step below it.
+    xlim = (x_first - sx, x_labels[-1] + sx)
+    ylim = (0.0 if y_on_frame else -sy, y_labels[-1] + sy * int(rng.integers(1, 3)))
+    dpi = int(rng.choice([100, 120, 150, 200]))
+    w_in = float(rng.uniform(5.0, 7.0))
+    h_in = float(w_in * rng.uniform(1.0, 1.3))
+    if h_in * dpi > 1400:
+        w_in, h_in = 1400 / dpi * w_in / h_in, 1400 / dpi
+    fontsize = float(rng.uniform(11, 15))
+    spine_lw = float(rng.uniform(2.0, 3.5))
+    grid_lw = float(rng.uniform(1.2, 2.4))
+    rotation = float(rng.choice([-1, 1]) * rng.uniform(0.3, 1.0)) if i % 2 else 0.0
+    jpeg_q = int(rng.integers(55, 86)) if i % 3 != 2 else 0
+    rc = {
+        "path.snap": False, "font.family": font, "font.size": fontsize, "axes.linewidth": spine_lw,
+        "axes.edgecolor": "#000000", "xtick.major.size": 0, "ytick.major.size": 0,
+        "xtick.major.pad": float(rng.uniform(1, 5)), "ytick.major.pad": float(rng.uniform(0, 2)),
+    }
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        # A heavy hand-ruled grid on every second label (through the frame's values), the
+        # horizontal lines running a little past the left frame on some charts.
+        poke = float(rng.uniform(0, 0.25)) * sx if rng.random() < 0.6 else 0.0
+        for v in np.arange(xlim[0] + 2 * sx, xlim[1] - 0.5 * sx, 2 * sx):
+            ax.plot([v, v], [ylim[0], ylim[1]], color="k", lw=grid_lw, solid_capstyle="butt")
+        for v in np.arange(ylim[0] + 2 * sy, ylim[1] - 0.5 * sy, 2 * sy):
+            ax.plot([xlim[0] - poke, xlim[1]], [v, v], color="k", lw=grid_lw, clip_on=False, solid_capstyle="butt")
+        # Data: a fitted curve, two dashed bands and scattered markers, all black.
+        xs = np.linspace(x_labels[0], x_labels[-1] - sx, 60)
+        t = (xs - xs[0]) / (xs[-1] - xs[0])
+        top = y_labels[-1]
+        curve = top * (0.2 + 0.75 * (1 - np.exp(-2.2 * t)) / (1 - np.exp(-2.2)))
+        ax.plot(xs, curve, color="k", lw=float(rng.uniform(1.2, 2.2)))
+        for d in (-0.12, 0.12):
+            ax.plot(xs, curve + d * top, color="k", lw=1.2, linestyle=(0, (4, 3)))
+        pts = rng.choice(len(xs), 7, replace=False)
+        ax.scatter(xs[pts], curve[pts] + rng.normal(0, 0.06 * top, 7), s=60, facecolors="none",
+                   edgecolors="k", marker="o", linewidths=1.3)
+        ax.scatter(xs[pts[:4]] + 0.2 * sx, curve[pts[:4]] + rng.normal(0, 0.1 * top, 4), s=50, color="k", marker="x")
+        ax.xaxis.set_major_locator(mticker.FixedLocator(x_labels))
+        ax.xaxis.set_major_formatter(mticker.FixedFormatter([f"{v:g}" for v in x_labels]))
+        ax.yaxis.set_major_locator(mticker.FixedLocator(y_labels))
+        ax.yaxis.set_major_formatter(mticker.FixedFormatter([f"{v:g}" for v in y_labels]))
+        ax.minorticks_off()
+        for lab in ax.get_xticklabels() + ax.get_yticklabels():
+            lab.set_fontstyle(style)
+        ax.set_xlabel(str(rng.choice(["Milliampere-minutes", "Dose", "Exposure (r)", "Time in days"])),
+                      family="Times New Roman", fontsize=fontsize)
+        ax.set_ylabel(str(rng.choice(["Percentage Positive Reactions", "Per cent surviving", "Response"])),
+                      family="Times New Roman", fontsize=fontsize)
+        fig.tight_layout()
+        fig.canvas.draw()
+        # Hand-lettered labels are not exactly centred: shift each a little (the truth is the
+        # value's position on the axis, not the label's).
+        for lab in ax.get_xticklabels() + ax.get_yticklabels():
+            dx, dy = rng.normal(0, 0.02), rng.normal(0, 0.015)
+            lab.set_transform(lab.get_transform() + mtransforms.ScaledTranslation(dx, dy, fig.dpi_scale_trans))
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        truth = extract_truth(fig, ax, W, H, "linear", "linear", "box", "out", no_x_ticks=True, no_y_ticks=True)
+        plt.close(fig)
+
+    # Scan: grey, slightly blurred, paper tone, sensor noise and dust specks.
+    g = np.asarray(Image.fromarray(rgba[:, :, :3]).convert("L")).astype(np.float32)
+    k = np.array([0.25, 0.5, 0.25], np.float32)
+    g = np.pad(g, 1, mode="edge")
+    g = np.apply_along_axis(lambda r: np.convolve(r, k, mode="same"), 1, g)
+    g = np.apply_along_axis(lambda c: np.convolve(c, k, mode="same"), 0, g)[1:-1, 1:-1]
+    paper = float(rng.uniform(228, 248))
+    g = g * (paper / 255.0) + rng.normal(0, float(rng.uniform(3, 9)), g.shape)
+    for _ in range(int(g.size / 4000)):
+        y, x = int(rng.integers(0, g.shape[0])), int(rng.integers(0, g.shape[1]))
+        g[y:y + int(rng.integers(1, 3)), x:x + int(rng.integers(1, 3))] *= float(rng.uniform(0.3, 0.8))
+    img = Image.fromarray(np.clip(g + 0.5, 0, 255).astype(np.uint8)).convert("RGB")
+    if rotation:
+        img, truth = rotate(img, truth, rotation)
+    tags = ["x:linear", "y:linear", "kind:line", "grid", "frame:box", "rotated" if rotation else "upright",
+            "jpeg" if jpeg_q else "png", "antialiased", "dpi:mid" if dpi <= 150 else "dpi:high",
+            "x-no-tickmarks", "no-tickmarks", "handlettered", "heavy-grid", "frame-beyond-labels", "scanned"]
+    name = f"c{i:02d}"
+    ext = "jpg" if jpeg_q else "png"
+    doc = {
+        "image": f"{name}.{ext}",
+        "width": img.width,
+        "height": img.height,
+        "description": (f"Synthetic old-scan look-alike: hand-lettered labels ({font} {style} {fontsize:.1f}pt), "
+                        f"no tick marks, heavy grid every {2 * sx:g} x {2 * sy:g}, frame beyond the labels, "
+                        f"dpi {dpi}, rotation {rotation:.2f} deg" + (f", JPEG q{jpeg_q}" if jpeg_q else "")
+                        + ". Generated by bench/axes/generate.py."),
+        "tags": tags,
+        **truth,
+    }
+    return img, doc, jpeg_q
+
+
 def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str):
     """Ticks inside the view limits, placed on the axis line (pixel centres)."""
     a = ax.xaxis if axis == "x" else ax.yaxis
@@ -315,7 +440,8 @@ def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str
     return out
 
 
-def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks, top_x=False, right_y=False):
+def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks, top_x=False, right_y=False,
+                  no_y_ticks=False):
     box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)  # TL TR BR BL
 
     def spine_line(name: str, fallback: np.ndarray) -> tuple[np.ndarray, bool]:
@@ -350,7 +476,7 @@ def extract_truth(fig, ax, W, H, xscale, yscale, frame, tickdir, no_x_ticks, top
     return {
         "plotBox": [[round(float(c), 3) for c in p] for p in box],
         "xAxis": axis_doc(xscale, xline, xdrawn, x_ticks, not no_x_ticks),
-        "yAxis": axis_doc(yscale, yline, ydrawn, y_ticks, True),
+        "yAxis": axis_doc(yscale, yline, ydrawn, y_ticks, not no_y_ticks),
     }
 
 
@@ -445,8 +571,8 @@ def main() -> int:
         old.unlink()
     bad = 0
     total = 0
-    for i in range(COUNT):
-        img, doc, q = build(i)
+    for i in list(range(COUNT)) + sorted(HANDLETTERED):
+        img, doc, q = build_handlettered(i) if i in HANDLETTERED else build(i)
         name = doc["image"]
         if q:
             img.save(OUT / name, quality=q)
@@ -459,7 +585,7 @@ def main() -> int:
         flag = "" if err <= 0.35 else "  <-- truth check FAILED"
         bad += err > 0.35
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} truth-check {err:4.2f}px  {' '.join(doc['tags'])}{flag}")
-    print(f"{COUNT} charts, {total / 1e6:.2f} MB of images")
+    print(f"{COUNT + len(HANDLETTERED)} charts, {total / 1e6:.2f} MB of images")
     return 1 if bad else 0
 
 

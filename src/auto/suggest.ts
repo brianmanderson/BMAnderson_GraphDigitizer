@@ -20,7 +20,7 @@
  * Confidence levels: "high" = ≥ 3 agreeing labels, at most one disagreeing (20 % for long axes),
  * a certain scale and mean OCR confidence ≥ 0.6; "medium" = ≥ 3 agreeing labels otherwise;
  * "low" = no usable calibration — the UI falls back to the manual flow, pre-filled with the tick
- * positions when tick marks were found ("positions").
+ * positions when tick marks were found, or with labelled gridlines without them ("positions").
  */
 
 import { calibrate, formatDateTime, forward, type CalibrationRefs, type ScaleType } from '../core/index.ts';
@@ -265,8 +265,13 @@ export interface AxisReading {
   text: OcrLabel[] | null;
   logHint: boolean;
   line: { p1: Point; p2: Point } | null;
-  /** Ticks mode: the axis's major tick points (for positions-only fallback), in along order. */
+  /**
+   * Points for the positions-only fallback, in along order: the major ticks (ticks mode), or the
+   * labels that sit on gridlines (labels only).
+   */
   tickPoints: Point[];
+  /** What `tickPoints` are (default: tick marks). */
+  positionsFrom?: 'ticks' | 'gridlines';
   /** The OCR'd offset/multiplier note at the axis end, if one was found. */
   note: OcrLabel | null;
 }
@@ -293,11 +298,14 @@ export function fitAxis(r: AxisReading): AxisFit {
   const tol = tolerance(alongs, r.labels.mode);
   const note = r.note && r.note.confidence > 0 ? parseAxisNote(r.note.text) : null;
   const unreadNote = r.note && !note ? r.note.text : null;
-  const num = numericFit(alongs, r.numeric, tol, r.logHint, note);
+  // A label cut off at the axis ("60" read as "6") is shown as read but gives no value: a few of
+  // them can agree on a scale that is off by a factor of ten.
+  const usable = (ts: OcrLabel[]) => ts.map((t, i) => (r.labels.labels[i]?.clipped ? { text: '', confidence: 0 } : t));
+  const num = numericFit(alongs, usable(r.numeric), tol, r.logHint, note);
   const best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote };
   if (r.text) {
     // Dates increase to the right on X; on Y (rare) upwards, i.e. with decreasing w.
-    const d = dateFit(alongs, r.text, tol, r.labels.axis === 'x');
+    const d = dateFit(alongs, usable(r.text), tol, r.labels.axis === 'x');
     const months = r.text.filter((t) => parseDateToken(t.text)?.kind === 'month').length;
     if (d && d.inliers.length >= 3 && d.inliers.length >= (num.fit?.inliers.length ?? 0)) {
       return { fit: d, certain: true, texts: r.text, reason: null, unreadNote: null };
@@ -346,7 +354,10 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
     message: '',
     line: r.line,
   };
-  const fallback = (message: string): AxisSuggestion => {
+  // Hand-lettered or italic labels (sheared upright for OCR, but still read poorly): say so.
+  const italic = r.labels.labels.length >= 2 && r.labels.labels.filter((l) => l.slanted).length > 0.5 * r.labels.labels.length;
+  const fallback = (why: string): AxisSuggestion => {
+    const message = italic ? `${why} The labels look hand-lettered or italic, which OCR reads unreliably.` : why;
     if (r.tickPoints.length >= 2) {
       const a = r.tickPoints[0] as Point;
       const b = r.tickPoints[r.tickPoints.length - 1] as Point;
@@ -357,7 +368,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
           { px: a.x, py: a.y, value: '' },
           { px: b.x, py: b.y, value: '' },
         ],
-        message: `${message} The two outermost tick marks are suggested as refs; type their values.`,
+        message: `${message} The two outermost ${r.positionsFrom === 'gridlines' ? 'labelled gridlines' : 'tick marks'} are suggested as refs; type their values.`,
       };
     }
     return { ...base, message };
@@ -370,10 +381,12 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
     return fallback(`There is an offset or multiplier note at the end of the axis ("${unreadNote}") that could not be read.`);
   }
   const readable = fit ? fit.values.filter((v) => v !== null).length : 0;
+  const clipped = r.labels.labels.filter((l) => l.clipped).length;
   if (!fit || fit.inliers.length < 3) {
     return fallback(
       readable < 3
-        ? `Only ${readable} of ${labels.length} labels could be read as values.`
+        ? `Only ${readable} of ${labels.length} labels could be read as values` +
+            (clipped > 0 ? ` (${clipped} touch the axis line and may be cut off, so their readings are not used).` : '.')
         : `The labels read do not agree with each other (best: ${fit?.inliers.length ?? 0} of ${readable}).`,
     );
   }
