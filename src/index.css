@@ -173,7 +173,7 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: 6px 8px;
   padding: 6px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -757,6 +757,16 @@ tbody tr.selected {
 .toolbar button {
   white-space: nowrap;
 }
+/* Compact toolbar text and padding: with "Start over" the toolbar must still fit one row at
+   1366 px with a wide system font (e2e/notice.spec.ts). The ↶ ↷ glyphs keep their size. */
+.toolbar button:not(.icon-text),
+.toolbar select {
+  font-size: 13px;
+}
+.toolbar button:not(.icon-text) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
 button.icon-text {
   min-width: 30px;
   font-size: 16px;
@@ -1008,4 +1018,44 @@ button.cta:focus-visible {
 button.cta:disabled {
   opacity: 0.55;
   border-style: dashed;
+}
+
+/* ---------- Start over (toolbar File group) ---------- */
+
+button.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--on-fill);
+}
+button.danger:hover:not(:disabled) {
+  border-color: var(--text);
+}
+.confirm-dialog {
+  max-width: 440px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 28px var(--shadow);
+}
+.confirm-dialog::backdrop {
+  background: var(--shadow);
+}
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.confirm-dialog p,
+.confirm-dialog ul {
+  margin: 0 0 10px;
+}
+.confirm-dialog ul {
+  padding-left: 20px;
+}
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
 }

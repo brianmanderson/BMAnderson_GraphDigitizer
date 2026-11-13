@@ -122,6 +122,23 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `isOnImage`); `cropLosses` counts them for the notice. The `docImage` effect re-decodes and
   re-fits on its own. Never keep the original image in the Project (no schema change).
 
+## Start over (toolbar `File` group, after Open image…)
+
+- `StartOverDialog` (`src/components/StartOverDialog.tsx`, a modal `<dialog>`) is rendered only
+  while App's `confirmingStartOver` is true; while it is, App's keydown and paste handlers return
+  early, and the dialog stops key propagation (Esc must change nothing). Cancel has the focus.
+- App's `startOver` resets every piece of App state to its fresh-load value, dispatches the
+  history `reset` with `doc: null` (not undoable, by design — SPEC → Start over), cancels
+  Auto-detect (`autoRun`) and Auto-trace (`setTrace(null)`; the effect cleanup cancels the worker),
+  nulls `pendingSave` (a pagehide flush would write the old work back), sets `startedOver` (an
+  in-flight start-up restore must not apply) and calls `clearAutosave()`. Autosave writes and the
+  clear are serialised in `src/ui/autosave.ts` (keep new writes in that queue); reads are not —
+  queued, StrictMode's two start-up reads wait on each other (`e2e/persistence.spec.ts` times it). A new piece of App state must be reset there too. Prefs and theme are kept.
+- The session log records `start-over` and stays downloadable (`sessionLog.active`) until the next
+  load. `e2e/start-over.spec.ts` and the last test of `e2e/session-log.spec.ts` guard it.
+- The toolbar is full: at 1366 px with a wide font it has ~25 px left (`e2e/notice.spec.ts`
+  requires one row). A new toolbar control needs room made for it.
+
 ## Session log
 
 - `SessionRecorder` (`src/ui/sessionLog.ts`, pure, clock injected) lives in App (`useState`),
@@ -171,6 +188,8 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   `data-cell`, `data-origin-x`/`-y` (device-pixel mapping), `data-snap-px`/`-py` when a snap
   target is shown; caption `loupe-pixel`. `e2e/helpers.ts` → `loupeState()`.
 - `project-input` (Open project), `autosave` (status bar); IndexedDB via `readAutosave()`;
+  `start-over-dialog`, `start-over-summary` (toolbar `File` → "Start over"; scope the dialog's
+  own "Start over" button to the dialog);
   `session-log` (toolbar "Session log", accessible name "Download session log").
 - Toolbar groups `History` (Undo/Redo; a notice may have its own "Undo" button, so scope to the
   group), `Precision` (`Loupe`, `Snap` toggles with `aria-pressed`, `Loupe zoom` select) and

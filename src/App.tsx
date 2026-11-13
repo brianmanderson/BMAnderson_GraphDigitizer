@@ -4,6 +4,7 @@ import { AxesStep } from './components/AxesStep.tsx';
 import { CropPanel } from './components/CropPanel.tsx';
 import { DataStep } from './components/DataStep.tsx';
 import { DataTable } from './components/DataTable.tsx';
+import { StartOverDialog } from './components/StartOverDialog.tsx';
 import { ThemeToggle } from './components/ThemeToggle.tsx';
 import { Workspace, type Step } from './components/Workspace.tsx';
 import {
@@ -20,7 +21,7 @@ import {
   type DocState,
 } from './state/doc.ts';
 import { EMPTY_HISTORY, canRedo, canUndo, historyReducer } from './state/history.ts';
-import { readAutosave, writeAutosave } from './ui/autosave.ts';
+import { clearAutosave, readAutosave, writeAutosave } from './ui/autosave.ts';
 import { cropImage, fullCrop, setCropField, type CropField, type CropRect } from './ui/crop.ts';
 import { findTargetPos, type Target } from './ui/draw.ts';
 import { baseName, copyText, downloadText } from './ui/export.ts';
@@ -75,6 +76,8 @@ const newId = () => crypto.randomUUID();
 
 const isTypingTarget = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+
+const DEFAULT_TABLE_VIEW = { showPixels: false, sortByX: false };
 
 const STEPS: { id: Step; label: string }[] = [
   { id: 'image', label: 'Image' },
@@ -165,7 +168,7 @@ export function App() {
   const [focusRef, setFocusRef] = useState<RefName | null>(null);
   const [cursor, setCursor] = useState<{ px: number; py: number } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [tableView, setTableView] = useState({ showPixels: false, sortByX: false });
+  const [tableView, setTableView] = useState(DEFAULT_TABLE_VIEW);
   /** Lines whose point lists are collapsed in the table (UI state; autosaved, not in the Project). */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   /**
@@ -188,6 +191,8 @@ export function App() {
    * is dragged or typed. UI state only — never in the document, the autosave or the prefs.
    */
   const [cropRaw, setCrop] = useState<{ of: DocState['image']; rect: CropRect | null } | null>(null);
+  /** The "Start over" confirmation is open: the app's shortcuts and paste wait until it closes. */
+  const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const projectInput = useRef<HTMLInputElement>(null);
   /** The session log of the current image (docs/SPEC.md → Session log): in memory only. */
@@ -439,6 +444,8 @@ export function App() {
     traceSettingsRef.current = traceSettings;
   });
   const restoreDone = useRef(false);
+  /** "Start over" was used: an autosave read still in flight must not restore the cleared work. */
+  const startedOver = useRef(false);
   const pendingSave = useRef<DocState | null>(null);
   const saveNow = useCallback(() => {
     const d = pendingSave.current;
@@ -474,7 +481,7 @@ export function App() {
         const rec = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
         const parsed = rec ? parseProject(rec.project) : null;
         // Never clobber an image the user loaded while the autosave was being read.
-        if (!parsed?.ok || docRef.current !== null) return;
+        if (!parsed?.ok || docRef.current !== null || startedOver.current) return;
         const active = typeof rec?.activeDatasetId === 'string' ? rec.activeDatasetId : undefined;
         const restored = fromProject(parsed.project, active);
         startLog(restored.image, 'autosave');
@@ -513,6 +520,7 @@ export function App() {
   // Paste an image (or a project file) from the clipboard anywhere on the page.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      if (confirmingStartOver) return;
       const file = firstFile(e.clipboardData);
       if (file && (file.type.startsWith('image/') || isProjectFile(file))) {
         e.preventDefault();
@@ -523,7 +531,7 @@ export function App() {
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [handleFile]);
+  }, [handleFile, confirmingStartOver]);
 
   /** Delete the selected ref, or every selected point as one undo step. */
   const deleteSelected = useCallback(() => {
@@ -610,6 +618,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (confirmingStartOver) return; // the dialog has the keyboard (Esc cancels it)
       const mod = e.ctrlKey || e.metaKey;
       if (mod && !e.altKey) {
         // Undo/redo work everywhere, text fields included: every edit is in the app's history.
@@ -661,7 +670,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, step, crop, deleteSelected, fit, undo, redo, saveProject, nudgeSelected, toggleSnap, noteTraceDropped]);
+  }, [selection, step, crop, confirmingStartOver, deleteSelected, fit, undo, redo, saveProject, nudgeSelected, toggleSnap, noteTraceDropped]);
 
   const onCursor = useCallback((pos: { px: number; py: number } | null) => {
     setCursor(pos);
@@ -1006,6 +1015,46 @@ export function App() {
     setNotice({ kind: 'info', text: `Cropped to ${cropped.width} × ${cropped.height} px.${removedByCrop(lost)}`, undoRev: history.rev + 1 });
   };
 
+  /**
+   * "Start over", confirmed (docs/SPEC.md → Start over): back to the state of a fresh load — no
+   * image, no document, an empty history (not undoable), every suggestion and worker run dropped,
+   * the session's UI state at its defaults — and the autosave cleared, so a reload stays empty.
+   * Per-browser preferences (loupe, snap, Move points, theme) are kept. The session log records
+   * `start-over` and stays downloadable until the next load starts a new one.
+   */
+  const startOver = () => {
+    setConfirmingStartOver(false);
+    if (!doc) return;
+    noteTraceDropped();
+    record({ type: 'start-over', lines: doc.datasets.length, points: totalPoints });
+    startedOver.current = true;
+    pendingSave.current = null; // a pending debounced or pagehide save must not write the old work back
+    autoRun.current?.cancel();
+    autoRun.current = null;
+    setAuto(null);
+    setTrace(null); // its effect's cleanup cancels a running trace
+    setTraceSettings(DEFAULT_TRACE_SETTINGS);
+    setCrop(null);
+    setSelection(EMPTY_SELECTION);
+    setChosenRef(null);
+    setFocusRef(null);
+    setCursor(null);
+    setLoupeOnSelection(false);
+    setCollapsed(new Set());
+    setHidden(new Set());
+    setTableView(DEFAULT_TABLE_VIEW);
+    historyDispatch({ type: 'reset', doc: null });
+    setDecoded(null);
+    pendingFit.current = null;
+    setView(IDENTITY_VIEW);
+    setStep('image');
+    setAutosaved(null);
+    setNotice(null);
+    clearAutosave().catch(() =>
+      setNotice({ kind: 'error', text: 'The autosave could not be cleared (storage blocked); a reload may bring the work back.' }),
+    );
+  };
+
   const loupe = useMemo(() => ({ enabled: prefs.loupe, zoom: prefs.loupeZoom }), [prefs.loupe, prefs.loupeZoom]);
   const showUndo = notice?.undoRev !== undefined && notice.undoRev === history.rev && canUndo(history);
 
@@ -1016,6 +1065,15 @@ export function App() {
         <div className="tool-group" role="group" aria-label="File">
           <button type="button" onClick={() => fileInput.current?.click()}>
             Open image…
+          </button>
+          <button
+            type="button"
+            disabled={!doc}
+            onClick={() => setConfirmingStartOver(true)}
+            title="Clear the image, axes and all lines"
+            aria-haspopup="dialog"
+          >
+            Start over
           </button>
           <button
             type="button"
@@ -1036,7 +1094,7 @@ export function App() {
           <button
             type="button"
             onClick={downloadSessionLog}
-            disabled={!doc}
+            disabled={!doc && !sessionLog.active}
             data-testid="session-log"
             aria-label="Download session log"
             title="Download session log: what was done with this image (times, steps, edits, exports) as a .json file. Kept in this tab only; no image data."
@@ -1337,6 +1395,10 @@ export function App() {
           </div>
         )}
       </main>
+
+      {confirmingStartOver && doc && (
+        <StartOverDialog doc={doc} calibrated={!!calibration} onSave={saveProject} onConfirm={startOver} onCancel={() => setConfirmingStartOver(false)} />
+      )}
 
       <footer className="statusbar" data-testid="statusbar">
         {cursor ? (
