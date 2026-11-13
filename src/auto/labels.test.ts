@@ -187,3 +187,40 @@ describe('findLabels under a top X axis: the Y axis offset note (synthetic bench
     expect(f.y.noteTangled).toBe(true);
   });
 });
+
+describe('findLabels on old-scan look-alikes (synthetic c70, c75: hand-lettered labels, heavy grid, no ticks)', () => {
+  const truthPx = (name: string) => {
+    const t = JSON.parse(readFileSync(new URL(`../../bench/axes/synthetic/${name}.json`, import.meta.url), 'utf8')) as {
+      xAxis: { ticks: { px: number }[] };
+      yAxis: { ticks: { py: number }[] };
+    };
+    return { x: t.xAxis.ticks.map((k) => k.px), y: t.yAxis.ticks.map((k) => k.py) };
+  };
+
+  it('puts labels that sit on a gridline exactly on it, and keeps the others at their centres', () => {
+    const f = labelsOf('bench/axes/synthetic/c70.jpg');
+    const truth = truthPx('c70');
+    expect(f.x.mode).toBe('labels-only');
+    expect(f.x.labels).toHaveLength(truth.x.length);
+    const onGrid = f.x.labels.filter((l) => l.gridline);
+    expect(onGrid.length).toBeGreaterThanOrEqual(3);
+    for (const l of onGrid) expect(Math.min(...truth.x.map((px) => Math.abs(px - l.along)))).toBeLessThan(1);
+    // Every second label sits between gridlines and keeps its own centre.
+    expect(f.x.labels.filter((l) => !l.gridline).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('flags labels written against the frame as possibly cut off', () => {
+    const f = labelsOf('bench/axes/synthetic/c70.jpg');
+    expect(f.y.mode).toBe('labels-only');
+    expect(f.y.labels.filter((l) => l.clipped).length).toBeGreaterThan(f.y.labels.length / 2);
+    expect(f.x.labels.some((l) => l.clipped)).toBe(false);
+  });
+
+  it('shears italic labels upright for OCR (most labels of the axis are slanted)', () => {
+    const f = labelsOf('bench/axes/synthetic/c75.jpg');
+    expect(f.x.labels.filter((l) => l.slanted).length).toBeGreaterThan(f.x.labels.length / 2);
+    // Upright labels are never sheared, not even a lone "7" that leans.
+    const upright = labelsOf('km-pericardial-pao.png');
+    expect([...upright.x.labels, ...upright.y.labels].some((l) => l.slanted)).toBe(false);
+  });
+});

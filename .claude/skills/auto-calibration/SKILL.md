@@ -49,6 +49,11 @@ description: >
   Auto-calibration.
 - `pool.ts` — PSM 7 → 6 (→ 10 for single chars) when a read is empty; parameters re-sent only on
   change.
+- Old scans (hand-lettered labels, heavy grid, no ticks — SPEC → Finding labels / OCR):
+  ticks that match < 2 labels → labels-only; labels on a gridline snap to it (`gridline`); a
+  label touching the axis is `clipped` and gives no value; italic axes are sheared upright
+  (`slanted`). Tesseract cannot really read hand-lettering: declining with labelled-gridline
+  positions is the expected result there, not a bug to tune away.
 
 ## Debugging a figure
 
