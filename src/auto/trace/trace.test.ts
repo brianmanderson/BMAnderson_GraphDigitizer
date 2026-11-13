@@ -601,6 +601,91 @@ describe('traceLine: markers', () => {
   });
 });
 
+describe('traceLine: busy scatterplots', () => {
+  const GREY: RGB = [128, 128, 128];
+  /** A small deterministic generator (the tests must not depend on Math.random). */
+  const rand = (seed: number) => () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const plus = (c: Canvas, p: P, size = 5) => {
+    c.stroke([{ x: p.x - size / 2, y: p.y }, { x: p.x + size / 2, y: p.y }], 1.2, BLACK);
+    c.stroke([{ x: p.x, y: p.y - size / 2 }, { x: p.x, y: p.y + size / 2 }], 1.2, BLACK);
+  };
+  const diamond = (c: Canvas, p: P, size = 11) =>
+    c.paint(BLACK, p.x - size, p.y - size, p.x + size, p.y + size, (x, y) => Math.abs(x - p.x) + Math.abs(y - p.y) <= size / 2);
+  /** A grey model curve: a straight steep stretch, a corner, then a falling curve to a plateau. */
+  const corner = { x: 110, y: 190 };
+  const curve: P[] = [{ x: 70, y: 40 }, corner, ...Array.from({ length: 48 }, (_, i) => {
+    const x = 115 + 5 * i;
+    return { x, y: 230 - 40 * Math.exp(-(x - 110) / 40) };
+  })];
+  /** The scene: the grey curve under a cloud of black "+" (some in overlapping pairs and threes), diamonds, a "%"-like label. */
+  function scene(): { c: Canvas; plusses: P[]; diamonds: P[] } {
+    const c = new Canvas(400, 280);
+    frame(c);
+    c.stroke(curve, 2.5, GREY);
+    const r = rand(7);
+    const plusses: P[] = [];
+    const diamonds: P[] = [{ x: 150, y: 150 }, { x: 250, y: 120 }, { x: 300, y: 205 }, { x: 200, y: 70 }];
+    const clear = (p: P) => plusses.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= 8) && diamonds.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= 14);
+    while (plusses.length < 90) {
+      const p = { x: 60 + 290 * r(), y: 40 + 200 * r() };
+      if (p.x > 300 && p.y < 90) continue; // the label's corner
+      if (clear(p)) plusses.push(p);
+    }
+    // Overlapping pairs and a three, one touching a diamond, and markers on the grey curve.
+    const extra: P[] = [];
+    for (const [i, dx, dy] of [[0, 3, 1], [5, -2, 3], [9, 3, -2], [12, 2, 2]] as const) extra.push({ x: plusses[i]!.x + dx, y: plusses[i]!.y + dy });
+    extra.push({ x: plusses[9]!.x - 2, y: plusses[9]!.y + 3 });
+    extra.push({ x: 150 + 7, y: 150 + 1 });
+    for (const x of [140, 200, 260]) extra.push({ x, y: 230 - 40 * Math.exp(-(x - 110) / 40) + 0.3 });
+    plusses.push(...extra);
+    for (const p of plusses) plus(c, p);
+    for (const p of diamonds) diamond(c, p);
+    // A "%"-like label in black at the top right: two rings and a slash.
+    for (const q of [{ x: 318, y: 50 }, { x: 330, y: 64 }]) {
+      c.paint(BLACK, q.x - 5, q.y - 5, q.x + 5, q.y + 5, (x, y) => Math.abs(Math.hypot(x - q.x, y - q.y) - 3.2) <= 0.9);
+    }
+    c.stroke([{ x: 334, y: 44 }, { x: 314, y: 70 }], 1.6, BLACK);
+    return { c, plusses, diamonds };
+  }
+
+  it('keeps a grey curve on its own colour and course through black markers, with its corner', () => {
+    const { c } = scene();
+    const r = traceLine(c.request({ x: 300, y: Math.round(230 - 40 * Math.exp(-190 / 40)) }));
+    expect(r.kind).toBe('curve');
+    const path = pts(r);
+    for (const p of path) expect(polyDist(p, curve)).toBeLessThan(1.5);
+    expect(Math.min(...path.map((p) => p.x))).toBeLessThan(73);
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(345);
+    expect(r.points.some((p) => Math.hypot(p.px - corner.x, p.py - corner.y) <= 2)).toBe(true);
+  });
+
+  it('finds clusters of small "+" markers, not the diamonds, the label or the grey curve', () => {
+    const { c, plusses, diamonds } = scene();
+    const r = traceLine(c.request(plusses[1]!, { mode: 'markers' }));
+    expect(r.kind).toBe('markers');
+    const found = r.path;
+    const matched = plusses.filter((p) => found.some((q) => Math.hypot(q.px - p.x, q.py - p.y) <= 2)).length;
+    expect(matched / plusses.length).toBeGreaterThan(0.9);
+    const stray = found.filter((q) => !plusses.some((p) => Math.hypot(q.px - p.x, q.py - p.y) <= 2));
+    expect(stray.length).toBeLessThanOrEqual(2);
+    for (const d of diamonds) expect(found.some((q) => Math.hypot(q.px - d.x, q.py - d.y) <= 3)).toBe(false);
+    expect(found.some((q) => q.px > 308 && q.px < 340 && q.py > 40 && q.py < 74)).toBe(false);
+  });
+
+  it('finds the diamonds, not piles of "+" markers', () => {
+    const { c, diamonds } = scene();
+    // A pile of "+" the size of a diamond.
+    for (let i = 0; i < 9; i++) plus(c, { x: 90 + 2.4 * (i % 3), y: 240 + 2.4 * Math.floor(i / 3) });
+    const r = traceLine(c.request(diamonds[1]!, { mode: 'markers' }));
+    expect(r.kind).toBe('markers');
+    for (const d of diamonds) expect(r.path.some((q) => Math.hypot(q.px - d.x, q.py - d.y) <= 1)).toBe(true);
+    expect(r.path.length).toBe(diamonds.length);
+  });
+});
+
 describe('traceLine: find points (markers by shape)', () => {
   const WHITE: RGB = [255, 255, 255];
   /** A marker with vertical and horizontal error bars and caps, drawn under it. */

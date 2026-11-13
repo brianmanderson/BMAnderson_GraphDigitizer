@@ -72,6 +72,139 @@ export function coverage(m: ColorModel, c: RGB): number {
   return r <= Math.max(20, m.tol * Math.hypot(v0, v1, v2)) ? a : -1;
 }
 
+/**
+ * How far along its own line from the background a colour can go before a channel runs out: the α
+ * of the darkest shade of the series' hue (1 for black on white; about 2 for a mid grey, whose
+ * hue black continues).
+ */
+export function maxAlpha(m: ColorModel): number {
+  let a = Number.POSITIVE_INFINITY;
+  for (let c = 0; c < 3; c++) {
+    const d = m.dir[c]!;
+    if (Math.abs(d) < 1) continue;
+    a = Math.min(a, d < 0 ? m.bg[c]! / -d : (255 - m.bg[c]!) / d);
+  }
+  return Number.isFinite(a) ? a : 1;
+}
+
+/** A grey series is told from black ink when black is at least this many times its contrast… */
+export const DARKER_MIN = 1.6;
+/** …and its colour is a neutral grey (saturation against the background, as in `colorModel`). */
+const GREY_CHROMA = 0.1;
+
+/**
+ * Whether the series' colour is a grey that black continues (`markDarkerInk` applies): neutral,
+ * and black at least DARKER_MIN times its contrast. A coloured series is told from black by its hue.
+ */
+export function greySeries(m: ColorModel): boolean {
+  return chromaOf(m) <= GREY_CHROMA && maxAlpha(m) >= DARKER_MIN;
+}
+
+/** Whether the series is black (or near it): neutral, and nothing of its hue is much darker. */
+export function neutralBlack(m: ColorModel): boolean {
+  return chromaOf(m) <= GREY_CHROMA && maxAlpha(m) < DARKER_MIN;
+}
+
+/** Saturation of the series against the background (0 for black and greys). */
+function chromaOf(m: ColorModel): number {
+  const mean = (m.dir[0] + m.dir[1] + m.dir[2]) / 3;
+  return Math.hypot(m.dir[0] - mean, m.dir[1] - mean, m.dir[2] - mean) / Math.sqrt(m.len2);
+}
+/** Ink at least this much covered is darker than the series' own colour (beyond JPEG noise). */
+const DARKER_INK = 1.15;
+/** A piece of ink touching darker ink and no larger than this (px) is that ink's fringe. */
+const RIM_PIECE = 12;
+
+/**
+ * Ink much darker than a grey series' own colour — black markers, text and axes over and around a
+ * grey curve — lies on the same colour line, beyond it (α well above 1), so the colour model alone
+ * counts it as the series' strongest ink. It is another series: an occluder (α −1, `other`), with
+ * its anti-aliased rim (the pixels next to it that are at least half covered, and one more pixel
+ * out where they are still clearly darker than the series) and any small piece of ink left
+ * touching it — never the seed's own piece). `aMax`: `maxAlpha` of the series' model.
+ * Returns the number of pixels taken out.
+ */
+export function markDarkerInk(
+  alpha: Float32Array,
+  other: Uint8Array,
+  region: { width: number; x0: number; y0: number; x1: number; y1: number },
+  aMax: number,
+  seed: { x: number; y: number },
+): Uint8Array | null {
+  const { width: w, x0, y0, x1, y1 } = region;
+  const dark = 1 + Math.max(0.35, 0.4 * (aMax - 1));
+  const mark = new Uint8Array(alpha.length);
+  let any = false;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const k = y * w + x;
+      if ((alpha[k] ?? -1) >= dark) {
+        mark[k] = 1;
+        any = true;
+      }
+    }
+  }
+  if (!any) return null;
+  // The rim: one pixel out into any ink, a second only into ink still clearly darker than the series.
+  for (const min of [ON_ALPHA, DARKER_INK]) {
+    const was = mark.slice();
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const k = y * w + x;
+        if (was[k] || (alpha[k] ?? -1) < min) continue;
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; dy++) {
+          for (let dx = -1; dx <= 1 && !near; dx++) {
+            const yy = y + dy;
+            const xx = x + dx;
+            near = yy >= y0 && yy <= y1 && xx >= x0 && xx <= x1 && was[yy * w + xx] === 1;
+          }
+        }
+        if (near) mark[k] = 1;
+      }
+    }
+  }
+  // What is left of the rim — a lighter fringe of a glyph or a marker cut off from the rest — is a
+  // small piece of ink touching the dark ink: part of it too. (A piece of the curve between two
+  // markers is as small; the walk bridges it as a hidden gap.)
+  const seen = new Uint8Array(alpha.length);
+  const seedK = seed.y * w + seed.x;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const k0 = y * w + x;
+      if (seen[k0] || mark[k0] || (alpha[k0] ?? -1) < ON_ALPHA) continue;
+      const piece: number[] = [k0];
+      seen[k0] = 1;
+      let touches = false;
+      for (let i = 0; i < piece.length; i++) {
+        const k = piece[i]!;
+        const px = k % w;
+        const py = (k - px) / w;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = px + dx;
+            const yy = py + dy;
+            if (xx < x0 || xx > x1 || yy < y0 || yy > y1) continue;
+            const nk = yy * w + xx;
+            if (mark[nk]) touches = true;
+            else if (!seen[nk] && (alpha[nk] ?? -1) >= ON_ALPHA) {
+              seen[nk] = 1;
+              piece.push(nk);
+            }
+          }
+        }
+      }
+      if (touches && piece.length <= RIM_PIECE && !piece.includes(seedK)) for (const k of piece) mark[k] = 1;
+    }
+  }
+  for (let k = 0; k < mark.length; k++) {
+    if (!mark[k]) continue;
+    alpha[k] = -1;
+    other[k] = 1;
+  }
+  return mark;
+}
+
 /** Per-channel median over pixels where `allowed(k)` holds, sampled on a grid of about 4000 points. */
 export function backgroundColor(img: Img, x0: number, y0: number, x1: number, y1: number, allowed: (k: number) => boolean): RGB {
   const area = (x1 - x0 + 1) * (y1 - y0 + 1);

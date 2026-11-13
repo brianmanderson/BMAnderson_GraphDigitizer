@@ -12,6 +12,8 @@
  * and legend boxes differ in at least one. Overlapping markers merge into a blob a whole multiple
  * of the template's area; it is split by k-means into that many centroids (lower confidence).
  * A partly hidden marker (another series drawn over it) keeps ≥ 45 % of the area and still counts.
+ * In a busy scatterplot (many such markers) merged blobs are split by copies of the clicked marker
+ * instead (`splitCluster`, below).
  */
 
 import { ON_ALPHA } from './color.ts';
@@ -192,24 +194,362 @@ function splitBlob(labels: Int32Array, w: number, b: Blob, k: number): { x: numb
 }
 
 /** Every blob that looks like the template, as marker centroids ordered by px. */
-export function matchMarkers(found: Blobs, template: Blob, width: number): Marker[] {
+export function matchMarkers(found: Blobs, template: Blob, width: number, alpha: Float32Array): Marker[] {
   const tw = bw(template);
   const th = bh(template);
   const fill = (b: Blob) => b.area / (bw(b) * bh(b));
   const tf = fill(template);
-  const out: Marker[] = [];
+  let out: Marker[] = [];
+  const singles: Blob[] = [];
+  const merged: Blob[] = [];
   for (const b of found.blobs) {
     const ratio = b.area / template.area;
     const w = bw(b);
     const h = bh(b);
     if (ratio >= 0.45 && ratio <= 2 && w <= 1.6 * tw + 2 && h <= 1.6 * th + 2 && Math.abs(fill(b) - tf) <= 0.25) {
+      singles.push(b);
       out.push({ px: b.cx, py: b.cy, confidence: Math.max(0.3, Math.min(1, 1 - 0.5 * Math.abs(ratio - 1))) });
-    } else if (ratio > 2 && ratio <= 8.5 && w <= 4 * tw + 2 && h <= 4 * th + 2) {
-      const k = Math.round(ratio);
+    } else if (ratio > 2) merged.push(b);
+  }
+  // A busy scatterplot (many markers like the clicked one): its merged blobs are clusters of them,
+  // split by copies of the marker, and a marker standing alone must have its pixels — small shapes
+  // of another class ("x" among dots) are as large and as full. Otherwise a merged blob a few
+  // markers large is split by area.
+  const shape = out.length >= BUSY ? smallShape(found, template, width, alpha) : null;
+  if (shape) out = out.filter((_, i) => sameShape(found, width, singles[i]!, shape));
+  for (const b of merged) {
+    if (shape) out.push(...splitCluster(found, width, b, shape));
+    else if (b.area <= 8.5 * template.area && bw(b) <= 4 * tw + 2 && bh(b) <= 4 * th + 2) {
+      const k = Math.round(b.area / template.area);
       for (const c of splitBlob(found.labels, width, b, k)) out.push({ px: c.x, py: c.y, confidence: 0.5 });
     }
   }
   return out.sort((a, b) => a.px - b.px || a.py - b.py);
+}
+
+/*
+ * Clusters of small markers. Hundreds of small markers of one colour ("+", "x", dots) in a busy
+ * scatterplot overlap into blobs of many markers, touch the bigger markers of another class drawn
+ * among them, and lie beside text of their colour. A merged blob is read as markers only as far as
+ * copies of the clicked marker explain it:
+ * - a compact part much thicker than the clicked marker is a marker of another, filled shape (a
+ *   diamond among "+"): it is cut out, with the strokes of its own size around it, and the small
+ *   markers touching it stay;
+ * - what is left must be covered by places where the clicked marker's pixels are (nearly) all ink:
+ *   a glyph stroke, a ring (a "%"), a line of the colour is thinner than the marker or has
+ *   background where the marker has ink, and is no cluster;
+ * - the markers are then placed one by one where a copy covers most ink not yet explained, until
+ *   what is left is less than a third of a marker.
+ */
+
+/** Ink of a black series at most this much covered, with none of its full colour beside it… */
+const LIGHTER = 0.75;
+const FULL = 0.9;
+/** …and runs on for at least this many marker sizes. */
+const LIGHTER_RUN = 3;
+
+/**
+ * …is a lighter grey of the same hue — a grey curve or gridline among black markers — not the
+ * series: taken out of a copy of the coverage map (returns null when there is none). A black
+ * marker's anti-aliased edge always has its full colour beside it, and a faint marker is small.
+ * `size`: the clicked marker's size, px.
+ */
+export function withoutLighterInk(alpha: Float32Array, region: Region, size: number): Float32Array | null {
+  const { width: w, x0, y0, x1, y1 } = region;
+  const light = new Uint8Array(alpha.length);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const k = y * w + x;
+      const a = alpha[k] ?? -1;
+      if (a < ON_ALPHA || a > LIGHTER) continue;
+      let full = false;
+      for (let dy = -1; dy <= 1 && !full; dy++) {
+        for (let dx = -1; dx <= 1 && !full; dx++) {
+          const yy = y + dy;
+          const xx = x + dx;
+          full = yy >= y0 && yy <= y1 && xx >= x0 && xx <= x1 && (alpha[yy * w + xx] ?? -1) >= FULL;
+        }
+      }
+      if (!full) light[k] = 1;
+    }
+  }
+  // Only what runs on for several markers' lengths: a faint marker is small.
+  let out: Float32Array | null = null;
+  const seen = new Uint8Array(alpha.length);
+  const reach = LIGHTER_RUN * size;
+  for (let k0 = 0; k0 < light.length; k0++) {
+    if (!light[k0] || seen[k0]) continue;
+    const piece = [k0];
+    seen[k0] = 1;
+    let bx0 = k0 % w;
+    let bx1 = bx0;
+    let by0 = (k0 - bx0) / w;
+    let by1 = by0;
+    for (let i = 0; i < piece.length; i++) {
+      const k = piece[i]!;
+      const px = k % w;
+      const py = (k - px) / w;
+      bx0 = Math.min(bx0, px);
+      bx1 = Math.max(bx1, px);
+      by0 = Math.min(by0, py);
+      by1 = Math.max(by1, py);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = px + dx;
+          const yy = py + dy;
+          if (xx < x0 || xx > x1 || yy < y0 || yy > y1) continue;
+          const nk = yy * w + xx;
+          if (light[nk] && !seen[nk]) {
+            seen[nk] = 1;
+            piece.push(nk);
+          }
+        }
+      }
+    }
+    if (Math.max(bx1 - bx0, by1 - by0) + 1 < reach) continue;
+    out ??= alpha.slice();
+    for (const k of piece) out[k] = -1;
+  }
+  return out;
+}
+
+/** The clicked small marker's pixels, for splitting clusters. */
+interface SmallShape {
+  /** (dx, dy) offsets of its ink from its anchor pixel; the centre relative to the anchor. */
+  pix: number[];
+  ox: number;
+  oy: number;
+  /** Its deepest pixel's distance to background, in thirds of a pixel (chamfer). */
+  depth: number;
+  size: number;
+}
+
+/** A plot with at least this many markers standing alone like the clicked one is busy. */
+const BUSY = 25;
+/** A single blob of a busy plot is the marker when its pixels overlap the marker's this much (IoU). */
+const SAME_SHAPE = 0.45;
+/** Share of a copy's pixels that must be ink for it to explain them. */
+const FIT = 0.8;
+/** Weight of a copy's pixels on background against the new ink it explains. */
+const MISFIT = 2;
+/** Share of a cluster that copies must explain. */
+const EXPLAINED = 0.75;
+/** A copy is placed while it explains at least this share of a marker's new ink. */
+const PLACE = 0.35;
+/** A part thicker than the clicked marker by this many px (and compact) is another marker… */
+const THICKER = 1.5;
+/** …and at least this deep (px)… */
+const THICK_MIN = 1.5;
+/** …and covering at least this many small markers' area. */
+const BIGGER = 2.5;
+/** Clusters larger than this many markers are not split (the work grows with the square). */
+const MAX_CLUSTER = 400;
+
+function smallShape(found: Blobs, t: Blob, W: number, alpha: Float32Array): SmallShape | null {
+  const w = bw(t) + 2;
+  const h = bh(t) + 2;
+  const B = new Uint8Array(w * h);
+  let sw = 0;
+  let sx = 0;
+  let sy = 0;
+  for (let y = t.y0; y <= t.y1; y++) {
+    for (let x = t.x0; x <= t.x1; x++) {
+      if (found.labels[y * W + x] !== t.label) continue;
+      B[(y - t.y0 + 1) * w + x - t.x0 + 1] = 1;
+      const a = Math.min(1, Math.max(0, alpha[y * W + x] ?? 0));
+      sw += a;
+      sx += a * x;
+      sy += a * y;
+    }
+  }
+  if (!sw) return null;
+  const cx = sx / sw;
+  const cy = sy / sw;
+  const ax = Math.round(cx);
+  const ay = Math.round(cy);
+  const pix: number[] = [];
+  for (let y = t.y0; y <= t.y1; y++) for (let x = t.x0; x <= t.x1; x++) if (found.labels[y * W + x] === t.label) pix.push(x - ax, y - ay);
+  const d = chamfer(B, w, h);
+  let depth = 0;
+  for (let i = 0; i < w * h; i++) depth = Math.max(depth, d[i]!);
+  return { pix, ox: cx - ax, oy: cy - ay, depth, size: Math.max(bw(t), bh(t)) };
+}
+
+/** Whether a single blob has the marker's pixels: overlap / union ≥ SAME_SHAPE at the best shift (±1 px). */
+function sameShape(found: Blobs, W: number, b: Blob, t: SmallShape): boolean {
+  const ax = Math.round(b.cx - t.ox);
+  const ay = Math.round(b.cy - t.oy);
+  const n = t.pix.length / 2;
+  let best = 0;
+  for (let sy = -1; sy <= 1; sy++) {
+    for (let sx = -1; sx <= 1; sx++) {
+      let both = 0;
+      for (let k = 0; k < t.pix.length; k += 2) {
+        const x = ax + sx + t.pix[k]!;
+        const y = ay + sy + t.pix[k + 1]!;
+        if (x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1 && found.labels[y * W + x] === b.label) both++;
+      }
+      best = Math.max(best, both / (n + b.area - both));
+    }
+  }
+  return best >= SAME_SHAPE;
+}
+
+/** The markers a merged blob is made of (see above); none when copies of the marker don't explain it. */
+function splitCluster(found: Blobs, W: number, b: Blob, t: SmallShape): Marker[] {
+  const n = t.pix.length / 2;
+  if (b.area > MAX_CLUSTER * n) return [];
+  // The blob in a window with a margin of the marker's size (copies may reach out of it).
+  const m = t.size + 1;
+  const wx0 = b.x0 - m;
+  const wy0 = b.y0 - m;
+  const w = bw(b) + 2 * m;
+  const h = bh(b) + 2 * m;
+  const B = new Uint8Array(w * h);
+  for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) if (found.labels[y * W + x] === b.label) B[(y - wy0) * w + x - wx0] = 1;
+
+  // Compact parts much thicker than the marker: another, filled marker, cut out with its edge.
+  const d = chamfer(B, w, h);
+  const thick = new Uint8Array(w * h);
+  let anyThick = false;
+  for (let i = 0; i < w * h; i++) {
+    if (d[i]! >= Math.max(t.depth + 3 * THICKER, 3 * THICK_MIN)) {
+      thick[i] = 1;
+      anyThick = true;
+    }
+  }
+  const other = new Uint8Array(w * h);
+  if (anyThick) {
+    const seen = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (!thick[i] || seen[i]) continue;
+      const c = component(thick, w, h, i, true);
+      let x0 = w;
+      let y0 = h;
+      let x1 = 0;
+      let y1 = 0;
+      for (const j of c.pixels) {
+        seen[j] = 1;
+        const x = j % w;
+        const y = (j - x) / w;
+        x0 = Math.min(x0, x);
+        x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y);
+        y1 = Math.max(y1, y);
+      }
+      const cw = x1 - x0 + 1;
+      const ch = y1 - y0 + 1;
+      // A thick row of overlapping markers is long; a filled marker is not.
+      if (Math.max(cw, ch) > 2 * Math.min(cw, ch) + 2) continue;
+      // Its shape: the blob within its depth (+1 px) of the thick part — several small markers'
+      // worth (two of them drawn nearly on top of each other are thick only in the middle).
+      const shape = new Set<number>();
+      for (const j of c.pixels) {
+        const x = j % w;
+        const y = (j - x) / w;
+        const r = d[j]! / 3 + 1;
+        const R = Math.ceil(r);
+        for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++) {
+          for (let xx = Math.max(0, x - R); xx <= Math.min(w - 1, x + R); xx++) {
+            if (B[yy * w + xx] && (xx - x) ** 2 + (yy - y) ** 2 <= r * r) shape.add(yy * w + xx);
+          }
+        }
+      }
+      if (shape.size < BIGGER * n) continue;
+      for (const j of shape) other[j] = 1;
+    }
+  }
+  const rest = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) rest[i] = B[i] && !other[i] ? 1 : 0;
+
+  const out: Marker[] = [];
+  const done = new Uint8Array(w * h);
+  for (let i0 = 0; i0 < w * h; i0++) {
+    if (!rest[i0] || done[i0]) continue;
+    const part = component(rest, w, h, i0, true).pixels;
+    for (const j of part) done[j] = 1;
+    if (part.length < 0.45 * n) continue;
+    const P = new Uint8Array(w * h);
+    let px0 = w;
+    let py0 = h;
+    let px1 = 0;
+    let py1 = 0;
+    for (const j of part) {
+      P[j] = 1;
+      const x = j % w;
+      const y = (j - x) / w;
+      px0 = Math.min(px0, x);
+      px1 = Math.max(px1, x);
+      py0 = Math.min(py0, y);
+      py1 = Math.max(py1, y);
+    }
+    // Places where a copy of the marker is (nearly) all ink — of this part, or of the cut-out
+    // marker it may run under.
+    const places: { x: number; y: number; miss: number }[] = [];
+    const covered = new Uint8Array(w * h);
+    for (let y = Math.max(0, py0 - 1); y <= Math.min(h - 1, py1 + 1); y++) {
+      for (let x = Math.max(0, px0 - 1); x <= Math.min(w - 1, px1 + 1); x++) {
+        if (!P[y * w + x] && !other[y * w + x]) continue;
+        let ink = 0;
+        let own = 0;
+        for (let k = 0; k < t.pix.length; k += 2) {
+          const xx = x + t.pix[k]!;
+          const yy = y + t.pix[k + 1]!;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = yy * w + xx;
+          if (P[j]) {
+            ink++;
+            own++;
+          } else if (other[j]) ink++;
+        }
+        if (own && ink >= FIT * n) {
+          places.push({ x, y, miss: n - ink });
+          for (let k = 0; k < t.pix.length; k += 2) {
+            const xx = x + t.pix[k]!;
+            const yy = y + t.pix[k + 1]!;
+            if (xx >= 0 && yy >= 0 && xx < w && yy < h) covered[yy * w + xx] = 1;
+          }
+        }
+      }
+    }
+    let explained = 0;
+    for (const j of part) explained += covered[j]!;
+    if (explained < EXPLAINED * part.length) continue;
+    // One copy at a time where it explains the most ink not yet explained, less what it would put
+    // on background (a copy straddling two markers explains much of both but fits neither).
+    const left = P.slice();
+    let remaining = part.length;
+    while (remaining >= PLACE * n) {
+      let best: { x: number; y: number } | null = null;
+      let bestNew = 0;
+      let bestScore = 0;
+      for (const p of places) {
+        let fresh = 0;
+        for (let k = 0; k < t.pix.length; k += 2) {
+          const xx = p.x + t.pix[k]!;
+          const yy = p.y + t.pix[k + 1]!;
+          if (xx >= 0 && yy >= 0 && xx < w && yy < h && left[yy * w + xx]) fresh++;
+        }
+        const score = fresh - MISFIT * p.miss;
+        if (score > bestScore) {
+          bestScore = score;
+          bestNew = fresh;
+          best = p;
+        }
+      }
+      if (!best || bestNew < PLACE * n) break;
+      for (let k = 0; k < t.pix.length; k += 2) {
+        const xx = best.x + t.pix[k]!;
+        const yy = best.y + t.pix[k + 1]!;
+        if (xx >= 0 && yy >= 0 && xx < w && yy < h && left[yy * w + xx]) {
+          left[yy * w + xx] = 0;
+          remaining--;
+        }
+      }
+      out.push({ px: best.x + wx0 + t.ox, py: best.y + wy0 + t.oy, confidence: 0.5 });
+    }
+  }
+  return out;
 }
 
 export const blobWidth = bw;
@@ -238,6 +578,8 @@ export interface MarkerTemplate {
   margin: number[];
   /** Every pixel of the marker (a filled shape; an open one's ring and inside) and a 1-px rim. */
   body: number[];
+  /** Filled: ink at least 2 px inside the marker's edge — solid in a marker, not in a cluster of smaller ones. */
+  deep: number[];
   /** Anchor pixel in the image and the marker's centre relative to it (sub-pixel). */
   ax: number;
   ay: number;
@@ -539,11 +881,13 @@ export function markerTemplate(
   if (on.length < 8) return null;
   let area = 0;
   for (let i = 0; i < w * h; i++) if (M[i] && B[i]) area++;
+  const deep: number[] = [];
+  if (!hole) for (let i = 0; i < on.length; i += 2) if (inM[(on[i + 1]! + ay) * w + on[i]! + ax]! >= 6) deep.push(on[i]!, on[i + 1]!);
   const body: number[] = [];
   for (let y = Math.max(0, my0 - 1); y <= Math.min(h - 1, my1 + 1); y++) {
     for (let x = Math.max(0, mx0 - 1); x <= Math.min(w - 1, mx1 + 1); x++) if (outM[y * w + x]! <= 4) body.push(x - ax, y - ay);
   }
-  return { shape: hole ? 'open' : 'filled', area, on, off, margin, body, ax: ax + x0, ay: ay + y0, ox: cx - ax, oy: cy - ay, size: Math.max(bw, bh), open: hole ? 0 : k };
+  return { shape: hole ? 'open' : 'filled', area, on, off, margin, body, deep, ax: ax + x0, ay: ay + y0, ox: cx - ax, oy: cy - ay, size: Math.max(bw, bh), open: hole ? 0 : k };
 }
 
 /**
@@ -556,6 +900,10 @@ export function markerTemplate(
 const ON_SHARE = 0.8;
 const HIDDEN_SHARE = 0.65;
 const OFF_SHARE = 0.75;
+/** Share of a filled marker's inside (2 px from its edge) that may be background. */
+const SOLID_HOLES = 0.05;
+/** That many small blobs of the colour make a plot busy. */
+const BUSY_SMALL = 60;
 /** A filled marker's margin need only be half clear: its neighbours in a cluster reach into it. */
 const MARGIN_SHARE = 0.5;
 const fits = (t: MarkerTemplate, s: { on: number; off: number; margin: number; lopsided: number }) =>
@@ -570,6 +918,15 @@ const fits = (t: MarkerTemplate, s: { on: number; off: number; margin: number; l
 export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array, region: Region, t: MarkerTemplate): Marker[] {
   const { x0, y0, x1, y1 } = region;
   const { ink, score } = matcher(alpha, other, region, t);
+  // Among many small markers of its colour (a busy scatterplot: compact blobs a third of its size or
+  // less), a filled marker must be solid inside: background well inside it is a pile of the small
+  // ones (overlapping "+" taking a diamond's place).
+  const busy = t.shape === 'filled' && found.blobs.filter((b) => b.area >= 4 && b.area <= t.area / 3 && b.elongation < 2).length >= BUSY_SMALL;
+  const solid = (x: number, y: number): boolean => {
+    let holes = 0;
+    for (let i = 0; i < t.deep.length; i += 2) if (ink(x + t.deep[i]!, y + t.deep[i + 1]!, true) === 0) holes++;
+    return holes <= SOLID_HOLES * (t.deep.length / 2);
+  };
   // A dozen of the template's ink pixels, spread over it, for a quick first look.
   const probe: number[] = [];
   const step = Math.max(1, Math.floor(t.on.length / 2 / 12));
@@ -584,7 +941,7 @@ export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array
       for (let i = 0; i < probe.length; i += 2) if (ink(x + probe[i]!, y + probe[i + 1]!) !== 0) seen++;
       if (2 * seen < probe.length * HIDDEN_SHARE) continue;
       const s = score(x, y, true);
-      if (s && fits(t, s)) hits.push({ x, y, s: s.on + s.off });
+      if (s && fits(t, s) && (!busy || solid(x, y))) hits.push({ x, y, s: s.on + s.off });
     }
   }
   hits.sort((a, b) => b.s - a.s);

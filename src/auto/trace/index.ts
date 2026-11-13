@@ -31,11 +31,11 @@
  */
 
 import { detectAxes } from '../detect.ts';
-import { backgroundColor, colorModel, coverage, dist, enclosedHole, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
+import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
 import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
-import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
+import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { findRulings } from './rulings.ts';
@@ -231,7 +231,8 @@ export function traceLine(req: TraceRequest): TraceResult {
     }
   }
   if (!s) return fail('No line or marker at the clicked point: click on the series itself.');
-  const ink = typicalStrength(img, bg, inkColor(img, bg, s, inRegion), s, inRegion);
+  const raw = inkColor(img, bg, s, inRegion);
+  const ink = typicalStrength(img, bg, raw, s, inRegion);
   const color = ink.map(Math.round) as RGB;
   if (dist(ink, bg) < MIN_CONTRAST) return fail('The clicked colour is too close to the background to trace.', color);
 
@@ -248,6 +249,9 @@ export function traceLine(req: TraceRequest): TraceResult {
       if (a < 0.25 && dist(c, bg) >= INK_MIN) other[k] = 1;
     }
   }
+  // A grey curve among black markers: black continues the grey's hue, so it would count as the
+  // series' strongest ink. Ink much darker than the series' own colour is another series (color.ts).
+  const darker = req.mode !== 'markers' && greySeries(colorModel(bg, raw)) ? markDarkerInk(alpha, other, region, maxAlpha(model), s) : null;
   excludeEdgeLines(region, alpha);
   if ((alpha[s.y * w + s.x] ?? -1) < 0.5) {
     return fail('The clicked point is on the plot frame or an axis line, not on a series.', color);
@@ -257,7 +261,7 @@ export function traceLine(req: TraceRequest): TraceResult {
   const seedLabel0 = found.labels[s.y * w + s.x] ?? 0;
   let template = seedLabel0 ? found.blobs[seedLabel0 - 1] : undefined;
   if (!template) return fail('No line or marker at the clicked point: click on the series itself.', color);
-  let sig = classifyStyle({ found, alpha, other, region }, template, markerMax);
+  let sig = classifyStyle({ found, alpha, other, region, darker }, template, markerMax);
 
   // A grid ruled in the series' colour (and frame lines the plot box missed) is never a line to
   // follow (rulings.ts). A ruling much thinner than the stroke is never taken for it, nor a thin
@@ -287,7 +291,7 @@ export function traceLine(req: TraceRequest): TraceResult {
     const found2 = findBlobs(alpha, region);
     const l = found2.labels[s.y * w + s.x] ?? 0;
     const template2 = l ? found2.blobs[l - 1] : undefined;
-    const sig2 = template2 ? classifyStyle({ found: found2, alpha, other, region, ruling }, template2, markerMax) : null;
+    const sig2 = template2 ? classifyStyle({ found: found2, alpha, other, region, ruling, darker }, template2, markerMax) : null;
     const marker2 = !!template2 && blobWidth(template2) <= markerMax && blobHeight(template2) <= markerMax && template2.elongation < 2.5;
     if (template2 && sig2 && (sig2.style === 'dashed' || sig2.style === 'dotted' || sig2.style === 'dash-dot' || marker2)) {
       found = found2;
@@ -304,7 +308,7 @@ export function traceLine(req: TraceRequest): TraceResult {
   }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
-  const ctx = { found, alpha, other, region, ruling };
+  const ctx = { found, alpha, other, region, ruling, darker };
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
   const chained = small && template.elongation < 2.5 && regularChain(found, template, markerMax);
   // A piece of a dashed or dotted line (an L-shaped dash at a step corner is compact too, and a
@@ -327,7 +331,26 @@ export function traceLine(req: TraceRequest): TraceResult {
   }
   if (kind === 'markers') {
     if (!shape && !small) return fail('The clicked series is a line, not markers: trace it as a curve.', color);
-    const path: TracedPoint[] = shape ? (found3 ?? findMarkers(found, alpha, other, region, shape)) : matchMarkers(found, template, w);
+    let path: TracedPoint[];
+    if (shape) path = found3 ?? findMarkers(found, alpha, other, region, shape);
+    else {
+      // Small markers matched blob by blob. A black series' lighter greys (curves, gridlines drawn
+      // through a cloud of black markers) are not its ink: they would join the markers into one blob.
+      let f = found;
+      let t = template;
+      let a: Float32Array = alpha;
+      const lighter = neutralBlack(colorModel(bg, raw)) ? withoutLighterInk(alpha, region, Math.max(blobWidth(template), blobHeight(template))) : null;
+      if (lighter) {
+        const f2 = findBlobs(lighter, region);
+        const l = f2.labels[s.y * w + s.x] ?? 0;
+        if (l) {
+          f = f2;
+          t = f2.blobs[l - 1]!;
+          a = lighter;
+        }
+      }
+      path = matchMarkers(f, t, w, a);
+    }
     return result({ ok: path.length > 0, kind: 'markers', style: 'unknown', color, path, points: path.map((p) => ({ ...p })) });
   }
 
