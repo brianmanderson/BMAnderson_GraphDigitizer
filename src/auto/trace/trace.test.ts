@@ -6,7 +6,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { traceLine, type TraceRequest, type TraceResult } from './index.ts';
+import { makeRegion } from './region.ts';
 import { resample } from './resample.ts';
+import { findRulings } from './rulings.ts';
 import type { PathPoint } from './curve.ts';
 
 type RGB = [number, number, number];
@@ -262,6 +264,84 @@ describe('traceLine: curves', () => {
       const errs = path.map((p) => polyDist(p, curve)).sort((x, y) => x - y);
       expect(errs[errs.length >> 1]!).toBeLessThan(0.5);
     }
+  });
+
+  /** A heavy black grid (a scanned figure's ruling) every `step` px inside BOX, 6 px wide. */
+  const heavyGrid = (c: Canvas, step = 40) => {
+    for (let x = 40 + step; x < 360; x += step) c.stroke([{ x, y: 20 }, { x, y: 260 }], 6, BLACK);
+    for (let y = 260 - step; y > 20; y -= step) c.stroke([{ x: 40, y }, { x: 360, y }], 6, BLACK);
+  };
+  /**
+   * A saturating curve from (60, 230) that meets the 100 gridline at x = 300 at 0.4 px per column
+   * (as the 1928 scan's fitted curve meets its 100 % gridline), shifted up by `up`.
+   */
+  const rising = (up = 0): P[] =>
+    Array.from({ length: 241 }, (_, i) => ({ x: 60 + i, y: 230 - up - (130 * (1 - Math.exp(-i / 400))) / (1 - Math.exp(-240 / 400)) }));
+
+  it('never runs along a heavy gridline of its colour that a solid curve crosses or ends on', () => {
+    // An old scan: grid, frame and curve all one black, the grid as heavy as the curve. The curve
+    // ends on a gridline: the trace stops there and never follows a gridline (tester feedback: it
+    // ran along the 60 % and 100 % gridlines and down the left axis).
+    const c = new Canvas(400, 280);
+    c.stroke(BOX.concat([BOX[0]!]).map(([x, y]) => ({ x, y })), 6, BLACK);
+    heavyGrid(c);
+    const curve = rising();
+    c.stroke(curve, 6, BLACK);
+    const r = traceLine(c.request(curve[70]!));
+    expect(r.kind).toBe('curve');
+    const path = pts(r);
+    expect(path.every((p) => polyDist(p, curve) < 4)).toBe(true);
+    expect(Math.min(...path.map((p) => p.x))).toBeLessThan(70);
+    // It may stop where it runs into the gridline's band (no run there is the curve's alone).
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(280);
+    expect(Math.max(...path.map((p) => p.x))).toBeLessThan(306);
+  });
+
+  it('traces a hand-dashed curve across a heavy grid of its colour to its real end', () => {
+    // Half the 1928 scan's scale: 8 px strokes, gridlines 10 px wide every 160 px, dashes and gaps
+    // of uneven length (drawn by hand), cut wherever they cross a gridline; the last dashes lie
+    // past the last gridline the curve crosses, short of the frame. (Tester feedback: "How do you
+    // get it to go the full length of a dashed line?")
+    const c = new Canvas(800, 560);
+    const box: [number, number][] = [
+      [80, 40],
+      [720, 40],
+      [720, 520],
+      [80, 520],
+    ];
+    c.stroke(box.concat([box[0]!]).map(([x, y]) => ({ x, y })), 10, BLACK);
+    for (const x of [240, 400, 560]) c.stroke([{ x, y: 40 }, { x, y: 520 }], 10, BLACK);
+    for (const y of [200, 360]) c.stroke([{ x: 80, y }, { x: 720, y }], 10, BLACK);
+    const curve = Array.from({ length: 521 }, (_, i) => ({ x: 120 + i, y: 470 - (360 * (1 - Math.exp(-i / 300))) / (1 - Math.exp(-520 / 300)) }));
+    const arc = [0];
+    for (let i = 1; i < curve.length; i++) arc.push(arc[i - 1]! + Math.hypot(curve[i]!.x - curve[i - 1]!.x, curve[i]!.y - curve[i - 1]!.y));
+    const dashes = [32, 44, 27, 38, 46, 30];
+    const gaps = [11, 15, 10, 13, 16, 12];
+    const mids: P[] = [];
+    for (let s = 0, k = 0; s < arc[arc.length - 1]!; k++) {
+      const e = Math.min(arc[arc.length - 1]!, s + dashes[k % dashes.length]!);
+      // The stroke's round caps reach half its width past the ends: the gaps stay as given.
+      const piece = curve.filter((_, i) => arc[i]! >= s + 4 && arc[i]! <= e - 4);
+      if (piece.length >= 2) {
+        c.stroke(piece, 8, BLACK);
+        mids.push(piece[piece.length >> 1]!);
+      }
+      s = e + gaps[k % gaps.length]!;
+    }
+    // Clicked on a dash clear of the grid.
+    const seed = mids.find((m) => m.x > 300 && [240, 400, 560].every((g) => Math.abs(m.x - g) > 16) && [200, 360].every((g) => Math.abs(m.y - g) > 16))!;
+    const r = traceLine(c.request(seed, { plotBox: box }));
+    expect(r.kind).toBe('curve');
+    expect(r.style).toBe('dashed');
+    const path = pts(r);
+    // Within half a stroke (a steep dash's end can leave a corner pair that far off, SPEC →
+    // Auto-trace → known failures), and on it as a rule.
+    expect(path.every((p) => polyDist(p, curve) < 4)).toBe(true);
+    const errs = path.map((p) => polyDist(p, curve)).sort((x, y) => x - y);
+    expect(errs[errs.length >> 1]!).toBeLessThan(1);
+    expect(Math.min(...path.map((p) => p.x))).toBeLessThan(140);
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(610);
+    expect(Math.max(...path.map((p) => p.x))).toBeLessThan(645);
   });
 
   it('does not take a green line for a black one', () => {
@@ -628,6 +708,38 @@ describe('traceLine: failures', () => {
     expect(out.ok).toBe(false);
     const bad = traceLine({ ...c.request({ x: 100, y: 100 }), width: 10 });
     expect(bad.ok).toBe(false);
+  });
+});
+
+describe('findRulings', () => {
+  const alphaOf = (c: Canvas) => {
+    const a = new Float32Array(c.width * c.height);
+    for (let k = 0; k < a.length; k++) a[k] = 1 - c.data[k * 4]! / 255;
+    return a;
+  };
+  const region = (c: Canvas) => makeRegion(c.width, c.height, null);
+
+  it('finds a grid, never one line alone, never the line under the seed', () => {
+    const lone = new Canvas(400, 280);
+    lone.stroke([{ x: 10, y: 140 }, { x: 390, y: 140 }], 4, BLACK); // a reference line, a plateau
+    lone.stroke(sine(60, 0), 2, BLACK);
+    expect(findRulings(alphaOf(lone), region(lone), { x: 50, y: 140 })).toBeNull();
+
+    const grid = new Canvas(400, 280);
+    for (const y of [40, 100, 160, 220]) grid.stroke([{ x: 5, y }, { x: 395, y }], 5, BLACK);
+    const curve = sine(60, 0);
+    grid.stroke(curve, 2, BLACK);
+    const r = findRulings(alphaOf(grid), region(grid), { x: curve[100]!.x, y: Math.round(curve[100]!.y) })!;
+    const mask = r.mask(2)!;
+    const at = (x: number, y: number) => mask[y * grid.width + x];
+    expect(at(30, 100)).toBe(1);
+    expect(at(30, 160)).toBe(1);
+    expect(at(30, 130)).toBe(0);
+    expect(r.mask(6)).toBeNull(); // none that thick
+    // Clicked on a gridline: that one is the series; the other three remain a grid.
+    const own = findRulings(alphaOf(grid), region(grid), { x: 30, y: 100 })!.mask(2)!;
+    expect(own[100 * grid.width + 30]).toBe(0);
+    expect(own[160 * grid.width + 30]).toBe(1);
   });
 });
 

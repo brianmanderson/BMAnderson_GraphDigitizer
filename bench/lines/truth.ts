@@ -20,7 +20,9 @@
  * `source` names the figure's top category (default `real`). A label with `markerSeries: [{ series,
  * markerSizePx, seed: [x, y], markers: [[x, y]…] }]` (scatter groups, e.g. filled vs open markers of
  * one colour, centres measured to ±1 px) gives full marker truth for each group; its legend samples
- * are not markers.
+ * are not markers. A label with `curves: [{ series, seed: [x, y], path: [[x, y]…] }]` (hand-measured
+ * centrelines of curves, e.g. a scanned figure's fitted and confidence curves) gives full truth for
+ * each as a line series, its style from `styles`.
  *
  * A real figure's label also carries its calibrated axes (bench/axes format); they become the
  * chart's `values` (bench/lines/values.ts) so errors can be reported in data units. Synthetic
@@ -167,9 +169,37 @@ function markerFigure(raw: Json): SeriesTruth[] {
   });
 }
 
+function curveFigure(raw: Json): SeriesTruth[] {
+  const styles = (raw.styles ?? {}) as Record<string, unknown>;
+  return (raw.curves as Json[]).map((c, i): SeriesTruth => {
+    const seed = c.seed as [number, number];
+    return {
+      id: `${i}:${String(c.series)}`,
+      kind: 'line',
+      tags: ['series:line', 'color:black'],
+      seed: { x: seed[0], y: seed[1] },
+      pieces: [pts(c.path)],
+      markers: [],
+      corners: [],
+      markerSizePx: 0,
+      style: styleName(styles[String(c.series)]),
+      partial: false,
+    };
+  });
+}
+
 function real(path: string, extraTags: string[], source: string, markerSizePx: number): ChartTruth {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
   const values = valuesOf(path);
+  if (Array.isArray(raw.curves)) {
+    return {
+      id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),
+      imagePath: resolve(dirname(path), String(raw.image)),
+      tags: [source, ...extraTags],
+      series: curveFigure(raw),
+      values,
+    };
+  }
   if (Array.isArray(raw.markerSeries)) {
     return {
       id: path.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/, ''),

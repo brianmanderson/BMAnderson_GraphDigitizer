@@ -4,7 +4,8 @@ Every real-world figure in this repository (`fixtures/real/`, listed for the ben
 `bench/axes/real/manifest.json` and `bench/lines/real/manifest.json`; the synthetic charts are
 generated and need no provenance) is a published figure released under the Creative Commons
 Attribution licence (CC BY 4.0), which permits redistribution and adaptation (here: cropping to
-one panel) with attribution. **Only CC BY figures may be added**; record every new one here with
+one panel) with attribution, or is in the public domain (ruled so by the owner, recorded per
+figure). **Only CC BY or public-domain figures may be added**; record every new one here with
 the same fields. Licences were re-checked against the publisher's page on 2026-11-07.
 
 Pixel positions in the labels follow the app's convention (integer = pixel centre, origin
@@ -237,6 +238,27 @@ SciPy) in the negative-axis Claude Code session, 2026-11-10.
   (x = 0, 0.05, 0.1, 0.15); the curve ends at ±2 kOe read +48.48 / −48.34, +29.16 / −28.95,
   +40.65 / −40.61, +46.04 / −45.91 (within 1.2 px). Table 9's coercivity column is in the wrong
   unit ("Oe", values 0.02–0.05) and is not used.
+
+## Scanned figures (added 2026-11-13)
+
+### dose-response-1928-grid.png (2800 × 3600, PNG)
+
+- **Source**: [citation pending — owner to supply]. A dose-response figure published in 1928
+  ("Percentage Positive Reactions" vs "Milliampere-minutes"), as a black-and-white scan.
+- **Figure / panel / crop**: the whole figure as supplied, no crop or resampling (SHA-256
+  `18557610…ddc3d`).
+- **Licence**: public domain — published in the United States in 1928; the owner ruled it public
+  domain on 2026-11-13.
+- **Attribution**: [citation pending — owner to supply].
+- **Obtained**: 2026-11-13, supplied with tester feedback on Auto-trace (the scan file
+  as they used it in the app).
+- **Labelled by**: pixel analysis (NumPy/Pillow) in the grid-and-dashes Auto-trace session,
+  2026-11-13; truth in `dose-response-1928-grid.json`: the frame and gridline centres (X 140–240,
+  Y 0–120, ±1 px; the lines are hand-ruled and wander by up to ±5 px), 9 + 11 labelled tick
+  positions (labels between gridlines interpolated) and the centrelines of the three curves
+  (solid fit, two dashed confidence curves) as polylines measured column by column clear of the
+  gridlines and markers, binned every 20 columns (±1 px). The "x" and "o" data markers are not
+  labelled.
 
 ## Removed (release hygiene, 2026-11-07)
 

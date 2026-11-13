@@ -81,7 +81,7 @@ family — the inputs Phase 5's OCR and scale inference need.
 
 ### Adding a real figure
 
-1. **Licence first**: only CC BY figures may enter the public repository. Record the source
+1. **Licence first**: only CC BY figures (or public-domain ones on the owner's ruling) may enter the public repository. Record the source
    (citation, DOI, PMC id, figure/panel and crop box, licence wording and URL, attribution,
    date obtained, who labelled it) in `fixtures/real/PROVENANCE.md` before anything else; a
    figure without that entry does not get committed. Crop with whole pixels (no resampling).

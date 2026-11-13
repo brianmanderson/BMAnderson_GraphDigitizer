@@ -1,5 +1,5 @@
 {
-  "$comment": "Real-world figures for npm run bench:axes. Each entry points at a label JSON (format: bench/axes/truth.ts and .claude/skills/axis-detection/SKILL.md), relative to this file. Labels can live here or be shared with the e2e fixtures in fixtures/real/. Tags become benchmark categories. Provenance and licences (CC BY only): fixtures/real/PROVENANCE.md.",
+  "$comment": "Real-world figures for npm run bench:axes. Each entry points at a label JSON (format: bench/axes/truth.ts and .claude/skills/axis-detection/SKILL.md), relative to this file. Labels can live here or be shared with the e2e fixtures in fixtures/real/. Tags become benchmark categories. Provenance and licences (CC BY or public domain): fixtures/real/PROVENANCE.md.",
   "figures": [
     {
       "truth": "../../../fixtures/real/km-pericardial-pao.json",
@@ -40,6 +40,10 @@
     {
       "truth": "../../../fixtures/real/hysteresis-ferrite-tahir.json",
       "tags": ["journal", "origin", "png", "frame", "minor-ticks", "four-quadrant", "negative-x", "negative-y", "zero-lines", "legend-inside"]
+    },
+    {
+      "truth": "../../../fixtures/real/dose-response-1928-grid.json",
+      "tags": ["scan", "png", "frame", "grid", "same-colour", "no-tickmarks", "hand-lettered"]
     }
   ]
 }

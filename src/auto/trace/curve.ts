@@ -35,6 +35,8 @@ import type { Region } from './region.ts';
 export interface Run {
   top: number;
   bottom: number;
+  /** Ends at a ruling (rulings.ts): a stroke's part outside one; thinner than the stroke, a sliver. */
+  cut?: boolean;
 }
 
 export interface ColumnEntry extends Run {
@@ -141,7 +143,25 @@ export interface TraceOptions {
    * crosses a same-colour series, the dash touching that series went with it.
    */
   coveredHole?: number;
+  /**
+   * Image-sized, 1 on a ruling (rulings.ts: a gridline of the series' colour, taken out of the
+   * coverage map). A hole in a column's run that is all ruling is closed: a thick curve crossing a
+   * thin gridline stays one run.
+   */
+  ruling?: Uint8Array | undefined;
+  /**
+   * Image-sized, 1 on a ruling left in the coverage map (a solid curve's walk): a run that is all
+   * ruling is never taken — the walk crosses a ruling but never runs along one.
+   */
+  rulingInk?: Uint8Array | undefined;
+  /**
+   * A dashed line: every piece tapers at both ends (scanned dashes, dashes cut by a gridline), so
+   * the stroke width is not measured over a piece's first and last columns.
+   */
+  tips?: boolean;
 }
+/** Columns at each end of a stretch of ink whose runs don't measure the stroke's width. */
+const TIP_COLUMNS = 3;
 /** A branch that dies within this many columns of a fork is retried with the alternatives. */
 const RETRY_COLUMNS = 25;
 const MAX_RETRY_DEPTH = 3;
@@ -184,10 +204,49 @@ export function traceColumns(
   region: Region,
   seed: { x: number; y: number },
   opts: TraceOptions,
+  /**
+   * Continue a walk (dashes.ts): walk only `dir` from the seed, primed with `lead` (the columns
+   * already walked, nearest the seed first) so the slope is known from the start.
+   */
+  only?: { dir: 1 | -1; lead: ColumnEntry[] },
 ): ColumnEntry[] | null {
   const { width: w, height: h, y0, y1, x0, x1 } = region;
   const regionH = y1 - y0 + 1;
-  const runs0 = columnRuns(alpha, w, seed.x, y0, y1);
+  const ruling = opts.ruling;
+  /** Whether every pixel of run r in column x is a ruling's (`rulingInk`). */
+  const allRuling = (x: number, r: Run): boolean => {
+    for (let y = r.top; y <= r.bottom; y++) if (!opts.rulingInk![y * w + x]) return false;
+    return true;
+  };
+  /** Whether the pixels just beyond row `y` (going `dir`) are a ruling: the run was cut there. */
+  const cutAt = (x: number, y: number, dir: 1 | -1): boolean => {
+    for (let k = 1; k <= 2; k++) {
+      const yy = y + k * dir;
+      if (yy < y0 || yy > y1) return false;
+      if (ruling![yy * w + x]) return true;
+      if ((alpha[yy * w + x] ?? -1) <= 0) return false;
+    }
+    return false;
+  };
+  /**
+   * Runs of column x, with holes that are all ruling closed. A run that ends at a ruling is the
+   * part of a stroke sticking out of it (`cut`): its length and centre measure nothing.
+   */
+  const runsOf = (x: number): Run[] => {
+    const runs = columnRuns(alpha, w, x, y0, y1);
+    if (!ruling) return runs;
+    const out: Run[] = [];
+    for (const r of runs) {
+      const prev = out[out.length - 1];
+      let all = !!prev;
+      for (let y = prev ? prev.bottom + 1 : r.top; y < r.top && all; y++) all = ruling[y * w + x] === 1 || (alpha[y * w + x] ?? -1) >= ON_ALPHA;
+      if (prev && all) out[out.length - 1] = { top: prev.top, bottom: r.bottom };
+      else out.push({ ...r });
+    }
+    for (const r of out) if (cutAt(x, r.top, -1) || cutAt(x, r.bottom, 1)) r.cut = true;
+    return out;
+  };
+  const runs0 = runsOf(seed.x);
   let start: Run | null = null;
   let bestD = 2.5;
   for (const r of runs0) {
@@ -226,12 +285,12 @@ export function traceColumns(
     return v >= 3 && v <= 40 && hz >= 3 && hz <= 40;
   };
 
-  /** Row of a pixel of another colour within half a line width of (x, y), or −1. */
+  /** Row of a pixel of another colour (or of a ruling left as ink) within half a line width of (x, y), or −1. */
   const occludedAt = (x: number, y: number, t: number): number => {
     if (!opts.other) return -1;
     const r = Math.max(1, Math.ceil(t / 2));
     for (let yy = Math.max(y0, Math.round(y) - r); yy <= Math.min(y1, Math.round(y) + r); yy++) {
-      if (opts.other[yy * w + x]) return yy;
+      if (opts.other[yy * w + x] || opts.rulingInk?.[yy * w + x]) return yy;
     }
     return -1;
   };
@@ -253,6 +312,9 @@ export function traceColumns(
     x: number;
     /** Set on a retry branch until the walk is back on a short run: no straight-through. */
     farOnly: boolean;
+    /** Columns accepted since the last gap; `minLen` before each of the last accepted columns. */
+    sinceGap: number;
+    minHist: number[];
   }
   interface Candidate {
     run: Run;
@@ -297,7 +359,14 @@ export function traceColumns(
       st.farOnly = false;
     }
     st.hist.push({ ...best, x: st.x, cy, afterGap: st.gap, peak: runPeak(alpha, w, st.x, best) });
-    st.minLen = Math.min(st.minLen, runLength(best));
+    // The stroke's width: the shortest run, but not over a dash's tapering tips (a scanned dash, a
+    // dash cut by a gridline): not in the first columns after a gap, and the last ones before a
+    // gap are taken back when it opens (`openGapAt`).
+    const tip = Math.max(TIP_COLUMNS, Math.ceil(st.minLen / 2));
+    st.sinceGap = st.gap > 0 ? 0 : st.sinceGap + 1;
+    st.minHist.push(st.minLen);
+    if (st.minHist.length > 64) st.minHist.shift();
+    if (!opts.tips || st.sinceGap >= tip) st.minLen = Math.min(st.minLen, runLength(best));
     st.gap = 0;
     st.openGap = 0;
     st.hiddenCols = 0;
@@ -342,6 +411,11 @@ export function traceColumns(
         if (!touches && dPred > plainWin && !emerges(r)) return;
         if (runLength(r) >= crossLen && r.top < pred - crossOut && r.bottom > pred + crossOut) return;
         if (runPeak(alpha, w, st.x, r) < PEAK_RATIO * peakRef) return;
+        if (opts.rulingInk && allRuling(st.x, r)) return;
+        // A sliver of the stroke beside a ruling (cut by it, thinner than the stroke): the column
+        // is hidden by the ruling, like a marker drawn over the curve. (A thin gridline across a
+        // thick curve leaves most of the stroke: that run is the curve.)
+        if (r.cut && runLength(r) < t) return;
         // Touching runs far from the prediction are kept last, as alternatives for the retry.
         out.push({
           run: r,
@@ -376,7 +450,15 @@ export function traceColumns(
     return { list: rank(pred, slope), pred, t };
   };
 
-  const clone = (st: WalkState): WalkState => ({ ...st, hist: st.hist.slice() });
+  const clone = (st: WalkState): WalkState => ({ ...st, hist: st.hist.slice(), minHist: st.minHist.slice() });
+
+  /** A gap opens: the stroke width measured on the tip just walked is taken back. */
+  const openGapAt = (st: WalkState): void => {
+    if (!opts.tips) return;
+    const tip = Math.max(TIP_COLUMNS, Math.ceil(st.minLen / 2));
+    const back = st.minHist[st.minHist.length - tip];
+    if (back !== undefined && st.sinceGap >= tip) st.minLen = back;
+  };
 
   /**
    * Walk until the curve is lost. At the last column where more than one run was acceptable, the
@@ -393,11 +475,12 @@ export function traceColumns(
      */
     let kinkFallback: { state: WalkState; runs: Run[]; index: number } | null = null;
     for (; st.x >= x0 && st.x <= x1; st.x += dir) {
-      const runs = columnRuns(alpha, w, st.x, y0, y1);
+      const runs = runsOf(st.x);
       const { list, pred, t } = candidates(st, runs);
       const kinkOnly = list.length > 0 && list.every((c) => c.kinkOnly);
       if (kinkOnly && !kinkFallback) kinkFallback = { state: clone(st), runs, index: list[0]!.index };
       if (!list.length || kinkOnly) {
+        if (st.gap === 0) openGapAt(st);
         st.gap++;
         const row = occludedAt(st.x, pred, t);
         if (row >= 0) {
@@ -444,10 +527,16 @@ export function traceColumns(
   const walk = (dir: 1 | -1, prime: ColumnEntry[]): ColumnEntry[] => {
     const lead = prime.slice(0, 8).reverse();
     const hist = [...lead, first];
-    const st = walkFrom({ hist, minLen: runLength(first), entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false }, dir, 0);
+    // A continued walk keeps the stroke width it had: the piece it starts from may be a sliver.
+    const minLen = only && lead.length ? Math.max(runLength(first), Math.min(...lead.map(runLength))) : runLength(first);
+    const st = walkFrom({ hist, minLen, entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false, sinceGap: only ? 0 : 1e9, minHist: [] }, dir, 0);
     return st.hist.slice(lead.length + 1);
   };
 
+  if (only) {
+    const on = walk(only.dir, only.lead);
+    return only.dir === 1 ? [first, ...on] : [...on.reverse(), first];
+  }
   const left = walk(-1, walk(1, []));
   const right = walk(1, left);
   return [...left.reverse(), first, ...right];

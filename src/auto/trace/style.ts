@@ -13,7 +13,8 @@
  * in a row (a short step, a dash merged into another series) → the region's pattern chain the
  * seed belongs to. Gaps too wide for a line pattern (a row of evenly spaced markers) are not one.
  * Otherwise the seed's own blob running on unbroken for a long way → solid; else 'unknown' (no
- * constraint).
+ * constraint). Rulings taken out of the coverage map (rulings.ts) count as crossings; a gap that is
+ * nothing but a ruling joins the two fragments of one stroke it cut (gap 0, measured as one piece).
  *
  * Constraint (`applyStyle`): ink of the series' colour that does not fit the seed's style is
  * treated like ink of another colour — removed from the coverage map and marked as an occluder —
@@ -48,6 +49,8 @@ interface Ctx {
   alpha: Float32Array;
   other: Uint8Array;
   region: Region;
+  /** Rulings taken out of the coverage map (rulings.ts), or undefined. */
+  ruling?: Uint8Array | undefined;
 }
 
 /** Minimum pieces (dashes or dots) in a chain for a pattern, and their gaps' allowed spread. */
@@ -139,6 +142,8 @@ interface Gap {
   kb: number;
   /** The gap runs across other ink of the series' colour (another series crossing). */
   crossing?: boolean;
+  /** The gap is all ruling (rulings.ts): two fragments of one stroke cut by a gridline (gap 0). */
+  cut?: boolean;
 }
 
 /**
@@ -158,18 +163,30 @@ function gapBetween(ctx: Ctx, a: number[], b: number[]): Gap {
   const n = Math.ceil(d);
   let hidden = 0;
   let crossing = false;
+  /** Gap pixels on a ruling, and pixels of the gap neither ruling nor its faint fringe. */
+  let ruled = 0;
+  let open = 0;
   const la = ctx.found.labels[pa];
   const lb = ctx.found.labels[pb];
   for (let i = 1; i < n; i++) {
     const x = Math.round(xa + ((xb - xa) * i) / n);
     const y = Math.round(ya + ((yb - ya) * i) / n);
     const k = y * w + x;
+    if (ctx.ruling?.[k]) {
+      // A gridline of the series' colour across the gap: a crossing, as when it was ink.
+      crossing = true;
+      ruled++;
+      continue;
+    }
     const a = ctx.alpha[k] ?? -1;
+    if (a <= 0 || a >= ON_ALPHA) open++;
     if (a < 0 && (ctx.other[k] || !ctx.region.mask[k])) hidden++;
     const l = ctx.found.labels[k];
     if (l && l !== la && l !== lb) crossing = true;
   }
   if (hidden >= Math.max(3, 0.5 * (n - 1))) return { gap: -1, ka: pa, kb: pb };
+  // Nothing but a ruling (and its fringe) between them: one stroke the ruling's removal cut.
+  if (ruled > 0 && open === 0) return { gap: 0, ka: pa, kb: pb, cut: true };
   return { gap: Math.max(0, d - 1), ka: pa, kb: pb, crossing };
 }
 
@@ -459,14 +476,53 @@ function patternChains(ctx: Ctx, index: PieceIndex, exclude: number): { members:
   const out: { members: Set<number>; links: Link[] }[] = [];
   for (const g of groups.values()) {
     const list = [...g.links.values()];
-    const lengths = [...g.members].map((l) => {
-      const b = ctx.found.blobs[l - 1]!;
-      return Math.hypot(blobWidth(b), blobHeight(b));
-    });
+    const lengths = pieceSizes(ctx, g.members, list);
     const gaps = list.filter((e) => e.gap >= FRAGMENT_GAP && !e.crossing).map((e) => e.gap);
-    if (g.members.size >= MIN_PIECES && gapsRegular(gaps) && lengthsRegular(lengths)) out.push({ members: g.members, links: list });
+    if (!(lengths.length >= MIN_PIECES && gapsRegular(gaps) && lengthsRegular(lengths))) continue;
+    // A crossing keeps a chain together but measures nothing, so it must not bring in what is no
+    // piece of it: a member linked only across crossings and far larger than the typical piece is
+    // the other series (a solid curve cut into lengths by a grid of its colour, rulings.ts).
+    const sorted = [...lengths].sort((a, b) => a - b);
+    const typical = sorted[sorted.length >> 1]!;
+    const plain = new Set<number>();
+    for (const e of list) {
+      if (e.crossing) continue;
+      plain.add(e.a);
+      plain.add(e.b);
+    }
+    const odd = new Set<number>();
+    for (const m of g.members) {
+      const b = ctx.found.blobs[m - 1]!;
+      if (!plain.has(m) && Math.hypot(blobWidth(b), blobHeight(b)) > 3 * typical) odd.add(m);
+    }
+    if (!odd.size) out.push({ members: g.members, links: list });
+    else out.push({ members: new Set([...g.members].filter((m) => !odd.has(m))), links: list.filter((e) => !odd.has(e.a) && !odd.has(e.b)) });
   }
   return out;
+}
+
+/**
+ * Size (bounding-box diagonal) of each piece of a chain: a blob, or the fragments of one stroke a
+ * ruling's removal cut apart (`cut` links) taken together.
+ */
+function pieceSizes(ctx: Ctx, members: Set<number>, links: Link[]): number[] {
+  const root = new Map<number, number>();
+  for (const m of members) root.set(m, m);
+  const find = (a: number): number => {
+    let r = a;
+    while (root.get(r)! !== r) r = root.get(r)!;
+    root.set(a, r);
+    return r;
+  };
+  for (const e of links) if (e.cut) root.set(find(e.a), find(e.b));
+  const box = new Map<number, [number, number, number, number]>();
+  for (const m of members) {
+    const b = ctx.found.blobs[m - 1]!;
+    const r = find(m);
+    const o = box.get(r);
+    box.set(r, o ? [Math.min(o[0], b.x0), Math.min(o[1], b.y0), Math.max(o[2], b.x1), Math.max(o[3], b.y1)] : [b.x0, b.y0, b.x1, b.y1]);
+  }
+  return [...box.values()].map(([x0, y0, x1, y1]) => Math.hypot(x1 - x0 + 1, y1 - y0 + 1));
 }
 
 /** Centre of a piece's end: the coverage-weighted centroid of its pixels within `r` of pixel k. */
@@ -612,7 +668,7 @@ export function applyStyle(ctx: Ctx, template: Blob, sig: StyleSignature, marker
   // Where the series runs across the other one, its dash touching that stroke went with it and
   // its chain breaks there: join each chain end to the nearest piece of its size across the
   // dropped ink (over no other ink of the series' colour).
-  if (any) {
+  if (any || ctx.ruling) {
     // Links of the pattern between pieces that stay: a link to dropped ink (a marker with its
     // error bars on the line) ends the chain there.
     const degree = new Map<number, number>();
@@ -663,7 +719,7 @@ export function applyStyle(ctx: Ctx, template: Blob, sig: StyleSignature, marker
         for (let i = 1; i < steps && !blocked; i++) {
           const k = Math.round(ya + ((yb - ya) * i) / steps) * w + Math.round(xa + ((xb - xa) * i) / steps);
           const l = found.labels[k]!;
-          if (l && drop[l]) crossed++;
+          if ((l && drop[l]) || ctx.ruling?.[k]) crossed++;
           else blocked = l !== 0 || !ctx.region.mask[k];
         }
         if (!blocked && crossed > 0 && !(d > oneGap && crossed < 0.5 * sig.minOn)) best = { a: label, b: o.label, ka, kb, gap: d - 1 };
