@@ -11,7 +11,10 @@
  *    of the near-full-strength pixels around it, scaled to the typical peak of the line near the
  *    seed (thin lines never show their full colour). Coverage α per pixel; ink of another colour
  *    is marked (occlusion); a frame/axis line along a box edge is removed only when it has the
- *    series colour (region.ts).
+ *    series colour (region.ts). Rulings (rulings.ts: a grid ruled in the series' colour, frame
+ *    lines the box missed) heavy enough to be taken for the series are kept off the trace: taken
+ *    out as ink drawn over a dashed series or a marker, left in as ink a solid curve may cross but
+ *    never run along.
  * 3. Mode: 'curve' follows the line through the seed (curve.ts) — or, when the seed's blob is one
  *    link of an evenly gapped chain of small blobs (a dotted or dash-dot line), the chain itself;
  *    'markers' ("Find points") cuts the clicked marker's shape out of its blob (error bars and
@@ -19,6 +22,8 @@
  *    'auto' takes markers when the seed's blob is small, roughly round and not part of such a
  *    chain or a dashed line, or when a marker shape cut out of it is found three times or more (a
  *    pocket of background beside a thick line, walled off by thinner lines, is no marker shape).
+ *    A dashed walk that ends where its gaps were not filled goes on piece by piece to the next
+ *    dash ahead on its course (dashes.ts), to the line's real end.
  *    Vertices hidden under markers are restored (kinks.ts): the intersection of the straight
  *    stretches either side of a bridged marker, and a line's end under a marker at its centre.
  * 4. Suggested points (resample.ts): corners and extrema always, then evenly spread to maxPoints;
@@ -27,11 +32,13 @@
 
 import { detectAxes } from '../detect.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, INK_MIN, inkColor, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
+import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
 import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
+import { findRulings } from './rulings.ts';
 import { applyStyle, classifyStyle, unfill } from './style.ts';
 import type { TracedPoint, TraceRequest, TraceResult } from './types.ts';
 
@@ -41,6 +48,15 @@ export type { LineStyle, TraceMode, TracedPoint, TraceRequest, TraceResult } fro
 const SEED_RADIUS = 4;
 /** The series colour must differ from the background by at least this (RGB distance). */
 const MIN_CONTRAST = 40;
+/** A ruling is taken out when at least this many px (a 1-px line is anti-aliasing's business)… */
+const MIN_RULING = 2;
+/** …and this fraction of the clicked stroke's width… */
+const RULING_STROKE = 0.5;
+/**
+ * …and, for a series read as dotted or dash-dot, at least this many px: a thinner crossing is
+ * within the walker's own tolerances once the gridline's ink is dropped with the dashes it touches.
+ */
+const HEAVY_RULING = 6;
 
 const now = (): number => {
   const p = (globalThis as { performance?: { now(): number } }).performance;
@@ -237,14 +253,58 @@ export function traceLine(req: TraceRequest): TraceResult {
     return fail('The clicked point is on the plot frame or an axis line, not on a series.', color);
   }
 
-  const found = findBlobs(alpha, region);
-  const seedLabel = found.labels[s.y * w + s.x] ?? 0;
-  const template = seedLabel ? found.blobs[seedLabel - 1] : undefined;
+  let found = findBlobs(alpha, region);
+  const seedLabel0 = found.labels[s.y * w + s.x] ?? 0;
+  let template = seedLabel0 ? found.blobs[seedLabel0 - 1] : undefined;
   if (!template) return fail('No line or marker at the clicked point: click on the series itself.', color);
+  let sig = classifyStyle({ found, alpha, other, region }, template, markerMax);
+
+  // A grid ruled in the series' colour (and frame lines the plot box missed) is never a line to
+  // follow (rulings.ts). A ruling much thinner than the stroke is never taken for it, nor a thin
+  // one for a dotted series (its ink is dropped with the dots it touches and the gaps are joined
+  // across it, applyStyle). A heavier one is taken out of the coverage map and the seed's blob and
+  // style read again without it: a dash or a marker that touched it stands alone. For a dashed
+  // series or a marker it stays out, ink drawn over the series where they cross. A solid curve
+  // keeps it as ink (it crosses rulings as it crosses any line of its colour, curve.ts) but may
+  // never walk on one (`rulingInk`): taken out, it would leave slivers of the curve at every
+  // crossing and the arms of a marker sitting on one to follow.
+  // A series read as dashed is taken as it is (rulings are crossed as before), and so is a marker
+  // standing clear of them; one read as dotted or dash-dot may be dashes the rulings chopped
+  // short, and is read again without them.
+  const patterned0 = sig.style === 'dotted' || sig.style === 'dash-dot';
+  const marker0 = !patterned0 && blobWidth(template) <= markerMax && blobHeight(template) <= markerMax && template.elongation < 2.5;
+  const rulings = sig.style === 'dashed' || marker0 ? null : findRulings(alpha, region, s);
+  let ruling = rulings?.mask(Math.max(MIN_RULING, RULING_STROKE * Math.max(rulings.stroke, sig.thickness), patterned0 ? HEAVY_RULING : 0)) ?? undefined;
+  let rulingInk: Uint8Array | undefined;
+  if (ruling) {
+    const saved: number[] = [];
+    for (let k = 0; k < alpha.length; k++) {
+      if (!ruling[k]) continue;
+      saved.push(k, alpha[k]!, other[k]!);
+      alpha[k] = -1;
+      other[k] = 1;
+    }
+    const found2 = findBlobs(alpha, region);
+    const l = found2.labels[s.y * w + s.x] ?? 0;
+    const template2 = l ? found2.blobs[l - 1] : undefined;
+    const sig2 = template2 ? classifyStyle({ found: found2, alpha, other, region, ruling }, template2, markerMax) : null;
+    const marker2 = !!template2 && blobWidth(template2) <= markerMax && blobHeight(template2) <= markerMax && template2.elongation < 2.5;
+    if (template2 && sig2 && (sig2.style === 'dashed' || sig2.style === 'dotted' || sig2.style === 'dash-dot' || marker2)) {
+      found = found2;
+      template = template2;
+      sig = sig2;
+    } else {
+      for (let i = 0; i < saved.length; i += 3) {
+        alpha[saved[i]!] = saved[i + 1]!;
+        other[saved[i]!] = saved[i + 2]!;
+      }
+      rulingInk = ruling;
+      ruling = undefined;
+    }
+  }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
-  const ctx = { found, alpha, other, region };
-  const sig = classifyStyle(ctx, template, markerMax);
+  const ctx = { found, alpha, other, region, ruling };
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
   const chained = small && template.elongation < 2.5 && regularChain(found, template, markerMax);
   // A piece of a dashed or dotted line (an L-shaped dash at a step corner is compact too, and a
@@ -285,7 +345,11 @@ export function traceLine(req: TraceRequest): TraceResult {
     // Where a dashed series crosses the other one, the dash touching it went with it: a hole of up
     // to a dash and two gaps in a vertical is bridged when all of it is that series' ink.
     const hole = patterned ? { coveredHole: Math.ceil(sig.maxOn + 2 * sig.gap + 2 * sig.thickness) } : {};
-    const walked = traceColumns(alpha, region, s, { maxGap: defaultMaxGap(region), maxHiddenGap: defaultMaxHiddenGap(region), other, ...hole });
+    const opts = { maxGap: defaultMaxGap(region), maxHiddenGap: defaultMaxHiddenGap(region), other, ruling, rulingInk, tips: patterned && !!ruling, ...hole };
+    let walked = traceColumns(alpha, region, s, opts);
+    // A dashed line's walk ends where its gaps were not filled (dashes too uneven for one pattern,
+    // a dash cut by a gridline): on from the next piece ahead, to the line's real end (dashes.ts).
+    if (walked && (sig.style === 'dashed' || sig.style === 'dash-dot')) walked = hopDashes(walked, found, alpha, region, sig, opts);
     const e = walked && fill ? unfill(fill, walked, alpha, region) : walked;
     // The dots the walk went through (a walk can't start up a steep thin dotted line from one dot).
     const dots: Blob[] = [];

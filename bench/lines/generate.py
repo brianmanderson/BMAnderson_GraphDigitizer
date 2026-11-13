@@ -33,7 +33,11 @@ angles, drawn in the series' colour, black in two charts of three), l108-l115 su
 pairs of one colour under an X axis drawn along the top ("top-axis": a Γ frame with the X tick
 labels above the plot, log or linear Y; a solid line with filled squares and a dashed one with open
 squares and tall error bars around fitted curves, both starting at the top-left corner, where they
-meet the top axis).
+meet the top axis), l116-l127 old black-and-white scans ("scan-grid": a heavy black major grid and
+frame, a solid fitted curve and two dashed confidence curves of the same black whose dashes vary in
+length like hand-drawn ones, "x" and open "o" markers on and near the curves; rendered, then blurred,
+thresholded against a smooth random field (uneven stroke width), noised and, in two charts of three,
+rotated by up to half a degree before the threshold, like a scan; the truth is rotated with it).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -59,7 +63,7 @@ from matplotlib.ticker import FuncFormatter  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 116
+COUNT = 128
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -80,6 +84,11 @@ CROSS_FROM = 96
 # colour starting together at the top-left corner, with square markers and error bars.
 TOP_FROM = 108
 TOP_VARIANTS = ["log", "linear"]
+# Charts from SCAN_FROM on: an old printed figure scanned in black and white ("scan-grid"): a heavy
+# black major grid and frame, a solid fitted curve and two hand-dashed confidence curves of the same
+# black, "x" and "o" data markers on and near them, then a scanner's blur, noise, uneven stroke
+# width and (two charts in three) a slight rotation. Built by build_scan.
+SCAN_FROM = 116
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -590,6 +599,216 @@ def build(i: int):
     return Image.fromarray(rgb), doc, jpeg_q
 
 
+def blur(a: np.ndarray, sigma: float) -> np.ndarray:
+    """Separable Gaussian blur (edges padded)."""
+    if sigma <= 0:
+        return a
+    r = int(math.ceil(3 * sigma))
+    x = np.arange(-r, r + 1)
+    k = np.exp(-x ** 2 / (2 * sigma ** 2))
+    k /= k.sum()
+    for axis in (0, 1):
+        pad = [(0, 0), (0, 0)]
+        pad[axis] = (r, r)
+        p = np.pad(a, pad, mode="edge")
+        n = a.shape[axis]
+        a = sum(k[j] * (p[j:j + n] if axis == 0 else p[:, j:j + n]) for j in range(2 * r + 1))
+    return a
+
+
+def build_scan(i: int):
+    """A scanned black-and-white dose-response figure (see SCAN_FROM)."""
+    rng = np.random.default_rng(5000 + i)
+    dpi = int(rng.choice([120, 150, 200]))
+    w_in = float(rng.uniform(4.5, 6.5))
+    h_in = float(w_in * rng.uniform(0.8, 1.2))
+    if w_in * dpi > 1200:
+        w_in, h_in = 1200 / dpi, 1200 / dpi * h_in / w_in
+    if h_in * dpi > 1300:
+        w_in, h_in = w_in * 1300 / (h_in * dpi), 1300 / dpi
+    font = str(FONTS[int(rng.integers(0, len(FONTS)))])
+    jpeg_q = int(rng.integers(50, 91)) if i % 3 == 1 else 0
+    angle = float(rng.uniform(0.15, 0.5) * rng.choice([-1, 1])) if i % 3 != 0 else 0.0
+    lw = float(rng.uniform(2.2, 3.5))  # the solid curve, pt
+    dlw = lw * float(rng.uniform(0.8, 1.0))  # the dashed curves
+    glw = lw * float(rng.uniform(0.6, 1.1))  # grid and frame
+    ms = float(rng.uniform(8, 12))
+    xlo = float(rng.choice([0, 100, 140]))
+    span = 100.0
+    xhi = xlo + span
+    ytop = float(rng.choice([100, 110, 120]))
+    # The fitted curve: rising from a quarter or so to (nearly) 100 % across most of the plot.
+    xs = np.linspace(xlo + rng.uniform(0.08, 0.15) * span, xlo + rng.uniform(0.82, 0.9) * span, 300)
+    tt = (xs - xs[0]) / (xs[-1] - xs[0])
+    k = float(rng.uniform(1.5, 3.0))
+    y0, y1 = float(rng.uniform(15, 35)), float(rng.uniform(92, 100))
+    fit = y0 + (y1 - y0) * (1 - np.exp(-k * tt)) / (1 - math.exp(-k))
+    off = float(rng.uniform(8, 14))
+    # Confidence curves: the fit shifted up and down, over their own stretches of x, ending where
+    # they leave the plot (the upper one may poke just past the top gridline, as on a scan).
+    cis = []
+    for sign in (1, -1):
+        cx = np.linspace(xs[0] + rng.uniform(-0.02, 0.03) * span, xs[-1] + rng.uniform(-0.03, 0.04) * span, 300)
+        ct = (cx - xs[0]) / (xs[-1] - xs[0])
+        cy = y0 + (y1 - y0) * (1 - np.exp(-k * ct)) / (1 - math.exp(-k)) + sign * off * (1 - 0.3 * ct)
+        keep = (cy >= 3) & (cy <= min(ytop - 1, 101.5))
+        cis.append((cx[keep], cy[keep]))
+    rc = {"path.snap": False, "font.family": font, "font.size": float(rng.uniform(10, 13)), "axes.linewidth": glw}
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        ax.set_xlim(xlo, xhi)
+        ax.set_ylim(0, ytop)
+        ax.set_xticks(np.arange(xlo, xhi + 1, 20))
+        ax.set_yticks(np.arange(0, ytop + 1, 20))
+        ax.tick_params(length=0, pad=6)
+        ax.grid(True, color="k", lw=glw, ls="-")
+        ax.set_axisbelow(True)
+        ax.set_xlabel(str(rng.choice(["Milliampere-minutes", "Dose", "Exposure (units)"])))
+        ax.set_ylabel(str(rng.choice(["Percentage positive reactions", "Response (%)", "Per cent"])))
+        fig.tight_layout()
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        ax.plot(xs, fit, color="k", lw=lw, solid_capstyle="round", zorder=3)
+        # Hand-drawn dashes: lengths and gaps vary by a quarter around the pen's own.
+        dash_px = dlw * dpi / 72 * float(rng.uniform(3.0, 4.5))
+        gap_px = dlw * dpi / 72 * float(rng.uniform(1.0, 1.8))
+        inv = ax.transData.inverted()
+        for cx, cy in cis:
+            d = ax.transData.transform(np.column_stack([cx, cy]))
+            seg = np.hypot(*np.diff(d, axis=0).T)
+            arc = np.concatenate([[0], np.cumsum(seg)])
+            pos = float(rng.uniform(0, 0.5)) * dash_px
+            while pos < arc[-1]:
+                a, b = pos, min(arc[-1], pos + dash_px * float(rng.uniform(0.75, 1.25)))
+                ts = np.linspace(a, b, max(2, int(b - a) + 1))
+                piece = np.column_stack([np.interp(ts, arc, d[:, 0]), np.interp(ts, arc, d[:, 1])])
+                pd = inv.transform(piece)
+                ax.plot(pd[:, 0], pd[:, 1], color="k", lw=dlw, solid_capstyle="butt", zorder=3)
+                pos = b + gap_px * float(rng.uniform(0.7, 1.3))
+        # Data points: open circles about the fit, crosses about the confidence curves, at
+        # gridline x values and between them (some on a gridline crossing).
+        mx = np.sort(rng.choice(np.arange(xs[0] + 2, xs[-1], 10.0), size=int(rng.integers(5, 8)), replace=False))
+        o_y = np.interp(mx, xs, fit) + rng.normal(0, 2.5, len(mx))
+        x_pts = []
+        for cx, cy in cis:
+            inside = mx[(mx >= cx[0]) & (mx <= cx[-1])]
+            for xv in inside[: max(1, len(inside) - 1)]:
+                yv = float(np.interp(xv, cx, cy)) + float(rng.normal(0, 2.5))
+                if rng.random() < 0.3:
+                    yv = 20 * round(yv / 20)  # on a gridline
+                x_pts.append((float(xv), float(np.clip(yv, 2, ytop - 2))))
+        o_pts = np.column_stack([mx, np.clip(o_y, 2, ytop - 2)])
+        x_pts = np.array(x_pts)
+        mew = lw * float(rng.uniform(0.5, 0.7))
+        ax.plot(o_pts[:, 0], o_pts[:, 1], ls="none", marker="o", ms=ms, mfc="none", mec="k", mew=mew, zorder=4)
+        ax.plot(x_pts[:, 0], x_pts[:, 1], ls="none", marker="x", ms=ms * 0.8, mec="k", mew=mew, zorder=4)
+        fig.canvas.draw()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)
+
+        def tf(v):
+            return px_of(ax.transData.transform(v), H)
+
+        grid_lines = [np.array([[xv, 0], [xv, ytop]]) for xv in np.arange(xlo, xhi + 1, 20)]
+        grid_lines += [np.array([[xlo, yv], [xhi, yv]]) for yv in np.arange(0, ytop + 1, 20)]
+        grid_lines += [np.array([[xlo, ytop], [xhi, ytop]]), np.array([[xhi, 0], [xhi, ytop]])]
+        fit_px = tf(np.column_stack([xs, fit]))
+        ci_px = [tf(np.column_stack(c)) for c in cis]
+        o_px = tf(o_pts)
+        x_px = tf(x_pts)
+        grid_px = [tf(g) for g in grid_lines]
+        plt.close(fig)
+
+    # The scan: darkness rotated (bilinear), blurred, thresholded against a smooth random field
+    # (stroke widths vary along a line), noised and blurred again (the scanner's optics).
+    scale = dpi / 150
+    dark = 1 - rgba[:, :, :3].mean(2) / 255
+    if angle:
+        dark = np.asarray(Image.fromarray(dark.astype(np.float32), mode="F").rotate(angle, resample=Image.BILINEAR, fillcolor=0.0))
+    dark = blur(dark, 0.6 * scale)
+    field = blur(rng.uniform(-1, 1, dark.shape), 8 * scale)
+    field /= max(1e-9, field.std())
+    thr = np.clip(0.45 + 0.07 * field, 0.25, 0.65)
+    dark = 1 / (1 + np.exp(-(dark - thr) / 0.05))
+    dark = np.clip(dark + rng.normal(0, 0.06, dark.shape), 0, 1)
+    dark = np.clip(blur(dark, 0.5 * scale), 0, 1)
+    dark[dark < 0.06] = 0  # the scanner's white point: clean paper (and a PNG that compresses)
+    gray = np.round(253 - (253 - 18) * dark).astype(np.uint8)
+    rgb = np.repeat(gray[:, :, None], 3, axis=2)
+
+    # Truth rotated with the image (about its centre, pixel-centre convention).
+    cxp, cyp = W / 2 - 0.5, H / 2 - 0.5
+    th = math.radians(angle)
+
+    def rot(p: np.ndarray) -> np.ndarray:
+        p = np.atleast_2d(p)
+        x, y = p[:, 0] - cxp, p[:, 1] - cyp
+        return np.column_stack([cxp + x * math.cos(th) + y * math.sin(th), cyp - x * math.sin(th) + y * math.cos(th)])
+
+    glw_px = glw * dpi / 72
+    decor_px = [dict(kind="line", path=rot(g), lw_px=glw_px, marker=None) for g in grid_px]
+    lw_px, dlw_px, ms_px = lw * dpi / 72, dlw * dpi / 72, ms * dpi / 72
+    none = np.zeros((0, 2))
+    series = [dict(kind="line", style="solid", marker=None, color="k", lw_px=lw_px, ms_px=ms_px, path=rot(fit_px), points=rot(fit_px),
+                   censor=none, seed_at=float(rng.uniform(0.3, 0.7)), xs=xs, ys=fit)]
+    for (cx, cy), g in zip(cis, ci_px):
+        series.append(dict(kind="line", style="dashed", marker=None, color="k", lw_px=dlw_px, ms_px=ms_px, path=rot(g), points=rot(g),
+                           censor=none, seed_at=float(rng.uniform(0.3, 0.7)), xs=cx, ys=cy))
+    series.append(dict(kind="scatter", style="none", marker="o", color="k", lw_px=lw_px, ms_px=ms_px, points=rot(o_px),
+                       censor=none, seed_at=0.5, fill=False, xs=o_pts[:, 0], ys=o_pts[:, 1]))
+    series.append(dict(kind="scatter", style="none", marker="x", color="k", lw_px=lw_px, ms_px=0.8 * ms_px, points=rot(x_px),
+                       censor=none, seed_at=0.5, xs=x_pts[:, 0], ys=x_pts[:, 1]))
+    bg = np.array([255.0, 255.0, 255.0])
+    for k_, s in enumerate(series):
+        others = [o for j, o in enumerate(series) if j != k_]
+        s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
+        s["seed"] = pick_seed(s, others + decor_px, rgb, bg, None, W, H, strict=True)
+
+    tags = ["scenario:scan-grid", "grid", "frame:box", "jpeg" if jpeg_q else "png", "dpi:mid" if dpi <= 150 else "dpi:high", "scan"]
+    if angle:
+        tags.append("rotated")
+    out_series = []
+    for k_, s in enumerate(series):
+        stags = [f"series:{s['kind']}", "color:black", "same-colour", "own-colour-lines", "scan"]
+        if s["kind"] == "scatter":
+            stags += ["marker:circle", "fill:open"] if s["marker"] == "o" else ["marker:x"]
+        else:
+            stags += [f"style:{s['style']}", "lw:thin" if s["lw_px"] < 1.5 else "lw:thick"]
+            if s["crossing"]:
+                stags.append("crossing")
+        entry = {
+            "id": f"s{k_}",
+            "kind": s["kind"],
+            "tags": stags,
+            "color": [0, 0, 0],
+            "style": s["style"],
+            "marker": s["marker"],
+            "lineWidthPx": round(s["lw_px"], 3),
+            "markerSizePx": round(s["ms_px"], 3),
+            "seed": s["seed"],
+            "data": [[round(float(x), 6), round(float(y), 6)] for x, y in zip(s["xs"], s["ys"])],
+            "pixels": [[round(float(x), 3), round(float(y), 3)] for x, y in s["points"]],
+        }
+        if s["kind"] == "scatter":
+            entry["markers"] = entry["pixels"]
+        else:
+            entry["path"] = [[round(float(x), 3), round(float(y), 3)] for x, y in s["path"]]
+        out_series.append(entry)
+    name = f"l{i:02d}"
+    doc = {
+        "image": f"{name}.{'jpg' if jpeg_q else 'png'}",
+        "width": W,
+        "height": H,
+        "description": (f"Synthetic scan-grid chart, {len(series)} series, dpi {dpi}, font {font}, rotated {angle:.2f} deg"
+                        + (f", JPEG q{jpeg_q}" if jpeg_q else "") + ". Generated by bench/lines/generate.py."),
+        "tags": tags,
+        "plotBox": [[round(float(c), 3) for c in p] for p in rot(box)],
+        "legendBox": None,
+        "series": out_series,
+    }
+    return Image.fromarray(rgb), doc, jpeg_q
+
+
 def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
     col = np.array(to_rgb(s["color"])) * 255
     if s["kind"] == "scatter" and s.get("fill") is False:
@@ -672,8 +891,10 @@ def main() -> int:
     total = 0
     traces = 0
     for i in range(COUNT):
-        img, doc, q = build(i)
+        img, doc, q = build_scan(i) if i >= SCAN_FROM else build(i)
         name = doc["image"]
+        if i >= SCAN_FROM:
+            img = img.convert("L")  # a black-and-white scan: one grey channel
         if q:
             img.save(OUT / name, quality=q)
         else:

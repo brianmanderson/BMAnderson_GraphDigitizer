@@ -718,6 +718,33 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   wider than a stroke that sticks out past the curve is a marker of the series' colour, kept as
   one corner point at its centroid (the data point); a thin group sticking out on both sides
   (censoring '+') is dropped and bridged.
+- **Rulings** (`rulings.ts`, 2026-11-13): old printed figures rule their grid and frame in the
+  same black as the curves, often as heavy as the curves; on a scan a trace ran along them
+  (tester feedback: a 1928 dose-response scan). A ruling is a straight, nearly axis-parallel line
+  of the series' colour spanning ≥ 70 % of the region (bands of rows ≥ 80 % on, per 1/48-wide
+  strip, linked across ≤ 2 missing strips; centres within max(2 px, a third of its width) of a
+  fitted line, so a hand-ruled, slightly rotated scan qualifies), and only in a grid: two or more,
+  never the line under the seed (a bias line, a plateau). Those at least 2 px, half the clicked
+  stroke and (for a series read as dotted or dash-dot) 6 px thick are kept off the trace; a series
+  read as dashed, or a seed on a marker standing clear, is traced as before. Taken out of the
+  coverage map (an occluder, like another colour), the seed's blob and style are read again: a
+  dash or marker that touched a gridline stands alone. If that reads as dashed / dotted / a
+  marker, the rulings stay out (gaps across one count as crossings; a gap that is all ruling joins
+  the halves of a cut dash; a run ending at one and thinner than the stroke is a sliver, hidden).
+  Otherwise (a solid curve) they go back in as ink the walk crosses as before but never runs
+  along: a run that is all ruling is never taken, and columns whose prediction lies on one count
+  as hidden. Taking them out for a solid curve left slivers at every crossing and a marker's arms
+  to follow where it sits on a gridline.
+- **Dash hopping** (`dashes.ts`, 2026-11-13): hand-drawn dashes vary too much in length and gap
+  for one pattern, so a dashed walk ends where its gaps were not filled. From each end of the
+  walk the next piece is sought ahead: a blob of the series' colour (≥ 4 px, not walked), within
+  2 gaps + 4 stroke widths along the walk's last direction (principal axis of its last two dash
+  periods) and within max(1.5 widths, ¼ of that distance) of the line, running along it when
+  elongated (≥ 1.5, ±35°) or else no bigger than a dot, with nothing of the series' colour between
+  (an axis with its tick labels beyond, another series); the walk goes on from its middle
+  column, primed with the line's direction, along that piece only (≤ 2 columns of gap). Repeated
+  until nothing fits: the series' real end. In a ruled figure a dashed walk's stroke width is not
+  measured over a piece's first and last columns (its tapering tips).
 - **Vertices hidden under markers** (`kinks.ts`): a polyline chart's data points sit under its
   markers. Where the path bridges a gap over a compact blob of another colour that the straight
   stretches on both sides point at, the blob's centroid becomes a corner point (also on nearly
@@ -810,7 +837,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 116 seeded charts, 260 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 128 seeded charts, 320 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -832,11 +859,18 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   `frame:top-L`, series tags `same-colour`, `errorbars`, modelled on a real clonogenic-survival
   figure) a Γ frame with the X axis and its labels along the top, log or linear Y, and two fitted
   curves of one colour from the top-left corner — solid with filled squares, Office-dashed (dash
-  ≈ 3.3 widths, gap ≈ 4) with open squares and error bars growing tall. Gridlines,
+  ≈ 3.3 widths, gap ≈ 4) with open squares and error bars growing tall; (l116–l127,
+  `scenario:scan-grid`, tags `scan`, `rotated`, series tags `same-colour`, `own-colour-lines`,
+  `scan`, `marker:x`, modelled on a 1928 scanned dose-response figure) old black-and-white
+  scans: a heavy black major grid and frame (0.6–1.1 × the curve's width), a solid fitted curve,
+  two dashed confidence curves whose dashes and gaps vary by a quarter (hand-drawn), "x" and
+  open "o" markers on and near them (some on gridlines), 120–200 DPI; rendered, blurred,
+  thresholded against a smooth random field (uneven stroke width), noised, rotated by up to
+  0.5° in two charts of three (the truth rotated with it), saved as one grey channel. Gridlines,
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
-  Real figures (`bench/lines/real/manifest.json`; all CC BY, provenance in
+  Real figures (`bench/lines/real/manifest.json`; CC BY or public domain, provenance in
   `fixtures/real/PROVENANCE.md`): the three KM fixtures' `knownValues` plateaus as partial truth
   (`km-pericardial-pao.png` = Pao 2020 fig. 1c: black and grey series, 3 + 4 plateaus;
   `km-sas-frame-ikawa.png` = Ikawa 2022 fig. 1a: blue and red, each solid and dashed, 9 plateaus
@@ -849,7 +883,9 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   of each marker after a morphological opening removes the bars, ±0.5 px; category
   `find-points`), and
   `fixtures/synthetic/synthetic-linear.png` (Chromium-rendered polyline with
-  pink markers on its five data points; full truth from its `points`, category `fixture`).
+  pink markers on its five data points; full truth from its `points`, category `fixture`), and
+  `dose-response-1928-grid.png` (a 1928 scan, public domain: the three curves' measured
+  centrelines in the label's `curves`, styles in `styles`; categories `scan`, `grid`, `dashed`).
   The previous real figures (a CC BY-NC KM figure, a subscription SAS KM figure and the
   subscription `Graph.png` scatter) were removed for licensing on 2026-11-07; the Phase 6
   numbers quoted below for them are history.
@@ -1023,6 +1059,28 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   75.6 %, precision 54.0 %; blue 7/12, orange 9/12, red 10/13 found). The hysteresis loops (Zhou,
   Nayyef, Tahir) are not single-valued in x and no truth format here covers them; they are in
   `bench:axes` only.
+- **Scanned figures with a ruled grid of the curves' colour (2026-11-13; 342 traces)**: tester
+  feedback on a 1928 dose-response scan (`dose-response-1928-grid`: heavy black hand-ruled grid
+  and frame, solid fit, two hand-dashed confidence curves, x/o markers on gridlines): a click on
+  a confidence curve gave hundreds of points along the gridlines; the fit's trace ran along the
+  60 % and 100 % gridlines and down the left axis; the dashed curves stopped short. Rulings and
+  dash hopping (above). That figure, before → after: coverage 77.4 → 89.8 %, median 1.07 →
+  0.67 px, p95 668 → 11.7 px, style 66.7 → 100 % (fit 77.5 → 94.7 %, 1.40 → 0.52 px; upper
+  79.5 → 82.3 %, dotted → dashed; lower 75.0 → 92.5 %; Δy p95 26.8 → 0.42 data units). The
+  appended `scan-grid` charts, the tracer before → after: kind 76.7 → 76.7 %, coverage 62.2 →
+  65.5 %, median 0.29 → 0.11 px, p95 363 → 78 px, wrong series 36.1 → 27.8 %, style 86.1 →
+  88.9 %, marker recall 25.7 → 24.6 %, precision 24.3 → 23.9 % (one open circle lost, one
+  gained). Earlier traces: two change, both gains — `l103/s2` coverage 17.5 → 45.7 %, median
+  62.3 → 10.7 px, no longer on the wrong series; `l115/s1` coverage 95.6 → 97.5 % (its added
+  points move the pooled median of `errorbars` / `frame:top-L` / `scenario:top-axis` from 0.0532
+  to 0.0533 px). Overall (342 traces): kind 93.9 %, coverage 89.4 %, median 0.03 px / p95
+  1.72 px, wrong 4.8 %, corner recall 57.2 %, marker recall 70.3 % / precision 68.6 %, style
+  92.2 % (the new hard category moves the shared ones). **Known failures** of this scenario:
+  "x" and "o" markers on a gridline where curves converge still divert a trace onto another
+  series (wrong series 27.8 %: `l121/s1`, `l118/s0`); hand-dashed curves cut into fragments by a
+  dense grid are often not read as dashed (style unread or dash-dot); clicking an "x" or "o" that
+  touches a curve or a gridline mostly traces a curve (marker recall 24.6 %); a solid curve that
+  runs into a gridline tangentially stops where it enters the gridline's band.
 
 ## Auto-trace — UI
 
@@ -1153,8 +1211,9 @@ beside each image). Use them in e2e tests (Phase 2+), the axis benchmark (Phase 
 `bench/axes/real/manifest.json`) and the line-tracing benchmark (their `knownValues` plateaus,
 listed in `bench/lines/real/manifest.json`). Label from measured pixels, including whether tick marks exist.
 
-**Licensing (decided 2026-11-07)**: only figures published under CC BY may be in the public
-repository, each with its source, DOI, PMC id, figure/panel and crop box, licence wording and
+**Licensing (decided 2026-11-07)**: only figures published under CC BY (or, on the owner's
+ruling, in the public domain: the 1928 scan `dose-response-1928-grid`, 2026-11-13) may be in the
+public repository, each with its source, DOI, PMC id, figure/panel and crop box, licence wording and
 URL, attribution, date obtained and labeller recorded in
 [`fixtures/real/PROVENANCE.md`](../fixtures/real/PROVENANCE.md). Six figures with negative
 values were added on 2026-11-10 (`angle-response-chea`, `hysteresis-loops-zhou`,

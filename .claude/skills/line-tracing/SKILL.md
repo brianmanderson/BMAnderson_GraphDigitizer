@@ -52,6 +52,13 @@ description: >
    Coverage α per pixel with a saturation-dependent residual tolerance (tight for black/grey/brown,
    loose for saturated colours JPEG washes out). `other` marks ink of another colour. A frame line
    along an edge is excluded only when it has the series colour (`excludeEdgeLines`).
+   Rulings (`rulings.ts`): straight axis-parallel lines of the series' colour spanning ≥ 70 % of the
+   region, only as a grid (≥ 2, never the one under the seed) — a scanned figure's grid ruled in the
+   curves' black. Heavy ones (≥ 2 px, ½ the stroke; 6 px for a dotted/dash-dot read; none for a
+   series read as dashed or a clean marker seed) are taken out and the seed's blob and style read
+   again: kept out for a dashed/dotted series or a marker (an occluder; `cut` gaps join a cut
+   dash; slivers beside one are hidden), put back for a solid curve as `rulingInk` (never take a
+   run that is all ruling; a prediction on one is a hidden gap).
 3. Style (`style.ts → classifyStyle`): the chain of blobs around the seed → solid / dashed /
    dotted / dash-dot / unknown (gaps that agree, piece lengths; occlusions end a chain, crossings
    of same-colour ink don't count). Mode: blobs of "on" pixels (`markers.ts → findBlobs`); seed
@@ -71,15 +78,20 @@ description: >
    `KINK_COLUMNS`) whose runs must emerge from the ink and are only a fallback; retry from the last
    fork (`RETRY_COLUMNS`, `MAX_RETRY_DEPTH`; kink-only runs make no fork; the branch that followed
    most ink wins). Walk order: right, left primed with right, right primed with left.
-5. `columnsToPath`: centroids; thin long-run groups entered at one end → two corner points, unless
+5. Dash hopping (`dashes.ts → hopDashes`, dashed / dash-dot): from each end of the walk, the next
+   piece ahead on the walk's course (size, alignment, no series-colour ink between), walked alone
+   and primed with the line's direction; repeated to the real end. `traceColumns(…, only)` is the
+   one-direction continued walk; `tips` (a ruled figure's dashed walk) keeps a piece's tapering
+   ends out of the stroke width.
+6. `columnsToPath`: centroids; thin long-run groups entered at one end → two corner points, unless
    ≥ 2 columns wide and the agreeing slope on both sides explains the jump (a shallow crossing:
    bridged; a 1-column stair of a steep line stays, its corner bounds `insertHiddenKinks`); square
    groups wider than a stroke sticking out past the curve (same-colour markers) → one corner at
    their centroid; thin groups sticking out on both sides ('+') dropped.
-6. `kinks.ts`: vertices hidden under other-colour markers (occluder centroid, or the intersection
+7. `kinks.ts`: vertices hidden under other-colour markers (occluder centroid, or the intersection
    of the stretches either side, both only over ink) and line ends under a marker.
-7. `resample.ts`: ends + corners + extrema + DP kinks always, rest evenly in x up to `maxPoints`.
-8. Markers ("Find points", `markers.ts`): `markerTemplate` cuts the clicked marker out of its blob
+8. `resample.ts`: ends + corners + extrema + DP kinks always, rest evenly in x up to `maxPoints`.
+9. Markers ("Find points", `markers.ts`): `markerTemplate` cuts the clicked marker out of its blob
    (filled: opening wider than the attached strokes; open: the enclosed hole + ring — not a pocket
    beside a thick stroke that runs on and borders under half of it, `throughStroke`), `findMarkers`
    matches its ink / defining background / margin everywhere (filled on the opened image, corners
@@ -99,14 +111,16 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (116 charts, 260 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (128 charts, 320 series; committed,
   ~3.5 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
   solid sigmoid + dashed bounds over outlined bars and gridlines of its own colour, like a
   dose-response figure), l108–l115 `top-axis` (X axis along the top with its labels above, a Γ
   frame `detectAxes` boxes on 6 of 8; solid + dashed fits of one colour from the top-left corner with
-  filled/open squares and error bars) — so earlier ones stay
+  filled/open squares and error bars), l116–l127 `scan-grid` (old black-and-white scans: heavy
+  black grid and frame, solid fit + two hand-dashed confidence curves, x/o markers, blur, noise,
+  uneven strokes, ≤ 0.5° rotation; `build_scan`; one grey channel) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -118,8 +132,10 @@ description: >
   truth for a polyline with a marker on every point (line + marker series; entry needs
   `markerSizePx`; `source` names its top category, e.g. `fixture`); an optional `styles` map
   (series → line style) feeds the style metric; a `markerSeries` list (`series`, `markerSizePx`,
-  `seed`, `markers`) gives full marker truth for scatter groups (`scatter-errorbars-glowa.json`).
-  Add a figure: **CC BY only**, with its source, licence, crop box and attribution recorded in
+  `seed`, `markers`) gives full marker truth for scatter groups (`scatter-errorbars-glowa.json`); a
+  `curves` list (`series`, `seed`, `path`) gives full truth for measured curve centrelines
+  (`dose-response-1928-grid.json`).
+  Add a figure: **CC BY or public domain (owner's ruling)**, with its source, licence, crop box and attribution recorded in
   `fixtures/real/PROVENANCE.md` first; label plateaus from measured pixels (±1 px),
   add it to the manifest with tags, run `-- --verbose`, rebaseline (new categories) and commit
   image + label + manifest + baseline + provenance together.
@@ -134,5 +150,7 @@ markers; same-colour (Phase 6): a dashed series merged into the solid one for a 
 dashed trace there, dashed/dotted KM steps keep few corners; grid-crossing: dashed bounds among
 own-colour gridlines get their style misread; top X axis: Office dashes (gaps longer than the
 dashes) often leave the style unread, a series running inside the axis stroke is lost there with
-the axis, a dashed trace stops at an open marker whose cap it entered. Numbers: docs/SPEC.md → Auto-trace →
+the axis, a dashed trace stops at an open marker whose cap it entered; scan-grid: x/o markers on a
+gridline where curves converge still divert a trace (wrong series 27.8 %), hand-dashed curves cut
+by a dense grid often go unread, a marker touching a curve or gridline traces as a curve. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.

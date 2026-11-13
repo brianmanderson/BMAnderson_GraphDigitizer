@@ -1,5 +1,5 @@
 {
-  "$comment": "Figures beyond the generated corpus for npm run bench:lines. Each entry points at a label JSON, relative to this file (format: bench/lines/truth.ts): knownValues plateaus become partial truth; a points list (polyline with a marker on every data point) becomes full truth for the line and its markers; markerSeries (scatter groups) full marker truth. Labels are shared with the e2e fixtures and bench:axes. `source` is the top category (default real); tags become categories. Provenance and licences (CC BY only): fixtures/real/PROVENANCE.md.",
+  "$comment": "Figures beyond the generated corpus for npm run bench:lines. Each entry points at a label JSON, relative to this file (format: bench/lines/truth.ts): knownValues plateaus become partial truth; a points list (polyline with a marker on every data point) becomes full truth for the line and its markers; markerSeries (scatter groups) full marker truth. Labels are shared with the e2e fixtures and bench:axes. `source` is the top category (default real); tags become categories. Provenance and licences (CC BY or public domain): fixtures/real/PROVENANCE.md.",
   "figures": [
     { "truth": "../../../fixtures/real/km-pericardial-pao.json", "tags": ["km", "png", "grey-series"] },
     { "truth": "../../../fixtures/real/km-sas-frame-ikawa.json", "tags": ["km", "png", "four-series", "same-colour"] },
@@ -8,6 +8,7 @@
     { "truth": "../../../fixtures/real/angle-response-chea.json", "tags": ["png", "find-points", "line-markers", "three-colours", "negative-y"] },
     { "truth": "../../../fixtures/real/bland-altman-rabe.json", "tags": ["png", "bland-altman", "negative-y", "dashed-bounds"] },
     { "truth": "../../../fixtures/real/beam-profile-pittet.json", "tags": ["jpeg", "beam-profile", "negative-x", "dotted-markers"] },
+    { "truth": "../../../fixtures/real/dose-response-1928-grid.json", "tags": ["scan", "png", "grid", "same-colour", "dashed"] },
     {
       "truth": "../../../fixtures/synthetic/synthetic-linear.json",
       "source": "fixture",
