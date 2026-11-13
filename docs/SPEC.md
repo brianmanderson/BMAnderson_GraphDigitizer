@@ -455,8 +455,11 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   wobbles by that much and its bumps had given every line ~0.4–0.6 tick confidence. (3) A mark
   whose tip runs into ink spreading sideways beyond it (not another tick, not a line running on
   through the mark) is probably a label glyph written against the line; when most marks on a
-  side are such, that side has no ticks (a single tick touched by data does not matter).
-  Synthetic charts c70–c75 imitate such figures.
+  side are such, that side has no ticks (a single tick touched by data does not matter). (4) Ticks
+  run along the whole axis: a lattice whose marks fill fewer than half of its positions along the
+  axis line (and has no minors) is chance — three evenly spaced bumps under the 1928 figure's
+  bottom frame had made a tick set. Synthetic charts c70–c75 imitate such figures; the 1928
+  figure is `dose-response-1928-grid` in `fixtures/real/`.
 - **Corpus** (`bench/axes/`): 76 matplotlib charts from `generate.py` (seeded; Python 3.12 +
   matplotlib 3.10; output committed, ~4.3 MB) — c70–c75 (old-scan look-alikes: hand-lettered or
   italic labels in Windows script/italic fonts, no tick marks, a heavy black grid on every second
