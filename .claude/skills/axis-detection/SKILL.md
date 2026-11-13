@@ -25,7 +25,8 @@ description: >
    accept and document the failure. Correcting a *wrong label* is fine with pixel evidence
    (that is how a former KM fixture's faint x ticks got `tickMarks: true`) — say so in the commit.
 4. **No invented ticks.** An axis without tick marks must come back with `ticks: []`,
-   `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern.
+   `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern, nor do a few
+   even marks on a short stretch of a long axis (a lattice fills half its positions, or has minors).
 5. **Gate**: `npm run bench:axes` is part of `npm run verify` and exits 1 if any gated metric
    (axes found, box found, tick recall, minor recall, tick precision; or more ticks on bare axes —
    and since Phase 5 the calibration metrics, see `auto-calibration`) gets worse than

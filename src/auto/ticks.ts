@@ -298,6 +298,11 @@ function analyseWith(
   }
   if (minors.length < Math.max(2, majors.length - 1)) minors = [];
   if (majors.length < 3 && minors.length < 3) return none;
+  // Ticks run along the whole axis. A few evenly spaced marks on a short stretch of a long line,
+  // with most of the lattice's other positions along the line empty, are chance (bumps on a
+  // hand-ruled scan), not ticks.
+  const axisSlots = Math.floor((line.end - lattice.anchor) / p) - Math.ceil((line.start - lattice.anchor) / p) + 1;
+  if (minors.length < 3 && majors.length < 0.5 * axisSlots) return none;
 
   const tol = tolerance(p);
   const nTerm = Math.min(1, (majors.length - 1) / 4);

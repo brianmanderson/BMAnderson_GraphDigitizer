@@ -211,6 +211,16 @@ describe('detectAxes on drawn charts', () => {
     expect(det.yAxis?.ticks.confidence).toBeGreaterThan(0.5);
   });
 
+  it('reports no ticks for three evenly spaced bumps on a short stretch of a long bare axis', () => {
+    // Ink bumps under a hand-ruled line can fall evenly by chance; real ticks run along the axis.
+    const img = chart({ xTicks: false });
+    for (const x of [480, 520, 560]) line(img, { x, y: ORIGIN.y }, { x, y: ORIGIN.y + 6 }, 1, 0);
+    const det = detectAxes(img);
+    expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 1);
+    expect(det.xAxis?.ticks.ticks).toEqual([]);
+    expect(det.xAxis?.ticks.confidence).toBe(0);
+  });
+
   it('takes the frame of a gridded figure, not a heavier gridline inside it, and no ticks from ragged lines', () => {
     // An old hand-ruled figure: a slightly lighter frame, black gridlines as thick as the frame, no
     // tick marks, and every line ragged (2-px bumps every 23 px on both sides).
