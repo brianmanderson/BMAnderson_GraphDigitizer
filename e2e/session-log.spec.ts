@@ -167,3 +167,26 @@ test('the session log records a full session, ends with its own export and holds
   ]);
   expect(new Date(next.log.header.startedAt).getTime()).toBeGreaterThanOrEqual(new Date(h.startedAt).getTime());
 });
+
+test('Start over is logged as `start-over` with what was cleared; the log stays downloadable until the next load', async ({ page }) => {
+  await openApp(page);
+  await loadViaPicker(page, 'synthetic/synthetic-linear.png');
+  await page.getByRole('group', { name: 'File' }).getByRole('button', { name: 'Start over' }).click();
+  await page.getByTestId('start-over-dialog').getByRole('button', { name: 'Start over' }).click();
+  await expect(page.getByText('Drop a chart image here')).toBeVisible();
+
+  await expect(page.getByTestId('session-log')).toBeEnabled();
+  const { name, log } = await downloadLog(page);
+  expect(name).toBe('synthetic-linear-session.json');
+  expect(log.events.map((e) => [e.seq, e.type])).toEqual([
+    [0, 'image-loaded'],
+    [1, 'start-over'],
+    [2, 'export'],
+  ]);
+  expect(log.events[1]).toMatchObject({ lines: 1, points: 0 });
+
+  // The next image starts a new log.
+  await loadViaPicker(page, 'synthetic/synthetic-linear.png');
+  const next = await downloadLog(page);
+  expect(next.log.events.map((e) => e.type)).toEqual(['image-loaded', 'export']);
+});

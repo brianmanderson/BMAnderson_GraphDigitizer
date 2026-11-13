@@ -46,6 +46,19 @@ async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStor
   }
 }
 
+/**
+ * Writes and clears run one after another, in call order: each opens the database on its own, so
+ * without the queue a write started before "Start over" could land after its clear and bring the
+ * work back on the next reload. Reads are not queued (App ignores a start-up read that finishes
+ * after Start over), so they never wait behind each other.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+function inOrder<T>(run: () => Promise<T>): Promise<T> {
+  const next = queue.then(run, run);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
 /** The stored record as raw data (validate it before use), or null when there is none. */
 export async function readAutosave(): Promise<unknown> {
   const value = await withStore<unknown>('readonly', (s) => s.get(KEY));
@@ -53,5 +66,10 @@ export async function readAutosave(): Promise<unknown> {
 }
 
 export async function writeAutosave(record: AutosaveRecord): Promise<void> {
-  await withStore('readwrite', (s) => s.put(record, KEY));
+  await inOrder(() => withStore('readwrite', (s) => s.put(record, KEY)));
+}
+
+/** "Start over": remove the record, so a reload starts empty. */
+export async function clearAutosave(): Promise<void> {
+  await inOrder(() => withStore('readwrite', (s) => s.delete(KEY)));
 }

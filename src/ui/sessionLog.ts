@@ -84,7 +84,9 @@ export type SessionEventBody =
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'setting-changed'; key: string; value: string | number | boolean }
-  | { type: 'export'; kind: 'csv' | 'project' | 'session-log'; filename: string };
+  | { type: 'export'; kind: 'csv' | 'project' | 'session-log'; filename: string }
+  /** "Start over" cleared the image and its work (what was lost); the log stays downloadable until the next load. */
+  | { type: 'start-over'; lines: number; points: number };
 
 export type SessionEventType = SessionEventBody['type'];
 

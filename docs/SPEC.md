@@ -30,6 +30,9 @@ implementation — do not copy their branding, layout, or assets.
 5. **Output** — live table of (x, y) per line; export CSV, copy as TSV (pastes into Excel),
    download JSON.
 
+At any point **Start over** (toolbar, beside "Open image…") clears the image and all its work,
+after a confirmation, and returns to step 1 (see Start over under Digitizing UI).
+
 ## Calibration math (the correctness core)
 
 Each scale has a forward transform `f` (value → linear space) and inverse `f⁻¹`:
@@ -166,6 +169,26 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   browser decodes is accepted except SVG (vector input is a non-goal); others are rejected with
   a message naming the file. Loading starts a fresh document (settings are kept); since Phase 3
   it is an undo step instead of asking first (see below).
+- **Start over (decided 2026-11-13, from tester feedback)**: a tester who botched a first attempt
+  found no way back to a clean slate — a reload restores the autosave by design, Auto-detect's
+  "Discard" drops only the suggestion — and switched browsers. "Start over" in the toolbar's File
+  group, right after "Open image…", is enabled whenever a document is loaded and disabled on the
+  empty start screen; its tooltip says "Clear the image, axes and all lines". It opens a modal
+  confirmation (`<dialog>`, `data-testid="start-over-dialog"`) that lists what will be lost — the
+  image (name and size), the axis calibration (or how many of the 4 axis points are placed), N
+  lines with M points — says the autosave is cleared too and that it cannot be undone, and offers
+  **Save project first…** (the "Save project" download; the dialog stays open), **Cancel** (has the
+  focus) and **Start over**. Cancel and Esc change nothing, and while it is open the app's
+  shortcuts and paste are ignored. Confirming returns the app to the state of a fresh load: no
+  image, no document, an **empty undo/redo history** (Start over is deliberately not undoable —
+  the confirmation protects it, and the autosave is gone, so an undo could not survive a reload
+  anyway), the Image step, any Auto-detect or Auto-trace run cancelled and its suggestion
+  dropped, crop mode, selection, collapsed/hidden lines, table view options and trace settings at
+  their defaults, no notice — and the **autosave record is deleted**, so a reload stays empty (an
+  autosave read still in flight from start-up is ignored). Per-browser preferences (loupe, snap,
+  Move points, theme) are kept. The session log records `start-over` (see Session log). To fit the
+  extra button on one toolbar row at 1366 px with a wide system font, toolbar buttons use 13 px
+  text and 8 px side padding (the ↶ ↷ glyphs keep their size).
 - **Crop (decided after the Pages deploy)**: "Crop…" is offered whenever an image is loaded — at
   any stage of the work, calibrated or not — in the toolbar beside "Open image…" (on every step)
   and in the Image step under the line "Figure with several panels? Crop to the one you want."
@@ -353,10 +376,11 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   step: a drag (pointerdown → pointerup), typing into one field (ref value, dataset name, colour,
   settings), and repeated presses of one nudge key+modifier. Switching the active dataset is not a
   step. Loading an image and opening a project are steps. The history is not persisted;
-  restoring an autosave starts a fresh one.
+  restoring an autosave starts a fresh one, and Start over empties it (not undoable).
 - **Prompts → Undo notices**: replacing work (load/open over refs or points), deleting a
   dataset and cropping the image (Crop, above) never ask; a notice says what happened and offers
-  Undo, shown only while that action is still the newest step. Caveat: the autosave then holds the new state, so after a
+  Undo, shown only while that action is still the newest step. Start over is the one action that
+  asks first, because it cannot be undone (Start over, above). Caveat: the autosave then holds the new state, so after a
   reload the replaced work is gone unless it was saved as a project file.
 - **Autosave** (`src/ui/autosave.ts`): IndexedDB database `graph-digitizer`, store `autosave`,
   key `current`: `{ project: toProject(doc), activeDatasetId, collapsed, hidden, savedAt }`
@@ -366,7 +390,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   restored unless the user already loaded something — in which case that document is saved as
   soon as the read finishes (it missed the debounced save, which waits for the read); the step
   becomes Data when the restored calibration fits, else Axes; the view is re-fitted. One autosave per browser profile (the last
-  tab to write wins). The status bar shows the last save time or a failure.
+  tab to write wins). The status bar shows the last save time or a failure. Start over deletes
+  the record; writes and the delete run one after another in call order (`src/ui/autosave.ts`), so
+  a save already under way cannot land after the delete and bring the work back.
 - **Project files**: "Save project" (Ctrl+S) downloads `<image>-project.json`, the same file as
   "Download JSON". "Open project…" (Ctrl+O), or dropping/pasting a `.json`, reads it through
   `parseProject`, checks that the embedded image decodes to the stated size, and replaces the
@@ -1049,13 +1075,15 @@ study's time per figure and its tallies of accepted/edited automatic suggestions
 posted; a reload loses it — and downloaded on request. It holds **no image data**.
 
 - **Export**: "Session log" (accessible name "Download session log", `data-testid="session-log"`)
-  in the toolbar's File group beside "Save project", enabled once an image is loaded, downloads
+  in the toolbar's File group beside "Save project", enabled once an image is loaded (and after
+  Start over, until the next load replaces the log), downloads
   `<image>-session.json` through the same `downloadText` helper as the other exports. No
   keyboard shortcut (Ctrl+S already saves the project, with or without Shift). The project
   file is unchanged (no `PROJECT_VERSION` bump): the log is a separate file.
 - **One log per loaded image**: loading an image, opening a project or restoring the autosave
   starts a new log (`image-loaded` with `source` `image` | `project` | `autosave`); a crop or an
-  undo across a load does not. The file: `{ format: "graph-digitizer-session-log", version: 1,
+  undo across a load does not. Start over ends the log with a `start-over` event but keeps it in
+  memory, so the attempt it cleared can still be downloaded; the next load starts a new one. The file: `{ format: "graph-digitizer-session-log", version: 1,
   header, events }`.
 - **Header** (once): `appVersion` (package.json), `commit` (the git commit built, injected by
   Vite's `define` as `__GIT_COMMIT__` from `git rev-parse HEAD`, else `GITHUB_SHA`, else
@@ -1081,7 +1109,8 @@ posted; a reload loses it — and downloaded on request. It holds **no image dat
   `dataset-renamed` / `dataset-deleted` / `dataset-activated` {datasetId}; `undo`; `redo`;
   `setting-changed` {key, value} for `snap`, `traceMode`, `traceMaxPoints`,
   `significantFigures`, `dateFormat`; `export` {kind `csv` | `project` | `session-log`,
-  filename} — the session-log export is the last event of the file it writes.
+  filename} — the session-log export is the last event of the file it writes; `start-over`
+  {lines, points} — what Start over cleared (a trace under review is logged as discarded first).
 - **Grouping**: edits with the same undo-group key one after another are one event (with the
   time the edit began): a drag is one `points-moved`/`ref-placed`, a held nudge key one
   `points-moved`, typing into a field one `ref-value-set` with the final text, a Points-slider
