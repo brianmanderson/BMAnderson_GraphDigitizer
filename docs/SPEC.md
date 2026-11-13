@@ -666,7 +666,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   vertical). Straight through = the last short run's centre plus the slope of the clean stretch
   before it times every column since that run — a thin line of the series' colour (gridline, bar
   edge) crossing a thick curve at a shallow angle merges with it for many columns, and a
-  one-column extrapolation would lag the curve onto the line (study image A14, 2026-11-09); only
+  one-column extrapolation would lag the curve onto the line (a real dose-response figure,
+  2026-11-09); only
   one column when that slope rests on fewer than three clean column pairs (a steep stretch, where
   a guessed slope extrapolated across a marker aims into it). A run thinner than the stroke is
   ranked by its own centre, not as the top of a stroke (which favoured a 1-px line just above a
@@ -798,12 +799,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   caps drawn under the markers, two points of the second series beside the first's, a marker on
   the x axis, a dashed reference line of the same colour (60 %), legends; an open marker's seed
   is on its outline away from the bars; (l96–l107, `scenario:grid-crossing`, series tag
-  `own-colour-lines`, like study image A14, a dose-response figure) a thick solid sigmoid (3.5–7 px)
+  `own-colour-lines`, modelled on a real dose-response figure) a thick solid sigmoid (3.5–7 px)
   with two thinner dashed confidence curves, over outlined histogram bars whose tops it crosses at
   shallow angles and a solid gridline at every y tick, all in the series' colour (black in two
   charts of three); seeds keep clear of the bars and gridlines; (l108–l115, `scenario:top-axis`,
-  `frame:top-L`, series tags `same-colour`, `errorbars`, like figure A22, a clonogenic survival
-  plot) a Γ frame with the X axis and its labels along the top, log or linear Y, and two fitted
+  `frame:top-L`, series tags `same-colour`, `errorbars`, modelled on a real clonogenic-survival
+  figure) a Γ frame with the X axis and its labels along the top, log or linear Y, and two fitted
   curves of one colour from the top-left corner — solid with filled squares, Office-dashed (dash
   ≈ 3.3 widths, gap ≈ 4) with open squares and error bars growing tall. Gridlines,
   legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
@@ -916,8 +917,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   as the find-points fixture and withdrawn: markers no thicker than the lines through them
   give no template (0/5 markers, mode `auto` traces a curve), which is the existing "≲ 10 px
   at low DPI" failure, not a new one.
-- **Shallow same-colour crossings (2026-11-09; 256 traces)**: study image A14 (a thick black LKB
-  curve over black gridlines and outlined histogram bars) left its curve at every shallow
+- **Shallow same-colour crossings (2026-11-09; 256 traces)**: a dose-response figure (a thick
+  black LKB curve over black gridlines and outlined histogram bars) left its curve at every shallow
   crossing — the straight-through prediction after a merged stretch lagged by one column per
   column of the stretch — and followed a gridline to the Y axis or a bar top. Fix: the
   extrapolation and the thin-run ranking above, and crossings no longer read as steps. New
@@ -954,21 +955,21 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   px) and `dpi:mid` (p95 0.728 → 0.730 px). Find points (l84–l95), the Glowa scatter and markers
   with error bars are unchanged. The unit test above now runs in mode `auto` and asserts a solid
   curve.
-- **Top X axis (2026-11-09; 272 traces)**: a dashed survival curve with open squares and error
-  bars under an X axis drawn along the top (paper corpus figure A22) jumped from a dash to the '1'
-  tick label above the plot. `detectAxes` paired only an "L" corner, so the figure had no plot box
-  and its labels lay in the traced region; the dashed chain broke at an open marker and its end
+- **Top X axis (2026-11-09; 272 traces)**: a dashed survival curve with open squares and error bars
+  under an X axis drawn along the top (a real clonogenic-survival figure) jumped from a dash to the
+  '1' tick label above the plot. `detectAxes` paired only an "L" corner, so the figure had no plot
+  box and its labels lay in the traced region; the dashed chain broke at an open marker and its end
   was joined across the dropped ink (the solid series and the axis) to the label. Detection now
-  boxes a top X axis (Axis detection), and with the box the trace is right: from a seed on the
-  3 Gy dash it runs to x ≈ 232 by the origin; from the other seeds it stops at the 0.5 Gy marker
-  (see below). For figures still traced without a box (detection misses one), the join across
-  dropped ink is now checked (rules above), and A22 traced with no box gives the same three
+  boxes a top X axis (Axis detection), and with the box the trace is right: from a seed on the 3 Gy
+  dash it runs to x ≈ 232 by the origin; from the other seeds it stops at the 0.5 Gy marker (see
+  below). For figures still traced without a box (detection misses one), the join across dropped ink
+  is now checked (rules above), and that figure traced with no box gives the same three
   results: a lone piece across must lie on the chain's course (the '1' does not), a long join
   needs the lost dash on the dropped ink (the '100' label beyond the Y axis has none), the other
   side of a break must be a chain end (on `l106` a join reached into the other dashed bound
-  across the thick curve), and a link to dropped ink (A22's marker and error bar at 2 Gy) ends a
-  chain. Each rule is needed: without the first A22's no-box trace reaches the '1', without the
-  third `l106/s2` falls to 80 %, and counting links to dropped ink stops A22 at 2 Gy. Two unit
+  across the thick curve), and a link to dropped ink (that figure's marker and error bar at 2 Gy)
+  ends a chain. Each rule is needed: without the first its no-box trace reaches the '1', without the
+  third `l106/s2` falls to 80 %, and counting links to dropped ink stops it at 2 Gy. Two unit
   tests reproduce the '1' and the '100' joins with no box; both fail on the code before. Main's
   corpus, every change a gain: `l78/s1` coverage 73.3 → 84.6 % (corners 14 → 15 of 70, median
   0.0102 → 0.0081 px), `l80/s1` 86.4 → 88.2 %, `l106/s2` 97.1 → 98.1 % (median 0.0771 → 0.0753
@@ -981,7 +982,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   (gaps longer than the dashes) often leave the style unread (5 of 8 dashed: `unknown`, one
   dash-dot); a series running inside the axis stroke is lost there with the axis (`l110/s0`, a
   pink line under the black top axis for its first 40 %: coverage 64 %); a dashed trace stops at
-  an open marker whose cap it entered (A22 from most seeds stops at 0.5 Gy).
+  an open marker whose cap it entered (the top-axis survival figure, from most seeds, stops at
+  0.5 Gy).
 - **Negative-value figures (2026-11-10)**: three of the six new real figures have truth the line
   formats can express (279 traces; every earlier trace unchanged; rebaselined for the new
   members of `real`, `png`, `jpeg`, `find-points`, `series:*`, `color:*`). `bland-altman-rabe`:

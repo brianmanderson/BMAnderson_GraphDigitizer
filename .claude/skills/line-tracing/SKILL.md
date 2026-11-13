@@ -60,7 +60,7 @@ description: >
    `chainPath`. Otherwise `applyStyle` (same-colour ink of another style becomes an occluder; a
    patterned seed's own gaps are filled — a chain end joined across the dropped ink only to a chain
    end, or to a lone piece on its course, with a lost dash's worth of that ink between a long join
-   (never to a tick label: A22) — `unfill` after the walk) and the column walker.
+   (never to a tick label beside a top X axis) — `unfill` after the walk) and the column walker.
 4. Column walker (`curve.ts → traceColumns`): runs per column; prediction = centre + median
    slope, or after a long run straight-through-then-far-end (straight-through extrapolates from the
    entry column `entryX` over every column since, when the clean slope rests on ≥ 3 pairs — a

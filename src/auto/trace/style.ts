@@ -632,7 +632,7 @@ export function applyStyle(ctx: Ctx, template: Blob, sig: StyleSignature, marker
     const oneGap = sig.gap + Math.max(1.5, 0.35 * sig.gap) + sig.thickness;
     // A lone piece across (no link of the pattern of its own) must go on the way the chain was
     // going: ahead of its end and off its line by no more than a dash turning a corner — not a tick
-    // label beside the crossing (A22's '1' above a top X axis).
+    // label beside the crossing (a '1' above a top X axis).
     const offLine = sig.maxOn + 2 * sig.thickness;
     for (const [label, n] of degree) {
       if (n > 1 || !fits(label)) continue;

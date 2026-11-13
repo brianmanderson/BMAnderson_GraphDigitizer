@@ -230,7 +230,7 @@ describe('traceLine: curves', () => {
   });
 
   it('stays on a thick curve where it crosses thin lines of its colour at shallow angles', () => {
-    // A dose-response figure (study image A14): a thick black sigmoid over black gridlines and
+    // A dose-response figure: a thick black sigmoid over black gridlines and
     // outlined bars whose tops it crosses at shallow angles — each crossing merges the two into
     // one run for many columns. Neither a gridline nor a bar top is the curve: the trace stays
     // in the stroke end to end (before the fix it left at the first crossing, 80+ px off). Where
@@ -240,7 +240,7 @@ describe('traceLine: curves', () => {
     frame(c);
     const curve = Array.from({ length: 317 }, (_, i) => ({ x: 42 + i, y: 235 - 170 / (1 + Math.exp(-(i - 200) / 110)) })); // frame to frame
     for (const y of [200, 180, 160, 140, 120]) c.stroke([{ x: 41, y }, { x: 359, y }], 1.5, BLACK);
-    // Bar tops halfway between gridlines, as in A14.
+    // Bar tops halfway between gridlines, as in that figure.
     for (const [x0, x1, top] of [[100, 150, 190], [150, 210, 170], [210, 265, 150], [265, 320, 130]] as const) {
       const at = (x: number) => curve[x - 42]!.y;
       expect(at(x0)).toBeGreaterThan(top); // the curve crosses each bar's top inside the bar
@@ -385,7 +385,8 @@ describe('traceLine: line style and same-colour series', () => {
   });
 
   it('does not join a dashed line across the other series and a top X axis to a tick label', () => {
-    // Figure A22 with no plot box (labels in the traced region): the dashed series' chain breaks
+    // A clonogenic-survival figure with error bars under an X axis drawn along the top, traced
+    // with no plot box (labels in the traced region): the dashed series' chain breaks
     // at an open marker; above it, across the thick solid series and the top axis, sits the '1'
     // label — a piece of a dash's size with enough dropped ink on the way for a lost dash, but off
     // the dashed line's course. The trace keeps to the dashes instead of jumping up to the label.
@@ -414,8 +415,8 @@ describe('traceLine: line style and same-colour series', () => {
   });
 
   it('does not join a dashed line across the axis it runs into to the tick label beyond', () => {
-    // No plot box (the labels are in the traced region, as in figure A22 before a top X axis was
-    // detected). The dashed series ends at the Y axis; on its line, past the thin axis, sits the
+    // No plot box (the labels are in the traced region, as in such a figure before a top X axis
+    // was detected). The dashed series ends at the Y axis; on its line, past the thin axis, sits the
     // '100' label, as far from the last dash as a lost dash and two gaps would be. Joined across
     // dropped ink it could be, but no dash was lost there: the axis is all the dropped ink between
     // them. The trace ends at its last dash.
