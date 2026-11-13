@@ -51,6 +51,12 @@ interface Ctx {
   region: Region;
   /** Rulings taken out of the coverage map (rulings.ts), or undefined. */
   ruling?: Uint8Array | undefined;
+  /**
+   * Darker ink taken out as an occluder (a grey series among black markers, color.ts), or
+   * undefined: any of it across a gap hides the series there — markers chop a grey curve into
+   * even pieces that are no dashed series.
+   */
+  darker?: Uint8Array | null | undefined;
 }
 
 /** Minimum pieces (dashes or dots) in a chain for a pattern, and their gaps' allowed spread. */
@@ -166,6 +172,7 @@ function gapBetween(ctx: Ctx, a: number[], b: number[]): Gap {
   /** Gap pixels on a ruling, and pixels of the gap neither ruling nor its faint fringe. */
   let ruled = 0;
   let open = 0;
+  let darker = 0;
   const la = ctx.found.labels[pa];
   const lb = ctx.found.labels[pb];
   for (let i = 1; i < n; i++) {
@@ -181,10 +188,11 @@ function gapBetween(ctx: Ctx, a: number[], b: number[]): Gap {
     const a = ctx.alpha[k] ?? -1;
     if (a <= 0 || a >= ON_ALPHA) open++;
     if (a < 0 && (ctx.other[k] || !ctx.region.mask[k])) hidden++;
+    if (ctx.darker?.[k]) darker++;
     const l = ctx.found.labels[k];
     if (l && l !== la && l !== lb) crossing = true;
   }
-  if (hidden >= Math.max(3, 0.5 * (n - 1))) return { gap: -1, ka: pa, kb: pb };
+  if (hidden >= Math.max(3, 0.5 * (n - 1)) || darker > 0) return { gap: -1, ka: pa, kb: pb };
   // Nothing but a ruling (and its fringe) between them: one stroke the ruling's removal cut.
   if (ruled > 0 && open === 0) return { gap: 0, ka: pa, kb: pb, cut: true };
   return { gap: Math.max(0, d - 1), ka: pa, kb: pb, crossing };

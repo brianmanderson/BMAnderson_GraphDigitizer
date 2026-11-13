@@ -37,7 +37,12 @@ meet the top axis), l116-l127 old black-and-white scans ("scan-grid": a heavy bl
 frame, a solid fitted curve and two dashed confidence curves of the same black whose dashes vary in
 length like hand-drawn ones, "x" and open "o" markers on and near the curves; rendered, then blurred,
 thresholded against a smooth random field (uneven stroke width), noised and, in two charts of three,
-rotated by up to half a degree before the threshold, like a scan; the truth is rotated with it).
+rotated by up to half a degree before the threshold, like a scan; the truth is rotated with it),
+l128-l139 busy scatterplots ("busy-scatter": 300-1000 small black "+", "x" or dot markers in
+dense, overlapping clusters with rows of equal y, 25-80 filled diamonds among them, one to three
+grey or coloured iso-probability curves through the cloud - the first a steep straight stretch
+meeting the curve at a 25-40 degree corner - "1%"/"3%"/"5%" labels at their starts, an offset
+range frame, log-log or linear; build_busy).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -63,7 +68,7 @@ from matplotlib.ticker import FuncFormatter  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 128
+COUNT = 140
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -89,6 +94,13 @@ TOP_VARIANTS = ["log", "linear"]
 # black, "x" and "o" data markers on and near them, then a scanner's blur, noise, uneven stroke
 # width and (two charts in three) a slight rotation. Built by build_scan.
 SCAN_FROM = 116
+# Charts from BUSY_FROM on: a busy scatterplot ("busy-scatter"): 300-1000 small black markers of two
+# or three shapes ("+", "x" or dots, filled diamonds) in dense, overlapping clusters with rows of
+# equal y, one to three grey or coloured curves running through them (the first with a corner),
+# percent labels at the curves' starts and an offset range frame; log-log or linear. Built by
+# build_busy.
+BUSY_FROM = 128
+BUSY_VARIANTS = ["log-log", "linear"]
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -809,6 +821,216 @@ def build_scan(i: int):
     return Image.fromarray(rgb), doc, jpeg_q
 
 
+def build_busy(i: int):
+    """A busy scatterplot: hundreds of small overlapping markers and curves through them (see BUSY_FROM)."""
+    rng = np.random.default_rng(5000 + i)
+    variant = BUSY_VARIANTS[(i - BUSY_FROM) % len(BUSY_VARIANTS)]
+    log = variant == "log-log"
+    dpi = int(rng.choice([100, 120, 150]))
+    w_in = float(rng.uniform(6.0, 8.0))
+    h_in = float(w_in * rng.uniform(0.62, 0.78))
+    if w_in * dpi > 1200:
+        w_in, h_in = 1200 / dpi, 1200 / dpi * h_in / w_in
+    font = str(FONTS[int(rng.integers(0, len(FONTS)))])
+    jpeg_q = int(rng.integers(60, 91)) if i % 3 == 1 else 0
+    offset = float(rng.uniform(6, 14))  # the range frame's distance from the data, pt
+    # Data in "u" units (0-1 across the labelled range): log10 for log-log (X 0.1-1000, Y 3-50), the
+    # value itself for linear (X 0-100, Y 0-60).
+    if log:
+        xlo, xhi, ylo, yhi = -1.0, 3.0, math.log10(3), math.log10(50)
+    else:
+        xlo, xhi, ylo, yhi = 0.0, 100.0, 0.0, 60.0
+    sx, sy = xhi - xlo, yhi - ylo
+    n_main = int(rng.integers(300, 900))
+    # Two dense clusters (tight along y, wide along x), part of their y values on a few fixed levels
+    # (a dose given in round numbers: rows of overlapping markers), and a sparse halo.
+    cl = [(rng.uniform(0.4, 0.55), rng.uniform(0.55, 0.7), rng.uniform(0.1, 0.15), rng.uniform(0.035, 0.06)),
+          (rng.uniform(0.62, 0.78), rng.uniform(0.3, 0.45), rng.uniform(0.06, 0.1), rng.uniform(0.04, 0.07))]
+    pts = []
+    for _ in range(n_main):
+        r = rng.random()
+        if r < 0.1:
+            u, v = rng.uniform(0.05, 0.97), rng.uniform(0.05, 0.95)
+        else:
+            cx, cy, ux, uy = cl[0] if r < 0.55 else cl[1]
+            u, v = rng.normal(cx, ux), rng.normal(cy, uy)
+        pts.append((u, v))
+    pts = np.array(pts)
+    levels = np.linspace(0.25, 0.75, int(rng.integers(4, 7)))
+    snap = rng.random(len(pts)) < 0.3
+    for j in np.where(snap)[0]:
+        pts[j, 1] = levels[int(np.argmin(np.abs(levels - pts[j, 1])))]
+    pts = pts[(pts[:, 0] > 0.02) & (pts[:, 0] < 0.98) & (pts[:, 1] > 0.03) & (pts[:, 1] < 0.97)]
+    n_second = int(rng.integers(25, 80))
+    second = np.column_stack([rng.uniform(0.2, 0.9, n_second), rng.uniform(0.3, 0.85, n_second)])
+    third = None
+    if rng.random() < 0.5:
+        n3 = int(rng.integers(30, 90))
+        third = np.column_stack([rng.normal(cl[1][0] + 0.08, 0.08, n3), rng.normal(cl[1][1] - 0.12, 0.06, n3)])
+        third = third[(third[:, 0] > 0.03) & (third[:, 0] < 0.97) & (third[:, 1] > 0.03) & (third[:, 1] < 0.97)]
+    main_marker = str(rng.choice(["+", "+", "x", "o"]))
+    classes = [(main_marker, pts), ("D", second)]
+    if third is not None:
+        classes.append(("o" if main_marker != "o" else "x", third))
+    # Curves: iso-probability lines falling from the upper left towards a plateau, through the cloud;
+    # the first one starts with a straight steep stretch that meets the curve at a corner.
+    n_curves = int(rng.integers(1, 4))
+    grey = rng.random() < 0.7
+    pal = rng.choice(["#808080", "#8c8c8c", "#999999", "#a6a6a6"], n_curves) if grey else rng.permutation(["C0", "C3", "C2"])[:n_curves]
+    curves = []
+    for c in range(n_curves):
+        u0 = 0.05 + 0.08 * c + rng.uniform(0, 0.04)
+        u1 = rng.uniform(0.8, 0.88)
+        plateau = cl[1][1] - 0.1 + 0.12 * c + rng.uniform(-0.03, 0.03)
+        top = rng.uniform(0.82, 0.95)
+        k = rng.uniform(4, 7)
+        uu = np.linspace(u0, u1, 300)
+        vv = plateau + (top - plateau) * np.exp(-k * (uu - u0) / (u1 - u0) * 2)
+        corner = None
+        if c == 0:
+            # A straight steep stretch first, then the curve: the slope jumps at the corner, by
+            # 25-40 degrees on the page (a model fitted piecewise). The corner is where the curve
+            # falls at about 45 degrees (u spans ~w_in, v ~h_in on the page).
+            page = h_in / w_in
+            fall = (top - plateau) * 2 * k / (u1 - u0) * np.exp(-2 * k * (uu - u0) / (u1 - u0)) * page
+            angle = float(rng.uniform(35, 55))
+            ic = int(np.argmin(np.abs(np.degrees(np.arctan(fall)) - angle)))
+            uc, vc = float(uu[ic]), float(vv[ic])
+            steep = math.radians(min(84.0, float(np.degrees(np.arctan(fall[ic]))) + rng.uniform(25, 40)))
+            keep = uu >= uc
+            dv = min(0.97 - vc, rng.uniform(0.25, 0.4))
+            ua, va = uc - dv * page / math.tan(steep), vc + dv
+            uu = np.concatenate([[ua, uc], uu[keep]])
+            vv = np.concatenate([[va, vc], vv[keep]])
+            corner = (uc, vc)
+        curves.append(dict(u=uu, v=vv, corner=corner, color=str(pal[c]), label=f"{[1, 3, 5][c]}%"))
+    lw = float(rng.uniform(1.0, 2.0))
+
+    def to_data(u, v):
+        return (10 ** (xlo + u * sx), 10 ** (ylo + v * sy)) if log else (xlo + u * sx, ylo + v * sy)
+
+    rc = {"path.snap": False, "font.family": font, "font.size": float(rng.uniform(9, 12)),
+          "xtick.direction": "out", "ytick.direction": "out", "axes.linewidth": float(rng.choice([0.8, 1.0]))}
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        series = []
+        sizes = {"+": rng.uniform(3.0, 4.5), "x": rng.uniform(3.0, 4.0), "o": rng.uniform(2.2, 3.2), "D": rng.uniform(5.0, 7.0)}
+        curves_on_top = rng.random() < 0.4
+        for c in curves:
+            xd, yd = to_data(c["u"], c["v"])
+            ax.plot(xd, yd, color=c["color"], lw=lw, zorder=4 if curves_on_top else 2, solid_joinstyle="miter")
+            series.append(dict(kind="line", style="solid", marker=None, color=c["color"], lw=lw, ms=0.0, verts=np.column_stack([xd, yd]),
+                               xs=xd, ys=yd, seed_at=float(rng.uniform(0.3, 0.7)), fill=None,
+                               corner=None if c["corner"] is None else np.array([to_data(*c["corner"])])))
+        for z, (m, p) in enumerate(classes):
+            ms = float(sizes[m])
+            mew = float(rng.uniform(0.6, 0.9)) if m in "+x" else 0.0
+            xd, yd = to_data(p[:, 0], p[:, 1])
+            ax.plot(xd, yd, ls="none", marker=m, ms=ms, mew=mew, color="k", mfc="k", mec="k", zorder=3 + 0.1 * z)
+            series.append(dict(kind="scatter", style="none", marker=m, color="k", lw=mew, ms=ms, verts=np.column_stack([xd, yd]),
+                               xs=xd, ys=yd, seed_at=0.5, fill=True if m in "Do" else None, corner=None))
+        for c in curves:
+            xd, yd = to_data(c["u"][:1], c["v"][:1])
+            ax.annotate(c["label"], (float(xd[0]), float(yd[0])), xytext=(float(rng.uniform(-14, -4)), float(rng.uniform(5, 9))),
+                        textcoords="offset points", fontsize=float(rng.uniform(9, 12)), color="k")
+        if log:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xticks([0.1, 1, 10, 100, 1000])
+            ax.set_xticklabels(["0.1", "1.0", "10.0", "100.0", "1000.0"])
+            ax.set_yticks([3, 4, 5, 6, 7, 8, 10, 20, 30, 40, 50])
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+            ax.yaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
+            ax.xaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
+            ax.set_xlim(10 ** (xlo - 0.04 * sx), 10 ** (xhi + 0.04 * sx))
+            ax.set_ylim(10 ** (ylo - 0.04 * sy), 10 ** (yhi + 0.04 * sy))
+            xb, yb = (0.1, 1000), (3, 50)
+        else:
+            ax.set_xticks(np.arange(0, 101, 20))
+            ax.set_yticks(np.arange(0, 61, 10))
+            ax.set_xlim(xlo - 0.04 * sx, xhi + 0.04 * sx)
+            ax.set_ylim(ylo - 0.04 * sy, yhi + 0.04 * sy)
+            xb, yb = (0, 100), (0, 60)
+        # Range frame: the axes stand off from the data and span only the labelled range.
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        ax.spines["left"].set_position(("outward", offset))
+        ax.spines["bottom"].set_position(("outward", offset))
+        ax.spines["left"].set_bounds(*yb)
+        ax.spines["bottom"].set_bounds(*xb)
+        ax.set_xlabel(str(rng.choice(["Treatment volume (cm3)", "Volume", "Size (mm)"])))
+        ax.set_ylabel(str(rng.choice(["Dose (Gy)", "Dose", "Response"])))
+        fig.tight_layout()
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)
+        for s in series:
+            s["path"] = px_of(ax.transData.transform(s["verts"]), H)
+            s["points"] = s["path"]
+            s["censor"] = np.zeros((0, 2))
+            s["lw_px"] = s["lw"] * dpi / 72
+            s["ms_px"] = s["ms"] * dpi / 72
+            s["corner_px"] = px_of(ax.transData.transform(s["corner"]), H) if s["corner"] is not None else None
+        plt.close(fig)
+
+    rgb = rgba[:, :, :3]
+    bg = np.array([255.0, 255.0, 255.0])
+    for k_, s in enumerate(series):
+        others = [o for j, o in enumerate(series) if j != k_]
+        s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
+        s["seed"] = pick_seed(s, others, rgb, bg, None, W, H, strict=True)
+    tags = ["scenario:busy-scatter", "log-log" if log else "linear", "frame:range", "no-grid", "jpeg" if jpeg_q else "png",
+            "dpi:mid" if dpi <= 150 else "dpi:high"]
+    names = {"+": "plus", "x": "x", "o": "dot", "D": "diamond"}
+    out_series = []
+    for k_, s in enumerate(series):
+        stags = [f"series:{s['kind']}", "busy"]
+        if s["kind"] == "scatter":
+            stags += ["color:black", f"marker:{names[s['marker']]}", "small-markers" if s["ms_px"] < 7 else "markers:mid"]
+            if s["fill"]:
+                stags.append("fill:filled")
+        else:
+            stags += ["style:solid", "lw:thin" if s["lw_px"] < 1.5 else "lw:thick",
+                      "color:grey" if s["color"].startswith("#") else "color:colour", "through-markers"]
+            if s["corner_px"] is not None:
+                stags.append("corner")
+        entry = {
+            "id": f"s{k_}",
+            "kind": s["kind"],
+            "tags": stags,
+            "color": [round(255 * c) for c in to_rgb(s["color"])],
+            "style": s["style"],
+            "marker": s["marker"],
+            "lineWidthPx": round(s["lw_px"], 3),
+            "markerSizePx": round(s["ms_px"], 3),
+            "seed": s["seed"],
+            "data": [[round(float(x), 6), round(float(y), 6)] for x, y in zip(s["xs"], s["ys"])],
+            "pixels": [[round(float(x), 3), round(float(y), 3)] for x, y in s["points"]],
+        }
+        if s["kind"] == "scatter":
+            entry["markers"] = entry["pixels"]
+        else:
+            entry["path"] = entry["pixels"]
+            if s["corner_px"] is not None:
+                entry["corners"] = [[round(float(x), 3), round(float(y), 3)] for x, y in s["corner_px"]]
+        out_series.append(entry)
+    name = f"l{i:02d}"
+    n_markers = sum(len(s["points"]) for s in series if s["kind"] == "scatter")
+    doc = {
+        "image": f"{name}.{'jpg' if jpeg_q else 'png'}",
+        "width": W,
+        "height": H,
+        "description": (f"Synthetic busy-scatter chart ({variant}), {n_markers} markers in {len(classes)} shapes, {n_curves} curve(s), dpi {dpi}, "
+                        f"font {font}" + (f", JPEG q{jpeg_q}" if jpeg_q else "") + ". Generated by bench/lines/generate.py."),
+        "tags": tags,
+        "plotBox": [[round(float(c), 3) for c in p] for p in box],
+        "legendBox": None,
+        "series": out_series,
+    }
+    return Image.fromarray(rgb), doc, jpeg_q
+
+
 def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
     col = np.array(to_rgb(s["color"])) * 255
     if s["kind"] == "scatter" and s.get("fill") is False:
@@ -891,9 +1113,9 @@ def main() -> int:
     total = 0
     traces = 0
     for i in range(COUNT):
-        img, doc, q = build_scan(i) if i >= SCAN_FROM else build(i)
+        img, doc, q = build_busy(i) if i >= BUSY_FROM else build_scan(i) if i >= SCAN_FROM else build(i)
         name = doc["image"]
-        if i >= SCAN_FROM:
+        if SCAN_FROM <= i < BUSY_FROM:
             img = img.convert("L")  # a black-and-white scan: one grey channel
         if q:
             img.save(OUT / name, quality=q)
