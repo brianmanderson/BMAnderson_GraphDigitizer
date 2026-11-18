@@ -211,6 +211,46 @@ describe('detectAxes on drawn charts', () => {
     expect(det.yAxis?.ticks.confidence).toBeGreaterThan(0.5);
   });
 
+  it('reports no ticks for three evenly spaced bumps on a short stretch of a long bare axis', () => {
+    // Ink bumps under a hand-ruled line can fall evenly by chance; real ticks run along the axis.
+    const img = chart({ xTicks: false });
+    for (const x of [480, 520, 560]) line(img, { x, y: ORIGIN.y }, { x, y: ORIGIN.y + 6 }, 1, 0);
+    const det = detectAxes(img);
+    expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 1);
+    expect(det.xAxis?.ticks.ticks).toEqual([]);
+    expect(det.xAxis?.ticks.confidence).toBe(0);
+  });
+
+  it('takes the frame of a gridded figure, not a heavier gridline inside it, and no ticks from ragged lines', () => {
+    // An old hand-ruled figure: a slightly lighter frame, black gridlines as thick as the frame, no
+    // tick marks, and every line ragged (2-px bumps every 23 px on both sides).
+    const img = canvas(640, 420);
+    const w = 5;
+    const hLines = [ORIGIN.y, 240, 150, TOP];
+    const vLines = [ORIGIN.x, 250, 430, RIGHT];
+    for (const y of hLines) line(img, { x: ORIGIN.x, y }, { x: RIGHT, y }, w, y === ORIGIN.y || y === TOP ? 40 : 0);
+    for (const x of vLines) line(img, { x, y: TOP }, { x, y: ORIGIN.y }, w, x === ORIGIN.x || x === RIGHT ? 40 : 0);
+    for (const y of hLines) {
+      for (let x = ORIGIN.x + 9; x < RIGHT - 5; x += 23) {
+        line(img, { x, y: y - w / 2 - 2 }, { x: x + 3, y: y - w / 2 - 2 }, 2, 0);
+        line(img, { x: x + 11, y: y + w / 2 + 2 }, { x: x + 14, y: y + w / 2 + 2 }, 2, 0);
+      }
+    }
+    for (const x of vLines) {
+      for (let y = TOP + 9; y < ORIGIN.y - 5; y += 23) {
+        line(img, { x: x - w / 2 - 2, y }, { x: x - w / 2 - 2, y: y + 3 }, 2, 0);
+        line(img, { x: x + w / 2 + 2, y: y + 11 }, { x: x + w / 2 + 2, y: y + 14 }, 2, 0);
+      }
+    }
+    for (const x of [160, 340, 520]) text(img, x - 8, ORIGIN.y + 8, 3, 0);
+    for (const y of [285, 195, 105]) text(img, ORIGIN.x - 26, y - 3.5, 3, 0);
+    const det = detectAxes(img);
+    expect(det.xAxis?.line.offset).toBeCloseTo(ORIGIN.y, 0);
+    expect(det.yAxis?.line.offset).toBeCloseTo(ORIGIN.x, 0);
+    expect(det.xAxis?.ticks.confidence).toBe(0);
+    expect(det.yAxis?.ticks.confidence).toBe(0);
+  });
+
   it('is not fooled by text darker than a grey axis line', () => {
     const img = chart({ axisGray: 150 });
     // A dense black caption below the chart and a rotated-title-like column left of the labels.
