@@ -681,6 +681,16 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   background|) where f = 0.12 + 0.3 × the series' saturation: tight for black, grey and dull
   colours (a dark-grey gridline is ~10° from a brown series), looser for saturated colours that
   JPEG chroma subsampling washes out. Pixels of another colour are marked as possible occluders.
+  *A grey series among black ink* (2026-11-13, busy scatterplots): black continues a neutral
+  grey's own colour line (α ≈ 2 for a mid grey), so black markers, text and axes would count as
+  the series' strongest ink. For a neutral series (saturation ≤ 0.1) whose hue black reaches at
+  ≥ 1.6× its contrast, ink at α ≥ 1 + max(0.35, 0.4 (α_black − 1)) is another series — an
+  occluder — with its rim (one pixel out into any ink, a second into ink still at α ≥ 1.15) and
+  every piece of ink of ≤ 12 px left touching it (a glyph's or a faint marker's fringe; never
+  the seed's own piece); not in markers mode. For the line style, a gap that crosses that ink is
+  an occlusion, never a pattern gap (markers chop a grey curve into even pieces that are no
+  dashed series). Growing it further (through all ink at α ≥ 1.15) was tried and lost more than
+  it gained: it follows a darker grey curve and long labels into the walk's way.
 - **Region** (`region.ts`): the plot box (or image). An axis/frame line along a box edge is
   removed only when it has the series' colour (a black curve on black axes); a coloured curve may
   run along a black axis (a KM curve that sits on y = 0 along the x axis) and keeps those pixels.
@@ -822,6 +832,22 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   of Phase 5: 8-connected blobs whose area is 0.45–2× the seed blob's, size ≤ 1.6× + 2 px and fill
   ratio within 0.25, merged blobs of 2–8× the area split by k-means, centroids coverage-weighted.
   `points` = every marker (`maxPoints` does not apply).
+  *Busy scatterplots* (2026-11-13): hundreds of small markers ("+", "x", dots, 3–9 px) overlap
+  into clusters, touch the bigger markers of a second class and sit beside text of their colour.
+  For a black series the blob match first drops lighter greys of its hue (α ½–¾ with no pixel
+  ≥ 0.9 beside it, in pieces ≥ 3 marker sizes long: grey curves and gridlines, not a faint
+  marker). With ≥ 25 single matches the plot is *busy*: a single blob must also overlap the seed
+  blob's pixels by IoU ≥ 0.45 at its best ±1-px shift, and a merged blob (> 2× the area, up to
+  400 markers) is split by copies of the seed blob — compact parts at least max(template depth
+  + 1.5 px, 1.5 px) deep whose reconstruction (within their depth + 1 px) covers ≥ 2.5 markers
+  are a filled marker of another class and are cut out; the rest, piece by piece, must be
+  ≥ 75 % covered by copies whose pixels are ≥ 80 % ink (a glyph stroke, a "%" ring or a line has
+  background where the marker has ink: dropped); copies are then placed one at a time where they
+  explain the most ink not yet explained less twice their pixels on background, while that is
+  ≥ 35 % of a marker. A filled template in a plot with ≥ 60 small compact blobs of its colour (a
+  third of its area or less) must also be solid: ≤ 5 % background among its pixels 2 px or more
+  inside its edge (a pile of "+" with pockets in it is no diamond). Outside busy plots the
+  earlier rules are unchanged.
 - **Auto mode**: markers when the seed's blob is at most max(30 px, 6 % of the plot's short
   side), roughly round (second-moment elongation < 2.5), not part of a regular chain and not read
   as dashed, dotted or dash-dot; or when the seed's blob is larger (a marker joined to its error
@@ -837,7 +863,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 128 seeded charts, 320 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 140 seeded charts, 375 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -866,8 +892,17 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   two dashed confidence curves whose dashes and gaps vary by a quarter (hand-drawn), "x" and
   open "o" markers on and near them (some on gridlines), 120–200 DPI; rendered, blurred,
   thresholded against a smooth random field (uneven stroke width), noised, rotated by up to
-  0.5° in two charts of three (the truth rotated with it), saved as one grey channel. Gridlines,
-  legends, frames, line widths, 72–200 DPI and JPEG (every third) vary.
+  0.5° in two charts of three (the truth rotated with it), saved as one grey channel; (l128–l139,
+  `scenario:busy-scatter`, tags `log-log` | `linear`, `frame:range`, series tags `busy`,
+  `marker:plus|x|dot|diamond`, `small-markers`, `through-markers`, `corner`, `color:grey`,
+  modelled on tester feedback about a dense clinical scatterplot) 300–1000 small black markers
+  in two or three shapes ("+", "x" or dots, 3–9 px, plus 25–80 filled diamonds) in two dense
+  clusters with rows of equal y (heavy overlap), one to three grey (70 %) or coloured
+  iso-probability curves through them — the first a straight steep stretch meeting the curve at
+  a 25–40° corner — "1%/3%/5%" labels at their starts, an offset range frame (the axes stand off
+  and span only the labelled range; `detectAxes` finds no plot box, so the region is the image),
+  log-log or linear. Gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third)
+  vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
   Real figures (`bench/lines/real/manifest.json`; CC BY or public domain, provenance in
@@ -1081,6 +1116,40 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   dense grid are often not read as dashed (style unread or dash-dot); clicking an "x" or "o" that
   touches a curve or a gridline mostly traces a curve (marker recall 24.6 %); a solid curve that
   runs into a gridline tangentially stops where it enters the gridline's band.
+
+- **Busy scatterplots (2026-11-13; 397 traces)**: tester feedback — a colleague asked whether the
+  tool "can handle busy scatterplots"; the tester had digitized three grey model curves through a
+  cloud of ~800 tiny black "+" and ~60 filled diamonds by hand, in sections. Measured on that
+  figure (a dense subscription-licensed scatterplot, kept out of the repo; hand-checked local
+  truth: 326 "+" in five regions outside the densest band, 46 diamonds, the three curves):
+  "+" recall 77.3 → 83.7 %, precision 52.4 → 86.9 % (hits on the "1%/3%/5%" labels 51 → 4;
+  diamonds split into several "+" gone); diamonds recall 93.5 → 93.5 %, precision 70.5 →
+  95.6 % ("+" piles taken for diamonds 18 → 2); the densest band (rows of overlapping "+",
+  uncountable by eye) now yields 157 markers instead of 33. Curves: the 1 % curve was already
+  traced with its corner but ran past both ends (onto its label and a marker; now 22 px past
+  its right end); the 3 % curve wandered onto markers and its label (p95 14.3 → 1.4 px, coverage
+  91.5 → 100 %); a click on the 5 % curve inside the cloud returned markers (now the curve end to
+  end, p95 1.05 px). Appended `busy-scatter` charts, before → after: marker recall 56.5 → 76.0 %,
+  precision 45.0 → 85.0 %, wrong group 13.8 → 11.0 % ("+" 52.7 / 51.7 → 75.2 / 98.0 %; diamonds
+  87.3 / 87.9 → 85.8 / 95.6 %; dots 71.5 / 40.8 → 77.7 / 77.8 %; "x" 33.1 / 17.8 → 71.3 /
+  50.9 %); curves coverage 90.5 → 90.9 %, p95 35.4 → 28.1 px, wrong series 11.5 → 7.7 %, corner
+  recall 41.7 → 50.0 %, style 92.3 → 88.5 % (one grey curve's style now unread). Earlier traces:
+  three change, all gains — `l12/s0` and `l46/s1` each drop a false marker (an overlapping pair
+  split by copies instead of k-means), the grey KM curve of `km-pericardial-pao` 99.6 → 100 %
+  coverage. Overall (397 traces): kind 94.7 %, coverage 89.6 %, median 0.03 px / p95 1.79 px,
+  wrong 5.1 %, corner recall 57.2 %, marker recall 75.5 % / precision 83.2 %, wrong group 10.6 %,
+  style 91.9 % (the new category moves the shared ones). **Known failures** of this scenario: a
+  minority of thin markers ("x") among dense piles of another small class (dots) is over-counted
+  — a solid pile explains any thin shape (x precision 50.9 %, wrong group 48 %); two grey curves
+  of different shades meeting (one starting on the other): the walk may carry straight on along
+  the darker one (`l134/s1`); a coloured JPEG curve starting under its label goes astray
+  (`l139/s1`); a corner hidden under a marker, or one between a straight stretch and a
+  fast-turning curve, is often not kept as a point (corner recall 50 %); a walk can hop a short
+  open gap past a curve's real end onto a faint marker; markers hidden under the other class or
+  under a curve drawn on top are not found. Auto-detect on this figure (report only — axis
+  detection is being reworked separately): both offset range-frame axes and their ticks are found
+  but no plot box (the detached axes never meet; confidence 0.2), and on the uncropped viewer
+  screenshot the window's right border is taken for the Y axis.
 
 ## Auto-trace — UI
 

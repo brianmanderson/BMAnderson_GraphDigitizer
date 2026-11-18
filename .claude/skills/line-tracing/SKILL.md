@@ -50,7 +50,11 @@ description: >
    the filled marker the ring may be merged with); ink colour, then scaled to the line's typical
    peak (`typicalStrength`).
    Coverage α per pixel with a saturation-dependent residual tolerance (tight for black/grey/brown,
-   loose for saturated colours JPEG washes out). `other` marks ink of another colour. A frame line
+   loose for saturated colours JPEG washes out). `other` marks ink of another colour. A neutral
+   grey series among black ink (`greySeries` → `markDarkerInk`, not in markers mode): ink much
+   darker than the series (black continues a grey's colour line, α ≈ 2) is an occluder, with its
+   rim and the ≤ 12-px pieces left touching it (never the seed's piece); its mask goes to the
+   style reading as `darker`, where a gap crossing it is an occlusion, not a pattern gap. A frame line
    along an edge is excluded only when it has the series colour (`excludeEdgeLines`).
    Rulings (`rulings.ts`): straight axis-parallel lines of the series' colour spanning ≥ 70 % of the
    region, only as a grid (≥ 2, never the one under the seed) — a scanned figure's grid ruled in the
@@ -95,7 +99,14 @@ description: >
    (filled: opening wider than the attached strokes; open: the enclosed hole + ring — not a pocket
    beside a thick stroke that runs on and borders under half of it, `throughStroke`), `findMarkers`
    matches its ink / defining background / margin everywhere (filled on the opened image, corners
-   raw), splits clumps by area, drops legend samples (`legendSample`). No template → blob match.
+   raw), splits clumps by area, drops legend samples (`legendSample`). No template → blob match
+   (`matchMarkers`): for a black series first without its lighter greys (`withoutLighterInk`: long
+   mid-grey pieces — curves, gridlines); in a busy plot (≥ 25 single matches) singles must match
+   the seed blob's pixels (IoU ≥ 0.45) and merged blobs are split by copies of it
+   (`splitCluster`: compact thick parts covering ≥ 2.5 markers are another class and cut out;
+   pieces copies can't explain — text, rings, lines — dropped; copies placed greedily). A filled
+   template among ≥ 60 small blobs of its colour must be solid inside (`solid` in `findMarkers`):
+   a pile of "+" is no diamond.
 
 ## Debugging a failing trace
 
@@ -111,8 +122,8 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (128 charts, 320 series; committed,
-  ~3.5 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (140 charts, 375 series; committed,
+  ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
   solid sigmoid + dashed bounds over outlined bars and gridlines of its own colour, like a
@@ -120,7 +131,11 @@ description: >
   frame `detectAxes` boxes on 6 of 8; solid + dashed fits of one colour from the top-left corner with
   filled/open squares and error bars), l116–l127 `scan-grid` (old black-and-white scans: heavy
   black grid and frame, solid fit + two hand-dashed confidence curves, x/o markers, blur, noise,
-  uneven strokes, ≤ 0.5° rotation; `build_scan`; one grey channel) — so earlier ones stay
+  uneven strokes, ≤ 0.5° rotation; `build_scan`; one grey channel), l128–l139 `busy-scatter`
+  (300–1000 small black "+"/"x"/dot markers in overlapping clusters, filled diamonds among them,
+  grey or coloured curves through the cloud with a corner on the first, percent labels, an
+  offset range frame `detectAxes` boxes on none, log-log or linear; `build_busy`; marker truth
+  per class, `corners` = the curve's corner) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -152,5 +167,9 @@ own-colour gridlines get their style misread; top X axis: Office dashes (gaps lo
 dashes) often leave the style unread, a series running inside the axis stroke is lost there with
 the axis, a dashed trace stops at an open marker whose cap it entered; scan-grid: x/o markers on a
 gridline where curves converge still divert a trace (wrong series 27.8 %), hand-dashed curves cut
-by a dense grid often go unread, a marker touching a curve or gridline traces as a curve. Numbers: docs/SPEC.md → Auto-trace →
+by a dense grid often go unread, a marker touching a curve or gridline traces as a curve;
+busy-scatter: a minority of thin markers ("x") among dense piles of dots is over-counted, two grey
+curves of different shades meeting can send the walk along the darker one, corners hidden under a
+marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
+a faint marker. Numbers: docs/SPEC.md → Auto-trace →
 Baseline / Known failures.
