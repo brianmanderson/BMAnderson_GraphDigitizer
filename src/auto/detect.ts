@@ -46,6 +46,15 @@ const FRAME_CONTRAST = 0.6;
 const MOVED_PENALTY = 0.25;
 /** An axis not in its default place needs at least this tick confidence. */
 const MOVED_MIN_TICKS = 0.3;
+/**
+ * Range frame: the largest gap between a detached axis line and the other axis, as a fraction of its
+ * length (an outward offset of up to ~20 pt plus ~10 % padding of the range on a small plot).
+ */
+const DETACHED_MAX_GAP = 0.25;
+/** Range frame: both detached axis lines need at least this tick confidence. */
+const DETACHED_MIN_TICKS = 0.3;
+/** Range frame: score handicap of a pair whose lines do not meet. */
+const DETACHED_PENALTY = 0.25;
 
 /**
  * Where the axes sit on the plot: `xSide` +1 = X axis at the bottom (plot above it), −1 = at the
@@ -81,6 +90,8 @@ interface Pair {
   /** Whether the axis lines meet at the plot's corner (true) or cross inside it. */
   cornerX: boolean;
   cornerY: boolean;
+  /** A range frame: the lines stop short of each other; the corner is where they would meet. */
+  detached: boolean;
 }
 
 function tickCache(map: DarknessMap, frame: Frame, opts: TickOptions) {
@@ -161,9 +172,13 @@ export function detectAxesInMap(map: DarknessMap): AxisDetection {
       const rightExt = h.end - v.offset;
       const upExt = h.offset - v.start;
       const downExt = v.end - h.offset;
-      if (leftExt < -meetTol || rightExt < -meetTol || upExt < -meetTol || downExt < -meetTol) continue;
       const hLen = Math.max(1, h.length);
       const vLen = Math.max(1, v.length);
+      if (rightExt < -meetTol || upExt < -meetTol) continue;
+      // A range frame: the X axis starts right of the Y axis and/or the Y axis ends above the X
+      // axis, by a short gap; the lines would meet if extended (bottom-left only, see below).
+      const detached = leftExt < -meetTol || downExt < -meetTol;
+      if (detached && (leftExt < -DETACHED_MAX_GAP * hLen || downExt < -DETACHED_MAX_GAP * vLen)) continue;
       // Whether each line stops at the other on a given side (else it continues past: a cross).
       const hEndsLeft = () => leftExt <= meetTol || unbroken(map, frame, h, v.offset - v.thickness / 2 - 1, -1) <= meetTol;
       const hEndsRight = () => rightExt <= meetTol || unbroken(map, frame, h, v.offset + v.thickness / 2 + 1, 1) <= meetTol;
@@ -189,6 +204,20 @@ export function detectAxesInMap(map: DarknessMap): AxisDetection {
             (o.xSide === 1 ? c.offset > h.offset && Math.abs(c.offset - v.end) <= meetTol : c.offset < h.offset && Math.abs(c.offset - v.start) <= meetTol) &&
             (o.ySide === 1 ? c.start <= v.offset + meetTol && c.end >= h.end - meetTol : c.start <= h.start + meetTol && c.end >= v.offset - meetTol),
         );
+      if (detached) {
+        // Only in the default orientation; the line that does reach the other must end there
+        // (not run on past it: that is no range frame), and both must carry a tick pattern.
+        const o = ORIENTATIONS[0] as Orientation;
+        if (leftExt >= -meetTol && !hEndsLeft()) continue;
+        if (downExt >= -meetTol && !vEndsBelow()) continue;
+        const tx = ticksOf(h, outside('horizontal', o)).confidence;
+        const ty = ticksOf(v, outside('vertical', o)).confidence;
+        if (tx < DETACHED_MIN_TICKS || ty < DETACHED_MIN_TICKS) continue;
+        const score =
+          h.strength / hMax + v.strength / vMax + 0.5 * (Math.min(1, rightExt / hLen) + Math.min(1, upExt / vLen)) + 0.6 * (tx + ty) - DETACHED_PENALTY;
+        if (!best || score > best.score) best = { h, v, o, score, cornerX: true, cornerY: true, detached: true };
+        continue;
+      }
       for (const o of ORIENTATIONS) {
         const intoX = o.ySide === 1 ? rightExt : leftExt;
         const intoY = o.xSide === 1 ? upExt : downExt;
@@ -215,6 +244,7 @@ export function detectAxesInMap(map: DarknessMap): AxisDetection {
             score,
             cornerX: o.ySide === 1 ? hEndsLeft() : hEndsRight(),
             cornerY: o.xSide === 1 ? vEndsBelow() : vEndsAbove(),
+            detached: false,
           };
         }
       }
@@ -281,8 +311,10 @@ function plotBox(frame: Frame, pair: Pair, hs: FoundLine[], vs: FoundLine[], tol
   const wLo = Math.min(nearW, farEndW);
   const wHi = Math.max(nearW, farEndW);
   // A box frame: a vertical line at the X axis's far end and a horizontal one at the Y axis's far
-  // end, about as dark as the axes (a gridline near the end is lighter), spanning the box.
-  const farV = vs.find(
+  // end, about as dark as the axes (a gridline near the end is lighter), spanning the box. A range
+  // frame has none: its box ends where its lines end (a long line just past one is something else,
+  // e.g. a viewer's toolbar above a screenshot of the figure).
+  const farV = !pair.detached && vs.find(
     (c) =>
       c !== v &&
       c.contrast >= FRAME_CONTRAST * v.contrast &&
@@ -290,7 +322,7 @@ function plotBox(frame: Frame, pair: Pair, hs: FoundLine[], vs: FoundLine[], tol
       c.start <= wLo + tol &&
       c.end >= wHi - tol,
   );
-  const farH = hs.find(
+  const farH = !pair.detached && hs.find(
     (c) =>
       c !== h &&
       c.contrast >= FRAME_CONTRAST * h.contrast &&

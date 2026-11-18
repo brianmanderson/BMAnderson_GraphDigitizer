@@ -156,6 +156,31 @@ function flip(img: Canvas, dir: 'v' | 'h'): Canvas {
   return out;
 }
 
+/**
+ * A range frame: the X axis (row 330, columns 110–610) starts right of the Y axis (column 70,
+ * rows 290 up to 30), which ends above it — the lines would meet at (70, 330). `dx`/`dy` move the
+ * whole chart (to make room for a viewer window around it).
+ */
+function rangeFrame(o: { ticks?: boolean; dx?: number; dy?: number; width?: number; height?: number } = {}): Canvas {
+  const dx = o.dx ?? 0;
+  const dy = o.dy ?? 0;
+  const img = canvas(o.width ?? 640, o.height ?? 420);
+  line(img, { x: 110 + dx, y: 330 + dy }, { x: 610 + dx, y: 330 + dy }, 1, 0);
+  line(img, { x: 70 + dx, y: 290 + dy }, { x: 70 + dx, y: 30 + dy }, 1, 0);
+  for (let x = 110; x <= 610; x += 100) {
+    if (o.ticks !== false) line(img, { x: x + dx, y: 330 + dy }, { x: x + dx, y: 336 + dy }, 1, 0);
+    text(img, x - 6 + dx, 342 + dy, 2, 0);
+  }
+  for (let y = 290; y >= 30; y -= 52) {
+    if (o.ticks !== false) line(img, { x: 64 + dx, y: y + dy }, { x: 70 + dx, y: y + dy }, 1, 0);
+    text(img, 40 + dx, y - 3.5 + dy, 3, 0);
+  }
+  for (let x = 120; x < 590; x += 10) {
+    line(img, { x: x + dx, y: 280 - 0.4 * (x - 120) + dy }, { x: x + 10 + dx, y: 280 - 0.4 * (x - 110) + dy }, 1.5, 90);
+  }
+  return img;
+}
+
 const H = 420;
 const W = 640;
 
@@ -387,6 +412,41 @@ describe('detectAxes on drawn charts', () => {
       expect(det.plotBox?.topLeft.x).toBeCloseTo(70, 0);
       expect(det.plotBox?.bottomRight.x).toBeCloseTo(610, 0);
     }
+  });
+
+  it('pairs the detached axes of a range frame and boxes the plot from where they would meet', () => {
+    const det = detectAxes(rangeFrame());
+    expect(det.xAxis?.position).toBe('bottom');
+    expect(det.yAxis?.position).toBe('left');
+    expect(det.xAxis?.line.offset).toBeCloseTo(330, 1);
+    expect(det.yAxis?.line.offset).toBeCloseTo(70, 1);
+    expect(det.xAxis?.ticks.spacing).toBeCloseTo(100, 0);
+    expect(det.yAxis?.ticks.spacing).toBeCloseTo(52, 0);
+    const box = det.plotBox;
+    expect(box?.bottomLeft.x).toBeCloseTo(70, 0);
+    expect(box?.bottomLeft.y).toBeCloseTo(330, 0);
+    expect(Math.abs((box?.topRight.x ?? 0) - 610)).toBeLessThan(1.5);
+    expect(Math.abs((box?.topRight.y ?? 0) - 30)).toBeLessThan(1.5);
+    expect(box?.framed).toEqual({ top: false, right: false, bottom: false, left: false });
+  });
+
+  it('takes a range frame in an uncropped viewer screenshot, not the window border or toolbar line', () => {
+    // The chart moved 20 px right and down; the window: a full-height right border, a toolbar
+    // line 16 px above the Y axis's top end and a status-bar line, all as dark as the axes.
+    const img = rangeFrame({ dx: 20, dy: 20, width: 680, height: 460 });
+    line(img, { x: 677, y: 0 }, { x: 677, y: 459 }, 1, 0);
+    line(img, { x: 0, y: 34 }, { x: 679, y: 34 }, 1, 0);
+    line(img, { x: 0, y: 450 }, { x: 679, y: 450 }, 1, 0);
+    const det = detectAxes(img);
+    expect(det.yAxis?.line.offset).toBeCloseTo(90, 1);
+    expect(det.xAxis?.line.offset).toBeCloseTo(350, 1);
+    expect(Math.abs((det.plotBox?.topLeft.y ?? 0) - 50)).toBeLessThan(1.5);
+    expect(Math.abs((det.plotBox?.topRight.x ?? 0) - 630)).toBeLessThan(1.5);
+    expect(det.plotBox?.framed).toEqual({ top: false, right: false, bottom: false, left: false });
+  });
+
+  it('gives two bare lines that stop short of each other no plot box', () => {
+    expect(detectAxes(rangeFrame({ ticks: false })).plotBox).toBeNull();
   });
 
   it('recognises log-axis minor ticks', () => {

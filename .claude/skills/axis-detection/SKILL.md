@@ -54,6 +54,10 @@ description: >
    corner (not a cross), a tick pattern (≥ 0.3) and pays 0.25 per moved axis (SPEC → Axes at
    the top or right), so ties stay bottom-left. `DetectedAxis.position` tells label finding which
    side to look on. Plot box = corner to far ends, or to a frame line of similar darkness.
+   Range frames (SPEC → Range frames): lines that stop short of each other (≤ 25 % of their
+   length) pair only bottom-left, only when both carry ticks (≥ 0.3), with a 0.25 handicap; the
+   box starts where the extended lines would meet and never snaps to a frame line (a viewer's
+   toolbar line above a screenshot would otherwise become its top).
 5. `ticks.ts`: short perpendicular marks on each side (adjacent columns summed; a walk stops
    when darkness halves, so ticks don't run into lighter gridlines); a lattice fit picks evenly
    spaced majors (several "major length" references are tried); minors between them; minors at
@@ -66,8 +70,9 @@ family — the inputs Phase 5's OCR and scale inference need.
 ## Corpus and labels
 
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
-  writes `synthetic/cNN.{png,jpg,json}` — 76 seeded charts (c60–c69, axes at the top/right, and
-  c70–c75, old scans with hand-lettered labels and a heavy grid, were appended; new charts go at
+  writes `synthetic/cNN.{png,jpg,json}` — 84 seeded charts (c60–c69, axes at the top/right,
+  c70–c75, old scans with hand-lettered labels and a heavy grid, and c76–c83, range frames, were
+  appended; new charts go at
   the end so earlier ones stay byte-identical — check `git status` after regenerating). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.
@@ -104,3 +109,6 @@ projecting line caps put box corners ~half a line width out.
 Gridded old scans (c70–c75; SPEC → Old scanned figures): the frame beats a heavier gridline
 because the crossing axis runs on to it; ticks need to stick out half a line thickness; a side
 whose marks mostly run into glyphs has none. Keep the `bare` column at 0 there too.
+
+Range frames (c76–c83): log Y minors on a short Y axis are often missed (c81, c83: 0/24), and
+c80's monospace Y labels are split as base + exponent, so that axis is declined (safe, not wrong).
