@@ -263,7 +263,14 @@ export function Workspace(props: Props) {
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || !doc) return;
+    if (!canvas || !ctx) return;
+    if (!doc) {
+      // No document (fresh load, or "Start over"): a canvas keeps its pixels until something
+      // draws over them, so wipe the last image and markers back to the blank background.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
     drawWorkspace({
       ctx,
       width: size.width,

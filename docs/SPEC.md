@@ -180,7 +180,8 @@ active dataset is not part of the Project; the autosave carries it beside the Pr
   **Save project first…** (the "Save project" download; the dialog stays open), **Cancel** (has the
   focus) and **Start over**. Cancel and Esc change nothing, and while it is open the app's
   shortcuts and paste are ignored. Confirming returns the app to the state of a fresh load: no
-  image, no document, an **empty undo/redo history** (Start over is deliberately not undoable —
+  image, no document, a **blank workspace** (the canvas is wiped — a canvas keeps its last frame
+  until something draws over it, so the old chart and markers must be cleared explicitly), an **empty undo/redo history** (Start over is deliberately not undoable —
   the confirmation protects it, and the autosave is gone, so an undo could not survive a reload
   anyway), the Image step, any Auto-detect or Auto-trace run cancelled and its suggestion
   dropped, crop mode, selection, collapsed/hidden lines, table view options and trace settings at

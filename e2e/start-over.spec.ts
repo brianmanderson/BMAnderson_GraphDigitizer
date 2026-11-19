@@ -14,6 +14,16 @@ const tick = <T extends { value: number | string }>(ticks: T[], value: number) =
 const startOverButton = (page: Page) => page.getByRole('group', { name: 'File' }).getByRole('button', { name: 'Start over' });
 const dialog = (page: Page) => page.getByTestId('start-over-dialog');
 
+/** How many pixels of the workspace canvas hold any ink (alpha > 0); 0 = the blank background. */
+const paintedPixels = (page: Page) =>
+  page.getByTestId('canvas').evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) n++;
+    return n;
+  });
+
 /** Load the linear chart, calibrate it and place one point by hand; wait until the autosave holds it. */
 async function digitizeOnePoint(page: Page) {
   await loadViaPicker(page, 'synthetic/synthetic-linear.png');
@@ -86,6 +96,8 @@ test('confirming clears the image, the table, the history and the autosave; a re
 
   // The fresh-load state.
   await expect(page.getByText('Drop a chart image here')).toBeVisible();
+  // The canvas is wiped too: the old chart and its markers must not stay behind the start screen.
+  expect(await paintedPixels(page)).toBe(0);
   await expect(page.getByTestId('table-Line 1')).toHaveCount(0);
   await expect(page.getByTestId('image-current')).toHaveCount(0);
   await expect(page.getByRole('navigation', { name: 'Steps' }).getByRole('button', { name: /Image/ })).toHaveAttribute('aria-current', 'step');

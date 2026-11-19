@@ -134,6 +134,8 @@ step (`UNRECORDED`). A new continuous edit needs a group key, or a drag becomes 
   in-flight start-up restore must not apply) and calls `clearAutosave()`. Autosave writes and the
   clear are serialised in `src/ui/autosave.ts` (keep new writes in that queue); reads are not —
   queued, StrictMode's two start-up reads wait on each other (`e2e/persistence.spec.ts` times it). A new piece of App state must be reset there too. Prefs and theme are kept.
+- Workspace's draw effect clears the canvas when `doc` is null (a canvas keeps its last frame);
+  don't turn that back into an early return, or the old chart stays behind the start screen.
 - The session log records `start-over` and stays downloadable (`sessionLog.active`) until the next
   load. `e2e/start-over.spec.ts` and the last test of `e2e/session-log.spec.ts` guard it.
 - The toolbar is full: at 1366 px with a wide font it has ~25 px left (`e2e/notice.spec.ts`
