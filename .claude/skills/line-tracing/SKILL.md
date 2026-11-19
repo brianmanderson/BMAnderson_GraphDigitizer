@@ -134,7 +134,7 @@ description: >
   uneven strokes, ≤ 0.5° rotation; `build_scan`; one grey channel), l128–l139 `busy-scatter`
   (300–1000 small black "+"/"x"/dot markers in overlapping clusters, filled diamonds among them,
   grey or coloured curves through the cloud with a corner on the first, percent labels, an
-  offset range frame `detectAxes` boxes on none, log-log or linear; `build_busy`; marker truth
+  offset range frame `detectAxes` boxes from where the extended axes would meet, log-log or linear; `build_busy`; marker truth
   per class, `corners` = the curve's corner) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),

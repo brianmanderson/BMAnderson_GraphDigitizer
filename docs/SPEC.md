@@ -418,8 +418,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   both sides are ≥ 4 % of the short side and ≥ 3× the hole, of similar darkness; only found
   lines are extended, so rows through side-by-side bars are never chained) → sub-pixel offset = median of clean cross-profile centroids → axis pair = strong
   horizontal × vertical candidates that meet with the plot on one side of each (L corner or
-  cross; bottom-left by default, top/right under the rule below), ranked by strength, extent and
-  tick evidence → plot box to the far axis ends or a frame line of similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
+  cross; bottom-left by default, top/right under the rule below) or, in a range frame, would meet
+  if extended (rule below), ranked by strength, extent and tick evidence → plot box to the far
+  axis ends or a frame line of similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
   estimates the angle; profiles run in the rotated frame. OpenCV.js was not needed.
 - **Axes at the top or right** (decided 2026-11-09, motivated by an Excel survival curve whose
   dose axis runs along the top, labels above it: a "Γ" frame that got no plot box before). Each
@@ -460,8 +461,34 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   axis line (and has no minors) is chance — three evenly spaced bumps under the 1928 figure's
   bottom frame had made a tick set. Synthetic charts c70–c75 imitate such figures; the 1928
   figure is `dose-response-1928-grid` in `fixtures/real/`.
-- **Corpus** (`bench/axes/`): 76 matplotlib charts from `generate.py` (seeded; Python 3.12 +
-  matplotlib 3.10; output committed, ~4.3 MB) — c70–c75 (old-scan look-alikes: hand-lettered or
+- **Range frames** (decided 2026-11-18, from tester feedback on a dense clinical scatterplot
+  with offset axes): the X and Y axis lines stand off from the data and span only the labelled
+  range, so they never meet — the X axis starts right of the Y axis and/or the Y axis ends
+  above the X axis. Such a pair is accepted when (a) each line stops short of the other by at
+  most 25 % of its own length (an outward offset plus the range's padding on a small plot), or
+  ends at it — a line that runs on past the other is a cross, not a range frame; (b) **both**
+  lines carry a tick pattern (confidence ≥ 0.3) — two bare lines that don't touch are no pair;
+  (c) only bottom-left; (d) it is scored like any pair (extent terms capped at 1) minus a
+  **handicap of 0.25**, so a pair that does meet wins a tie. The plot box runs from the corner
+  where the extended lines would meet to the far end of each line, and is **never snapped to a
+  frame line**: a range frame has none, and on an uncropped screenshot of a viewer the long
+  toolbar line just above the Y axis's end had become the box's top. Before this, such charts got
+  both axes and their ticks from the no-pair fallback but no box (`bench:lines` traced them on
+  the whole image), and on an uncropped viewer screenshot the fallback's strongest vertical, the
+  window's right border, was reported as the Y axis; the pair now wins there. Synthetic charts
+  c76–c83 cover it (below): box 0/8 → 8/8 (worst corner 2.1 px), both axes and all major ticks
+  found before and after, minor recall 68.9 % (log minors on a short Y axis are missed: c81,
+  c83), precision 100 %, no bare ticks; calibration 7 of 16 axes correct, 0 wrong (the four
+  charts without tick labels and c80's monospace Y labels, split as base + exponent, are
+  declined). No earlier chart's result changed; overall (95 images) axes 95.8 %, box 95.8 %,
+  major-tick recall 88.7 %, calibration correct 63.2 % (the unlabelled charts move the shared
+  categories).
+- **Corpus** (`bench/axes/`): 84 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~4.5 MB) — c76–c83 (range frames: both spines moved 3–16 pt
+  outward and trimmed to the first and last major tick, linear and log-log with log minors, tick
+  labels drawn or hidden, crisp/antialiased, JPEG, two rotated; tags `frame:range`,
+  `range-frame`, `ticklabels`/`no-ticklabels`; box truth = the rectangle from where the extended
+  axis lines meet to each line's far end) were appended after c70–c75 (old-scan look-alikes: hand-lettered or
   italic labels in Windows script/italic fonts, no tick marks, a heavy black grid on every second
   label, a frame one label step beyond the labels, gridlines poking past the frame, blur, paper
   tone, noise and specks; tags `handlettered`, `heavy-grid`, `frame-beyond-labels`, `scanned`)
@@ -935,7 +962,8 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   clusters with rows of equal y (heavy overlap), one to three grey (70 %) or coloured
   iso-probability curves through them — the first a straight steep stretch meeting the curve at
   a 25–40° corner — "1%/3%/5%" labels at their starts, an offset range frame (the axes stand off
-  and span only the labelled range; `detectAxes` finds no plot box, so the region is the image),
+  and span only the labelled range; `detectAxes` boxes them from where the extended axis lines
+  would meet, see Axis detection → Range frames),
   log-log or linear. Gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third)
   vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
@@ -1181,10 +1209,14 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   (`l139/s1`); a corner hidden under a marker, or one between a straight stretch and a
   fast-turning curve, is often not kept as a point (corner recall 50 %); a walk can hop a short
   open gap past a curve's real end onto a faint marker; markers hidden under the other class or
-  under a curve drawn on top are not found. Auto-detect on this figure (report only — axis
-  detection is being reworked separately): both offset range-frame axes and their ticks are found
-  but no plot box (the detached axes never meet; confidence 0.2), and on the uncropped viewer
-  screenshot the window's right border is taken for the Y axis.
+  under a curve drawn on top are not found. Auto-detect on this figure: both offset range-frame
+  axes and their ticks are found, and since 2026-11-18 the plot box too (Axis detection → Range
+  frames), also on the uncropped viewer screenshot, where the window's right border had been taken
+  for the Y axis. Boxing l128–l139 changed two traces: `l136/s3` reports 7 fewer false markers
+  (480 matched of 506 instead of 513), and `l139/s1` (the known failure above: the JPEG blue is
+  read as a dull grey-blue, so the walk follows other ink either way) stops after 6 points instead
+  of running 76 wrong ones (coverage 12.1 → 0.9 %; busy-scatter p95 28.1 → 1.9 px only because
+  its wrong points no longer count); the other 53 busy-scatter traces are unchanged.
 
 ## Auto-trace — UI
 

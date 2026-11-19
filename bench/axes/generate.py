@@ -14,7 +14,10 @@ Charts c70-c75 (`build_handlettered`, appended after tester feedback on a 1928 d
 figure) look like old scanned figures: hand-lettered or italic tick labels (Windows script and
 italic fonts, offline), no tick marks, a heavy black grid on every second label, a frame one
 label step beyond the labelled range, gridlines poking past the frame, and a scan's blur, paper
-tone, noise and specks. Do not edit the output by hand and do not change a chart because the
+tone, noise and specks. Charts c76-c83 (`build_range`) are range frames: both spines moved outward
+from the data and trimmed to the first and last major tick, so the axis lines never meet (linear
+and log-log, with and without tick labels); their plot box truth is the rectangle from the corner
+where the extended axis lines would meet to each line's far end. Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -80,6 +83,12 @@ HANDLETTERED = {
     73: (("Times New Roman", "italic"), 20, 5, 60, True),
     74: (("Bradley Hand ITC", "normal"), 10, 25, 50, False),
     75: (("Comic Sans MS", "italic"), 2, 10, 6, True),
+}
+# Appended range frames (build_range): (scale of both axes, tick labels drawn). The spines are
+# moved outward from the data and trimmed to the first and last major tick, so they never meet.
+RANGE_FRAME = {
+    76: ("linear", True), 77: ("log10", True), 78: ("linear", False), 79: ("log10", False),
+    80: ("linear", True), 81: ("log10", True), 82: ("linear", False), 83: ("log10", False),
 }
 
 
@@ -402,6 +411,159 @@ def build_handlettered(i: int) -> tuple[Image.Image, dict, int]:
     return img, doc, jpeg_q
 
 
+def build_range(i: int) -> tuple[Image.Image, dict, int]:
+    """A range frame: both spines moved outward from the data and trimmed to the labelled range, so
+    the axis lines stand apart and never meet. Plot box truth = the rectangle the two axis lines
+    span if extended to meet: from that virtual corner to the far end of each line."""
+    rng = np.random.default_rng(1000 + i)
+    scale, labelled = RANGE_FRAME[i]
+    log = scale == "log10"
+    kind = str(rng.choice(["scatter", "line"]))
+    dpi = int(rng.choice([72, 96, 100, 120, 150, 200]))
+    w_in = float(rng.uniform(4.5, 7.5))
+    h_in = float(w_in * rng.uniform(0.6, 0.85))
+    if w_in * dpi > 1200:
+        w_in, h_in = 1200 / dpi, 1200 / dpi * h_in / w_in
+    font = str(FONTS[int(rng.integers(0, len(FONTS)))])
+    fontsize = float(rng.uniform(8, 12))
+    spine_lw = float(rng.choice([0.6, 0.8, 1.0, 1.25, 1.5]))
+    tick_len = float(rng.uniform(3, 7))
+    tick_w = float(min(spine_lw, rng.choice([0.6, 0.8, 1.0])))
+    rotation = float(rng.choice([-1, 1]) * rng.uniform(0.5, 2.0)) if i % 4 == 3 else 0.0
+    jpeg_q = int(rng.integers(50, 91)) if i % 3 == 1 else 0
+    crisp = rng.random() < 0.5
+    if crisp:
+        spine_lw = 72 / dpi
+        tick_w = spine_lw
+    # The outward offset in whole pixels, so a crisp chart's spines stay on pixel centres.
+    offset_px = int(rng.integers(max(3, round(4 * dpi / 72)), round(16 * dpi / 72) + 1))
+    minor = log or rng.random() < 0.4
+    if log:
+        xlo = int(rng.integers(-3, 1))
+        xhi = xlo + int(rng.integers(2, 5))
+        ylo = int(rng.integers(-2, 2))
+        yhi = ylo + int(rng.integers(2, 4))
+        x_major = [10.0**k for k in range(xlo, xhi + 1)]
+        y_major = [10.0**k for k in range(ylo, yhi + 1)]
+        x_minor = [m * 10.0**k for k in range(xlo, xhi) for m in range(2, 10)]
+        y_minor = [m * 10.0**k for k in range(ylo, yhi) for m in range(2, 10)]
+    else:
+        sx = float(rng.choice([1, 2, 5, 10, 20, 25]))
+        sy = float(rng.choice([0.5, 1, 2, 5, 10, 50]))
+        x0 = float(rng.choice([0, 0, -2, 10])) * sx
+        y0 = float(rng.choice([0, 0, -1, 4])) * sy
+        x_major = [x0 + k * sx for k in range(int(rng.integers(4, 8)))]
+        y_major = [y0 + k * sy for k in range(int(rng.integers(4, 8)))]
+        x_minor = [v + sx / 2 for v in x_major[:-1]] if minor else []
+        y_minor = [v + sy / 2 for v in y_major[:-1]] if minor else []
+    xb, yb = (x_major[0], x_major[-1]), (y_major[0], y_major[-1])
+
+    def lin(v: float) -> float:
+        return math.log10(v) if log else v
+
+    def unlin(u):
+        return 10.0**u if log else u
+
+    pad_x = float(rng.uniform(0.02, 0.08))
+    pad_y = float(rng.uniform(0.02, 0.08))
+    xlim = (unlin(lin(xb[0]) - pad_x * (lin(xb[1]) - lin(xb[0]))), unlin(lin(xb[1]) + pad_x * (lin(xb[1]) - lin(xb[0]))))
+    ylim = (unlin(lin(yb[0]) - pad_y * (lin(yb[1]) - lin(yb[0]))), unlin(lin(yb[1]) + pad_y * (lin(yb[1]) - lin(yb[0]))))
+    axis_color = "#000000" if rng.random() < 0.75 else "#444444"
+    rc = {
+        "path.snap": False,
+        "font.family": font, "font.size": fontsize, "axes.linewidth": spine_lw,
+        "axes.edgecolor": axis_color, "xtick.color": axis_color, "ytick.color": axis_color,
+        "xtick.direction": "out", "ytick.direction": "out",
+        "xtick.major.size": tick_len, "ytick.major.size": tick_len,
+        "xtick.major.width": tick_w, "ytick.major.width": tick_w,
+        "xtick.minor.size": tick_len * 0.55, "ytick.minor.size": tick_len * 0.55,
+        "xtick.minor.width": tick_w * 0.8, "ytick.minor.width": tick_w * 0.8,
+    }
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        n = int(rng.integers(15, 60))
+        u = np.sort(rng.uniform(0.0, 1.0, n))
+        vv = np.clip(0.15 + 0.7 * u ** float(rng.uniform(0.4, 2.0)) + rng.normal(0, 0.06, n), 0.0, 1.0)
+        xs = unlin(lin(xb[0]) + u * (lin(xb[1]) - lin(xb[0])))
+        ys = unlin(lin(yb[0]) + vv * (lin(yb[1]) - lin(yb[0])))
+        color = ["C0", "C1", "C2", "C3", "k"][int(rng.integers(0, 5))]
+        if kind == "line":
+            ax.plot(xs, ys, color=color, lw=float(rng.uniform(0.8, 2.0)), marker=str(rng.choice(["", "o"])), ms=4)
+        else:
+            ax.scatter(xs, ys, s=float(rng.uniform(8, 36)), color=color, marker=str(rng.choice(["o", "s", "^", "x"])))
+        if log:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.xaxis.set_major_locator(mticker.FixedLocator(x_major))
+        ax.yaxis.set_major_locator(mticker.FixedLocator(y_major))
+        ax.xaxis.set_minor_locator(mticker.FixedLocator(x_minor))
+        ax.yaxis.set_minor_locator(mticker.FixedLocator(y_minor))
+        ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+        ax.yaxis.set_minor_formatter(mticker.NullFormatter())
+        if not log:
+            ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        elif rng.random() < 0.5:  # plain numbers instead of 10^n
+            ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        if not labelled:
+            ax.tick_params(labelbottom=False, labelleft=False, which="both")
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        offset_pt = offset_px * 72 / dpi
+        ax.spines["left"].set_position(("outward", offset_pt))
+        ax.spines["bottom"].set_position(("outward", offset_pt))
+        ax.spines["left"].set_bounds(*yb)
+        ax.spines["bottom"].set_bounds(*xb)
+        if rng.random() < 0.5:
+            ax.set_title(str(rng.choice(["Dose response", "Figure 3", "Measured vs. predicted"])))
+        ax.set_xlabel(str(rng.choice(["Volume (cm3)", "Concentration", "Time [h]", "x"])))
+        ax.set_ylabel(str(rng.choice(["Dose (Gy)", "Response", "Count", "y"])))
+        fig.tight_layout()
+        if crisp:
+            fig.canvas.draw()
+            (x0_, y0_), (x1_, y1_) = ax.get_position().get_points() * [fig.bbox.width, fig.bbox.height]
+            snap = lambda v: math.floor(v) + 0.5  # noqa: E731
+            fw, fh = fig.bbox.width, fig.bbox.height
+            ax.set_position([snap(x0_) / fw, snap(y0_) / fh, (snap(x1_) - snap(x0_)) / fw, (snap(y1_) - snap(y0_)) / fh])
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        truth = extract_truth(fig, ax, W, H, scale, scale, "range", "out", no_x_ticks=False)
+        plt.close(fig)
+    (xl, xr), (yb_, yt) = truth["xAxis"]["line"], truth["yAxis"]["line"]
+    left, right, bottom, top = yb_[0], xr[0], xl[1], yt[1]
+    truth["plotBox"] = [[round(float(x), 3), round(float(y), 3)] for x, y in
+                        ((left, top), (right, top), (right, bottom), (left, bottom))]
+    img = Image.fromarray(rgba[:, :, :3])
+    if rotation:
+        img, truth = rotate(img, truth, rotation)
+    tags = [f"x:{scale}", f"y:{scale}", f"kind:{kind}", "no-grid", "frame:range", "ticks:out",
+            "rotated" if rotation else "upright", "jpeg" if jpeg_q else "png", "crisp" if crisp else "antialiased",
+            "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high", "range-frame",
+            "ticklabels" if labelled else "no-ticklabels"]
+    if minor:
+        tags.append("minor-ticks")
+    if axis_color != "#000000":
+        tags.append("grey-axes")
+    name = f"c{i:02d}"
+    ext = "jpg" if jpeg_q else "png"
+    doc = {
+        "image": f"{name}.{ext}",
+        "width": img.width,
+        "height": img.height,
+        "description": (f"Synthetic range frame ({kind}, {scale} x {scale}, axes {offset_px} px out from the data, "
+                        f"trimmed to the labelled range, tick labels {'drawn' if labelled else 'hidden'}), dpi {dpi}, "
+                        f"font {font} {fontsize:.1f}pt, rotation {rotation:.2f} deg" + (f", JPEG q{jpeg_q}" if jpeg_q else "")
+                        + ". Generated by bench/axes/generate.py."),
+        "tags": tags,
+        **truth,
+    }
+    return img, doc, jpeg_q
+
+
 def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str):
     """Ticks inside the view limits, placed on the axis line (pixel centres)."""
     a = ax.xaxis if axis == "x" else ax.yaxis
@@ -571,8 +733,8 @@ def main() -> int:
         old.unlink()
     bad = 0
     total = 0
-    for i in list(range(COUNT)) + sorted(HANDLETTERED):
-        img, doc, q = build_handlettered(i) if i in HANDLETTERED else build(i)
+    for i in list(range(COUNT)) + sorted(HANDLETTERED) + sorted(RANGE_FRAME):
+        img, doc, q = build_handlettered(i) if i in HANDLETTERED else build_range(i) if i in RANGE_FRAME else build(i)
         name = doc["image"]
         if q:
             img.save(OUT / name, quality=q)
@@ -585,7 +747,7 @@ def main() -> int:
         flag = "" if err <= 0.35 else "  <-- truth check FAILED"
         bad += err > 0.35
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} truth-check {err:4.2f}px  {' '.join(doc['tags'])}{flag}")
-    print(f"{COUNT + len(HANDLETTERED)} charts, {total / 1e6:.2f} MB of images")
+    print(f"{COUNT + len(HANDLETTERED) + len(RANGE_FRAME)} charts, {total / 1e6:.2f} MB of images")
     return 1 if bad else 0
 
 
