@@ -48,6 +48,8 @@ interface Patch {
   dark: Float32Array;
   /** Colourfulness (max − min of R, G, B) of the nearest image pixel, 0–255. */
   chroma: Uint8Array;
+  /** Hue of the nearest image pixel, degrees 0–360 (meaningless where chroma is low). */
+  hue: Float32Array;
 }
 
 export interface LabelWord {
@@ -169,6 +171,7 @@ function makePatch(map: DarknessMap, img: RgbaImage, frame: Frame, u0: number, w
   const h = Math.max(1, Math.round(height));
   const dark = new Float32Array(w * h);
   const chroma = new Uint8Array(w * h);
+  const hue = new Float32Array(w * h);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
       const p = familyPoint(frame, 'horizontal', u0 + i, w0 + j);
@@ -182,11 +185,23 @@ function makePatch(map: DarknessMap, img: RgbaImage, frame: Frame, u0: number, w
         const g = img.data[o + 1] ?? 0;
         const b = img.data[o + 2] ?? 0;
         chroma[j * w + i] = Math.max(r, g, b) - Math.min(r, g, b);
+        hue[j * w + i] = hueOf(r, g, b);
       }
     }
   }
-  return { u0, w0, width: w, height: h, dark, chroma };
+  return { u0, w0, width: w, height: h, dark, chroma, hue };
 }
+
+/** Hue angle of an RGB colour, degrees in [0, 360). */
+function hueOf(r: number, g: number, b: number): number {
+  const h = (Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b) * 180) / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+const hueDistance = (a: number, b: number) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
 
 /** Mean colourfulness of a glyph's pixels. */
 function glyphChroma(p: Patch, g: Glyph): number {
@@ -197,9 +212,101 @@ function glyphChroma(p: Patch, g: Glyph): number {
 
 /**
  * Glyphs this colourful are data (markers, coloured curves, a coloured number-at-risk table),
- * not tick labels, which are drawn in the axis colour: black or grey.
+ * not tick labels, which are usually drawn in the axis colour: black or grey. Labels printed in a
+ * colour (a twin axis in its series colour, a styled figure) are looked for as a colour class of
+ * their own (`colourClasses`) when the neutral ink gives fewer labels.
  */
 const MAX_LABEL_CHROMA = 80;
+
+/** Which glyphs of a patch may be label text. */
+type Ink = (p: Patch, g: Glyph) => boolean;
+
+const NEUTRAL: Ink = (p, g) => glyphChroma(p, g) < MAX_LABEL_CHROMA;
+
+/**
+ * The colour of a glyph's core: the mean chroma and hue of its pixels at least half as dark as its
+ * darkest one. Antialiased and JPEG-blurred edges mix the colour with the background, so a whole
+ * glyph's mean understates it (a thin red "−" averages under MAX_LABEL_CHROMA) while its core
+ * keeps it.
+ */
+function coreColour(p: Patch, g: Glyph): { chroma: number; hue: number } {
+  let max = 0;
+  for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
+  let n = 0;
+  let c = 0;
+  let hx = 0;
+  let hy = 0;
+  for (const k of g.pixels) {
+    if ((p.dark[k] ?? 0) < 0.5 * max) continue;
+    const ch = p.chroma[k] ?? 0;
+    const a = ((p.hue[k] ?? 0) * Math.PI) / 180;
+    n++;
+    c += ch;
+    hx += ch * Math.cos(a);
+    hy += ch * Math.sin(a);
+  }
+  if (!n) return { chroma: 0, hue: 0 };
+  const h = (Math.atan2(hy, hx) * 180) / Math.PI;
+  return { chroma: c / n, hue: h < 0 ? h + 360 : h };
+}
+
+/** A glyph of a colour class: its core within this many degrees of the class hue … */
+const CLASS_HUE_TOLERANCE = 25;
+/** … and at least this colourful (half the neutral limit: a fringe-diluted glyph of the class). */
+const CLASS_MIN_CHROMA = 0.5 * MAX_LABEL_CHROMA;
+/** A colour class needs this many text-sized glyphs of clear colour in the band. */
+const CLASS_MIN_GLYPHS = 3;
+
+/**
+ * The hues of text-sized coloured glyphs in a band (core chroma ≥ MAX_LABEL_CHROMA), clustered:
+ * glyphs are sorted by hue and split where neighbours differ by more than the class tolerance;
+ * each cluster of at least CLASS_MIN_GLYPHS glyphs is a class, centred on its circular mean hue,
+ * most glyphs first.
+ */
+function colourClasses(p: Patch, glyphs: Glyph[], maxTextHeight: number): number[] {
+  const hues = glyphs
+    .filter((g) => gh(g) >= BODY_MIN_HEIGHT && gh(g) <= maxTextHeight && gw(g) <= 2 * maxTextHeight)
+    .map((g) => coreColour(p, g))
+    .filter((c) => c.chroma >= MAX_LABEL_CHROMA)
+    .map((c) => c.hue)
+    .sort((a, b) => a - b);
+  if (hues.length < CLASS_MIN_GLYPHS) return [];
+  // Start the circular walk after the widest gap, so a cluster does not straddle 0°/360°.
+  let start = 0;
+  let widest = -1;
+  hues.forEach((h, i) => {
+    const prev = hues[(i + hues.length - 1) % hues.length] as number;
+    const gap = (h - prev + 360) % 360;
+    if (gap > widest) {
+      widest = gap;
+      start = i;
+    }
+  });
+  const walk = [...hues.slice(start), ...hues.slice(0, start)];
+  const clusters: number[][] = [];
+  for (const h of walk) {
+    const last = clusters[clusters.length - 1];
+    if (last && hueDistance(last[last.length - 1] as number, h) <= CLASS_HUE_TOLERANCE) last.push(h);
+    else clusters.push([h]);
+  }
+  return clusters
+    .filter((c) => c.length >= CLASS_MIN_GLYPHS)
+    .sort((a, b) => b.length - a.length)
+    .map((c) => {
+      const x = c.reduce((s, h) => s + Math.cos((h * Math.PI) / 180), 0);
+      const y = c.reduce((s, h) => s + Math.sin((h * Math.PI) / 180), 0);
+      const m = (Math.atan2(y, x) * 180) / Math.PI;
+      return m < 0 ? m + 360 : m;
+    });
+}
+
+/** The glyphs of one colour class (see `colourClasses`). */
+const ofHue =
+  (hue: number): Ink =>
+  (p, g) => {
+    const c = coreColour(p, g);
+    return c.chroma >= CLASS_MIN_CHROMA && hueDistance(c.hue, hue) <= CLASS_HUE_TOLERANCE;
+  };
 
 /** Ink threshold for text in this patch: a fraction of its darkest strokes, never below INK. */
 function inkThreshold(p: Patch): number {
@@ -868,6 +975,23 @@ function labelsFor(
     const viaLabels = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing);
     if (viaLabels.labels.length >= 2) primary = viaLabels;
   }
+  // Labels printed in a colour: each colour class of the band is matched like the neutral ink,
+  // and replaces the neutral pass when it finds more labels, or at least half as many with more
+  // than twice their ink (the neutral pass then matched the faint, colourless fringes of the
+  // coloured glyphs: empty readings at every tick). Its glyphs only, so a black gridline or a
+  // curve of another hue is no part of them. Otherwise neutral wins: a coloured number-at-risk
+  // table under black tick labels matches the same ticks with ink like theirs.
+  for (const hue of HUES.get(viaTicks) ?? []) {
+    let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, ofHue(hue));
+    if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, ofHue(hue));
+    const n = alt.labels.length;
+    const m = primary.labels.length;
+    const inkier = n >= 0.5 * m && (MASS.get(alt) ?? 0) > 2 * (MASS.get(primary) ?? 0);
+    if (n >= 2 && (n > m || inkier)) {
+      primary = alt;
+      UPRIGHT.set(viaTicks, UPRIGHT.get(alt) ?? 0);
+    }
+  }
   // Rotated tick labels (45° or 90°, common for long X labels: dates, big numbers; 90° on Y),
   // looked for only when few of the labels found read as upright text: the band is sampled again
   // in a frame turned by that angle, where the text is upright. Glyph shapes alone cannot tell
@@ -1041,6 +1165,7 @@ function labelsWith(
   mode: AxisLabels['mode'],
   majors: { t: DetectedAxis['ticks']['ticks'][number]; i: number }[],
   crossing: LineCandidate[],
+  ink: Ink = NEUTRAL,
 ): AxisLabels {
   const { width: W, height: H } = map;
   const line: AxisGeometry = ax.line;
@@ -1070,7 +1195,8 @@ function labelsWith(
     const u0 = flipped ? line.offset + d0 : line.offset - d0 - depth;
     p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
-  const glyphs = components(p, inkThreshold(p)).filter((g) => glyphChroma(p, g) < MAX_LABEL_CHROMA);
+  const all = components(p, inkThreshold(p));
+  const glyphs = all.filter((g) => ink(p, g));
   // Y labels are aligned at the axis: words grow from the axis side.
   const rows = words(p, glyphs, maxTextHeight, which === 'y' && !flipped);
   // X rows nearest the axis first.
@@ -1285,7 +1411,7 @@ function labelsWith(
       const q = makePatch(map, img, frame, flipped ? line.offset - 11 * h : line.offset - 3 * h, line.start - 3 * h, 14 * h, 3 * h - 1);
       // A fixed low threshold: a dark title beside a small grey note would set an adaptive one
       // so high that the note falls apart.
-      const qRows = words(q, components(q, 1.5 * INK_THRESHOLD).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA), maxTextHeight, false);
+      const qRows = words(q, components(q, 1.5 * INK_THRESHOLD).filter((g) => ink(q, g)), maxTextHeight, false);
       // Above a Y axis that meets a top X axis runs the X labels' row: a word centred on that row
       // is an X label (one at the corner often has no tick of its own), not a note. A note
       // squeezed in beside it (matplotlib's, between the labels and the axis) is off-centre.
@@ -1309,8 +1435,17 @@ function labelsWith(
   }
   const result: AxisLabels = noteTangled ? { axis: which, mode, labels, note, noteTangled } : { axis: which, mode, labels, note };
   UPRIGHT.set(result, uprightness(snapped.map(({ word }) => word)));
+  let mass = 0;
+  for (const { word } of snapped) for (const g of word.glyphs) for (const k of g.pixels) mass += p.dark[k] ?? 0;
+  MASS.set(result, mass);
+  if (ink === NEUTRAL) HUES.set(result, colourClasses(p, all, maxTextHeight));
   return result;
 }
+
+/** The summed darkness of the glyphs of the labels a pass found, per result. */
+const MASS = new WeakMap<AxisLabels, number>();
+/** The colour classes seen in a neutral pass's band (`colourClasses`), per result. */
+const HUES = new WeakMap<AxisLabels, number[]>();
 
 /** Tick labels beside both detected axes (empty lists when an axis was not found). */
 export function findLabels(map: DarknessMap, img: RgbaImage, det: AxisDetection): { x: AxisLabels; y: AxisLabels } {
