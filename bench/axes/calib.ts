@@ -45,6 +45,13 @@ export interface CalibImageScore {
 
 const norm = (s: string) => (s === 'ln' ? 'log10' : s);
 
+/**
+ * Truth scales whose tick labels carry no values the app could calibrate from: category names,
+ * and times of day with no date anywhere on the axis. The right answer is to decline; any
+ * medium/high suggestion on such an axis is wrong, whatever it says.
+ */
+const UNCALIBRATABLE = new Set(['categorical', 'time-of-day']);
+
 function truthValue(t: TruthAxis['ticks'][number]): number | null {
   if (typeof t.value === 'number') return t.value;
   const d = parseDateTime(t.value);
@@ -85,6 +92,9 @@ function predict1d(s: AxisSuggestion, p: P): number | null {
 function scoreAxis(truth: TruthAxis, s: AxisSuggestion): CalibAxisScore {
   const calibrated = s.status === 'calibrated' && s.level !== 'low';
   const scale = s.scale;
+  if (UNCALIBRATABLE.has(truth.scale)) {
+    return { calibrated, level: s.level, scale, scaleOk: calibrated ? false : null, maxError: calibrated ? Infinity : null, correct: false };
+  }
   const ts = truthScale(truth);
   const scaleOk = scale === null ? null : norm(scale) === norm(ts);
   if (!calibrated || !s.refs) return { calibrated: false, level: s.level, scale, scaleOk, maxError: null, correct: false };

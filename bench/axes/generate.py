@@ -17,7 +17,13 @@ label step beyond the labelled range, gridlines poking past the frame, and a sca
 tone, noise and specks. Charts c76-c83 (`build_range`) are range frames: both spines moved outward
 from the data and trimmed to the first and last major tick, so the axis lines never meet (linear
 and log-log, with and without tick labels); their plot box truth is the rectangle from the corner
-where the extended axis lines would meet to each line's far end. Do not edit the output by hand and do not change a chart because the
+where the extended axis lines would meet to each line's far end. Charts c120-c155
+(`build_labels`) are ordinary axes with unusual tick LABELS: rotated 45/90 degrees, thousands
+separators and decimal commas, SI suffixes, percent, currency, scientific notation, offset and
+multiplier notes, both minus signs, log axes with plain numbers, reversed axes, serif / bold /
+italic / condensed / monospace fonts, tiny, grey and coloured labels, years, months, quarters,
+times of day, category names (truth scale `categorical`: the right answer is to decline), no tick
+marks, and light text on a dark background. Each variant has a `label:<variant>` tag. Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -89,6 +95,49 @@ HANDLETTERED = {
 RANGE_FRAME = {
     76: ("linear", True), 77: ("log10", True), 78: ("linear", False), 79: ("log10", False),
     80: ("linear", True), 81: ("log10", True), 82: ("linear", False), 83: ("log10", False),
+}
+
+# Appended label-variety charts (build_labels): what the X and Y tick labels look like, plus
+# chart-level options (xrot / yrot = label rotation in degrees, xrev / yrev = descending axis,
+# font = (family, weight, style), em = label size in px, dpi, colours, style sheet, tick marks,
+# jpeg quality). See `label_plan` for the kinds.
+LABEL_VARIETY = {
+    120: dict(x="plain-big", y="plain", xrot=45),
+    121: dict(x="month-year", y="percent", xrot=45),
+    122: dict(x="plain-big", y="plain", xrot=90),
+    123: dict(x="yyyy-mm", y="thousands-comma", xrot=90),
+    124: dict(x="plain", y="plain", yrot=90, font=("Arial", "normal", "normal")),
+    125: dict(x="thousands-comma", y="thousands-comma"),
+    126: dict(x="decimal-comma", y="thousands-space"),
+    127: dict(x="decimal-comma", y="decimal-comma"),
+    128: dict(x="si-k", y="si-mixed"),
+    129: dict(x="plain", y="plain", ticks=False, style="seaborn-v0_8-whitegrid"),
+    130: dict(x="month-2line", y="percent"),
+    131: dict(x="year", y="currency"),
+    132: dict(x="quarter", y="currency-thousands"),
+    133: dict(x="sci-e-log", y="sci-e"),
+    134: dict(x="sci-times", y="sci-times"),
+    135: dict(x="note-mult-small", y="note-mult"),
+    136: dict(x="note-offset", y="note-offset-small"),
+    137: dict(x="negative", y="negative-small", minus="unicode"),
+    138: dict(x="negative", y="negative-small", minus="hyphen"),
+    139: dict(x="log-plain", y="log-plain"),
+    140: dict(x="log-pow", y="log-pow", font=("Times New Roman", "normal", "normal")),
+    141: dict(x="plain", y="plain", xrev=True, yrev=True),
+    142: dict(x="log-plain", y="plain", xrev=True),
+    143: dict(x="plain", y="plain", font=("Georgia", "normal", "normal")),
+    144: dict(x="plain", y="plain", font=("Arial", "bold", "normal")),
+    145: dict(x="plain", y="plain", font=("Times New Roman", "normal", "italic")),
+    146: dict(x="plain", y="plain", font=("Franklin Gothic Medium Cond", "normal", "normal")),
+    147: dict(x="plain", y="plain", font=("Consolas", "normal", "normal")),
+    148: dict(x="plain", y="plain", em=9.0, dpi=72),
+    149: dict(x="plain", y="plain", em=10.5, dpi=72, jpeg=85),
+    150: dict(x="plain", y="plain", color="#8c8c8c"),
+    151: dict(x="plain", y="plain", xcolor="#c0392b", ycolor="#1f77b4"),
+    152: dict(x="time-concise", y="plain"),
+    153: dict(x="time-only", y="plain"),
+    154: dict(x="categorical", y="plain-zero"),
+    155: dict(x="plain", y="plain", style="dark_background"),
 }
 
 
@@ -564,6 +613,313 @@ def build_range(i: int) -> tuple[Image.Image, dict, int]:
     return img, doc, jpeg_q
 
 
+def label_plan(kind: str, rng: np.random.Generator, minus: str) -> dict:
+    """One axis of a label-variety chart: scale, major tick values, their label strings (or a
+    locator / formatter of matplotlib's own), whether minor ticks are drawn, and the variant tags.
+    Values are what the labels MEAN (`2k` = 2000, `20%` = 20, `$1,000` = 1000)."""
+
+    def lin(start: float, step: float, n: int) -> list[float]:
+        return [round(start + k * step, 10) for k in range(n)]
+
+    def fixed(vals: list[float], decimals: int) -> list[str]:
+        out = [f"{v:.{decimals}f}" for v in vals]
+        return [t.replace("-", "−") for t in out] if minus == "unicode" else out
+
+    def months(year: int, month: int, step: int, n: int) -> list[dt.datetime]:
+        out = []
+        for k in range(n):
+            m = month - 1 + k * step
+            out.append(dt.datetime(year + m // 12, m % 12 + 1, 1))
+        return out
+
+    def pick(options):
+        return options[int(rng.integers(0, len(options)))]
+
+    n = int(rng.integers(5, 8))
+    plan = dict(scale="linear", vals=None, labels=None, locator=None, formatter=None, minor=False, tags=[])
+    if kind in ("plain", "plain-zero"):
+        start, step, dec = pick([(0, 2, 0), (0, 20, 0), (0.0, 0.2, 1), (10, 5, 0), (0, 50, 0), (1.0, 0.5, 1)])
+        if kind == "plain-zero":
+            start, step, dec = pick([(0, 2, 0), (0, 20, 0), (0, 50, 0)])
+        vals = lin(start, step, n)
+        plan.update(vals=vals, labels=fixed(vals, dec), minor=bool(rng.random() < 0.3))
+    elif kind == "plain-big":
+        vals = lin(*pick([(10000, 10000), (0, 25000), (200000, 100000)]), n)
+        plan.update(vals=vals, labels=fixed(vals, 0))
+    elif kind in ("thousands-comma", "thousands-space"):
+        vals = lin(*pick([(0, 5000), (1000, 1000), (0, 250000), (10000, 10000)]), n)
+        sep = "," if kind == "thousands-comma" else " "
+        plan.update(vals=vals, labels=[f"{v:,.0f}".replace(",", sep) for v in vals], tags=[f"label:{kind}"])
+    elif kind == "decimal-comma":
+        start, step, dec = pick([(0.0, 0.5, 1), (1.5, 0.5, 1), (0.0, 0.25, 2), (0.0, 0.2, 1)])
+        vals = lin(start, step, n)
+        plan.update(vals=vals, labels=[f"{v:.{dec}f}".replace(".", ",") for v in vals], tags=["label:decimal-comma"])
+    elif kind == "si-k":
+        vals = lin(0, float(pick([2000, 5000, 20000])), n)
+        plan.update(vals=vals, labels=["0" if v == 0 else f"{v / 1000:g}k" for v in vals], tags=["label:si"])
+    elif kind == "si-mixed":
+        vals = lin(0, 250000.0, 7)
+        plan.update(vals=vals, tags=["label:si"],
+                    labels=["0" if v == 0 else f"{v / 1e6:g}M" if v >= 1e6 else f"{v / 1000:g}k" for v in vals])
+    elif kind == "percent":
+        vals = lin(0, float(pick([20, 10, 25])), int(pick([5, 6])))
+        plan.update(vals=vals, labels=[f"{v:g}%" for v in vals], tags=["label:percent"])
+    elif kind == "currency":
+        vals = lin(0, float(pick([20, 50, 5])), n)
+        plan.update(vals=vals, labels=[f"${v:g}" for v in vals], tags=["label:currency"])
+    elif kind == "currency-thousands":
+        vals = lin(0, float(pick([1000, 2500, 500])), n)
+        plan.update(vals=vals, labels=[f"${v:,.0f}" for v in vals], tags=["label:currency", "label:thousands-comma"])
+    elif kind == "sci-e":
+        step, dec = pick([(0.002, 0), (2000.0, 0), (0.0005, 1)])
+        vals = lin(0, step, n)
+        plan.update(vals=vals, labels=[f"{v:.{dec}e}" for v in vals], tags=["label:sci-e"])
+    elif kind == "sci-e-log":
+        lo = int(rng.integers(-4, 0))
+        vals = [10.0**k for k in range(lo, lo + int(rng.integers(4, 7)))]
+        plan.update(scale="log10", vals=vals, labels=[f"{v:.0e}" for v in vals], minor=True, tags=["label:sci-e"])
+    elif kind == "sci-times":
+        e = int(pick([3, 5, -2, 4]))
+        vals = [float(f"{m}e{e}") for m in range(0, n)]
+        plan.update(vals=vals, tags=["label:sci-times"],
+                    labels=["0" if m == 0 else rf"${m}\times10^{{{e}}}$" for m in range(0, n)])
+    elif kind in ("note-mult", "note-mult-small"):
+        vals = lin(0, 10000.0 if kind == "note-mult" else 0.001, n)
+        fmt = mticker.ScalarFormatter(useMathText=True)
+        fmt.set_powerlimits((0, 0))
+        plan.update(vals=vals, formatter=fmt, tags=["label:note-mult"])
+    elif kind in ("note-offset", "note-offset-small"):
+        vals = lin(10000.0, 0.2, 6) if kind == "note-offset" else lin(2500.0, 0.01, 6)  # "+1e4", "+2.5e3"
+        plan.update(vals=vals, formatter=mticker.ScalarFormatter(useOffset=True, useMathText=False), tags=["label:note-offset"])
+    elif kind in ("negative", "negative-small"):
+        if kind == "negative":
+            start, step, dec = pick([(-40, 20, 0), (-300, 100, 0), (-8, 2, 0)])
+        else:
+            start, step, dec = pick([(-1.5, 0.5, 1), (-0.6, 0.2, 1)])
+        vals = lin(start, step, n)
+        plan.update(vals=vals, labels=fixed(vals, dec), tags=[f"label:minus-{minus}"])
+    elif kind in ("log-plain", "log-pow"):
+        lo = int(rng.integers(-3, 1))
+        vals = [10.0**k for k in range(lo, lo + int(rng.integers(4, 6)))]
+        plan.update(scale="log10", vals=vals, minor=True, tags=[f"label:{kind}"])
+        if kind == "log-plain":
+            plan.update(labels=[f"{v:g}" for v in vals])
+    elif kind == "year":
+        y0 = int(rng.integers(1990, 2016))
+        ds = [dt.datetime(y0 + k, 1, 1) for k in range(int(rng.integers(6, 10)))]
+        plan.update(scale="date", vals=list(mdates.date2num(ds)), labels=[d.strftime("%Y") for d in ds], tags=["label:year"])
+    elif kind in ("month-year", "yyyy-mm", "quarter", "month-2line"):
+        y0 = int(rng.integers(1998, 2023))
+        if kind == "month-2line":
+            ds = months(y0, int(rng.integers(3, 12)), 1, int(rng.integers(8, 12)))
+            labels = [d.strftime("%b") + (f"\n{d.year}" if k == 0 or d.month == 1 else "") for k, d in enumerate(ds)]
+        elif kind == "quarter":
+            ds = months(y0, int(pick([1, 4, 7, 10])), 3, int(rng.integers(6, 9)))
+            labels = [f"Q{(d.month - 1) // 3 + 1} {d.year}" for d in ds]
+        else:
+            ds = months(y0, int(rng.integers(1, 13)), int(pick([2, 3])), int(rng.integers(6, 9)))
+            labels = [d.strftime("%b %Y" if kind == "month-year" else "%Y-%m") for d in ds]
+        plan.update(scale="date", vals=list(mdates.date2num(ds)), labels=labels, tags=[f"label:{kind}"])
+    elif kind in ("time-concise", "time-only"):
+        day = dt.datetime(int(rng.integers(2005, 2024)), int(rng.integers(1, 13)), int(rng.integers(2, 28)))
+        if kind == "time-only":  # no date anywhere on the axis: it cannot be calibrated as dates
+            ds = [day + dt.timedelta(hours=6 + 2 * k) for k in range(7)]
+            plan.update(scale="time-of-day", vals=list(mdates.date2num(ds)), labels=[d.strftime("%H:%M") for d in ds],
+                        tags=["label:time-only"])
+        else:  # matplotlib's concise formatter: times on the ticks, the date in the offset text
+            loc = mdates.HourLocator(byhour=range(0, 24, 3))
+            plan.update(scale="date", locator=loc, formatter=mdates.ConciseDateFormatter(loc),
+                        lim=tuple(mdates.date2num([day + dt.timedelta(hours=2), day + dt.timedelta(hours=22)])),
+                        tags=["label:time-concise"])
+    elif kind == "categorical":
+        names = pick([["Control", "Low", "Medium", "High", "Recovery"], ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+                      ["Liver", "Lung", "Kidney", "Brain", "Heart"], ["A", "B", "C", "D", "E", "F"]])
+        plan.update(scale="categorical", vals=[float(k) for k in range(len(names))], labels=names, tags=["label:categorical"])
+    else:
+        raise ValueError(kind)
+    return plan
+
+
+def build_labels(i: int) -> tuple[Image.Image, dict, int]:
+    """Ordinary axes with unusual tick labels (see LABEL_VARIETY and `label_plan`)."""
+    rng = np.random.default_rng(1000 + i)
+    spec = LABEL_VARIETY[i]
+    minus = spec.get("minus", "unicode")
+    px_ = label_plan(spec["x"], rng, minus)
+    py_ = label_plan(spec["y"], rng, minus)
+    categorical = px_["scale"] == "categorical"
+    kind = "bar" if categorical else str(rng.choice(["line", "scatter"]))
+    dpi = int(spec.get("dpi", rng.choice([100, 120, 150])))
+    w_in = float(rng.uniform(5.0, 7.0))
+    h_in = float(w_in * rng.uniform(0.6, 0.8))
+    if w_in * dpi > 1100:
+        w_in, h_in = 1100 / dpi, 1100 / dpi * h_in / w_in
+    plain_font = str(rng.choice(["Arial", "DejaVu Sans", "Segoe UI", "Calibri", "Verdana", "Tahoma"]))
+    family, weight, fstyle = spec.get("font") or (plain_font, "normal", "normal")
+    fontsize = spec["em"] * 72 / dpi if "em" in spec else float(rng.uniform(8.5, 11.5))
+    style = spec.get("style", "default")
+    plain_style = style == "default"
+    ticks_drawn = spec.get("ticks", True)
+    color = spec.get("color", "#000000")
+    frame = "box" if not plain_style or rng.random() < 0.55 else "L"
+    grid = not plain_style or bool(rng.random() < 0.3)
+    spine_lw = float(rng.choice([0.8, 1.0, 1.25]))
+    tick_len = float(rng.uniform(3, 6)) if ticks_drawn else 0.0
+    crisp = plain_style and bool(rng.random() < 0.5)
+    if crisp:
+        spine_lw = 72 / dpi
+    jpeg_q = int(spec.get("jpeg", 0))
+    rc = {"path.snap": False, "font.family": family, "font.size": fontsize, "axes.unicode_minus": minus == "unicode",
+          "xtick.major.size": tick_len, "ytick.major.size": tick_len, "xtick.minor.size": tick_len * 0.55,
+          "ytick.minor.size": tick_len * 0.55}
+    if plain_style:
+        rc.update({"axes.linewidth": spine_lw, "axes.edgecolor": color, "xtick.color": color, "ytick.color": color,
+                   "xtick.labelcolor": spec.get("xcolor", color), "ytick.labelcolor": spec.get("ycolor", color),
+                   "xtick.direction": "out", "ytick.direction": "out",
+                   "xtick.major.width": min(spine_lw, 0.8), "ytick.major.width": min(spine_lw, 0.8),
+                   "xtick.minor.width": min(spine_lw, 0.6), "ytick.minor.width": min(spine_lw, 0.6)})
+
+    def linear(scale: str, v):
+        return np.log10(v) if scale == "log10" else np.asarray(v, dtype=float)
+
+    def limits(plan: dict) -> tuple[float, float]:
+        if "lim" in plan:
+            return plan["lim"]
+        if plan["scale"] == "categorical":
+            return (-0.6, len(plan["vals"]) - 0.4)
+        lo, hi = float(linear(plan["scale"], plan["vals"][0])), float(linear(plan["scale"], plan["vals"][-1]))
+        pad = [float(rng.uniform(0.0, 0.06)) if rng.random() < 0.7 else 0.0 for _ in range(2)]
+        lo, hi = lo - pad[0] * (hi - lo), hi + pad[1] * (hi - lo)
+        return (10.0**lo, 10.0**hi) if plan["scale"] == "log10" else (lo, hi)
+
+    with plt.style.context(style), plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        xlim, ylim = limits(px_), limits(py_)
+        n = int(rng.integers(12, 40))
+        u = np.sort(rng.uniform(0.04, 0.96, n))
+        v = np.clip(0.12 + 0.72 * u ** float(rng.uniform(0.5, 2.0)) + rng.normal(0, 0.05, n), 0.03, 0.97)
+
+        def place(plan: dict, lim: tuple[float, float], t):
+            lo, hi = float(linear(plan["scale"], lim[0])), float(linear(plan["scale"], lim[1]))
+            w = lo + t * (hi - lo)
+            return 10.0**w if plan["scale"] == "log10" else w
+
+        series = ["C0", "C1", "C2", "C3"][int(rng.integers(0, 4))]
+        if categorical:
+            heights = place(py_, ylim, rng.uniform(0.25, 0.9, len(px_["vals"])))
+            ax.bar(px_["vals"], heights, width=0.6, color=series)
+        elif kind == "line":
+            ax.plot(place(px_, xlim, u), place(py_, ylim, v), color=series, lw=float(rng.uniform(1.0, 2.0)),
+                    marker=str(rng.choice(["", "o"])), ms=4)
+        else:
+            ax.scatter(place(px_, xlim, u), place(py_, ylim, v), s=float(rng.uniform(8, 30)), color=series)
+        for axis, plan, lim, name in ((ax.xaxis, px_, xlim, "x"), (ax.yaxis, py_, ylim, "y")):
+            if plan["scale"] == "log10":
+                (ax.set_xscale if name == "x" else ax.set_yscale)("log")
+            (ax.set_xlim if name == "x" else ax.set_ylim)(*lim)
+            axis.set_major_locator(plan["locator"] if plan["locator"] is not None else mticker.FixedLocator(plan["vals"]))
+            if plan["formatter"] is not None:
+                axis.set_major_formatter(plan["formatter"])
+            elif plan["labels"] is not None:
+                axis.set_major_formatter(mticker.FixedFormatter(plan["labels"]))
+            if plan["minor"] and ticks_drawn and plan["scale"] == "log10":
+                axis.set_minor_locator(mticker.LogLocator(base=10, subs=np.arange(2, 10), numticks=100))
+                axis.set_minor_formatter(mticker.NullFormatter())
+            elif plan["minor"] and ticks_drawn and plan["vals"] is not None:
+                step = plan["vals"][1] - plan["vals"][0]
+                axis.set_minor_locator(mticker.FixedLocator([t + step / 2 for t in plan["vals"][:-1]]))
+            else:
+                axis.set_minor_locator(mticker.NullLocator())
+        if spec.get("xrev"):
+            ax.invert_xaxis()
+        if spec.get("yrev"):
+            ax.invert_yaxis()
+        if grid and plain_style:
+            ax.grid(True, which="major", color="#d0d0d0", linewidth=0.6)
+        if frame == "L":
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+        for lab in ax.get_xticklabels() + ax.get_yticklabels():
+            lab.set_fontweight(weight)
+            lab.set_fontstyle(fstyle)
+        if spec.get("xrot") == 45:
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+        elif spec.get("xrot"):
+            plt.setp(ax.get_xticklabels(), rotation=spec["xrot"])
+        if spec.get("yrot"):
+            plt.setp(ax.get_yticklabels(), rotation=spec["yrot"], va="center")
+        if rng.random() < 0.4:
+            ax.set_title(str(rng.choice(["Measured response", "Figure 4", "Summary of results", "Trend"])))
+        ax.set_xlabel(str(rng.choice(["Group", "Category"]) if categorical
+                          else rng.choice(["Time", "Concentration (mg/L)", "Distance [km]", "x"])))
+        ax.set_ylabel(str(rng.choice(["Response", "Intensity (a.u.)", "Count", "y"])))
+        fig.tight_layout()
+        if crisp:
+            fig.canvas.draw()
+            (x0, y0), (x1, y1) = ax.get_position().get_points() * [fig.bbox.width, fig.bbox.height]
+            fw, fh = fig.bbox.width, fig.bbox.height
+
+            def snap(q: float) -> float:
+                return math.floor(q) + 0.5
+
+            ax.set_position([snap(x0) / fw, snap(y0) / fh, (snap(x1) - snap(x0)) / fw, (snap(y1) - snap(y0)) / fh])
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        truth = extract_truth(fig, ax, W, H, px_["scale"], py_["scale"], frame, "out", no_x_ticks=not ticks_drawn,
+                              no_y_ticks=not ticks_drawn)
+        notes = {k: a.get_offset_text().get_text() for k, a in (("x", ax.xaxis), ("y", ax.yaxis))
+                 if a.get_offset_text().get_text()}
+        plt.close(fig)
+    for key, plan in (("xAxis", px_), ("yAxis", py_)):
+        if plan["scale"] in ("categorical", "time-of-day"):  # positions only: these labels carry no values
+            for k, t in enumerate(truth[key]["ticks"]):
+                t["value"] = float(k)
+
+    img = Image.fromarray(rgba[:, :, :3])
+    tags = [f"x:{px_['scale']}", f"y:{py_['scale']}", f"kind:{kind}", "grid" if grid else "no-grid", f"frame:{frame}",
+            "ticks:out", "upright", "jpeg" if jpeg_q else "png", "crisp" if crisp else "antialiased",
+            "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high", "label-variety"]
+    variants = list(px_["tags"]) + [t for t in py_["tags"] if t not in px_["tags"]]
+    if spec.get("xrot"):
+        variants.append(f"label:rot{spec['xrot']}")
+    if spec.get("yrot"):
+        variants.append("label:y-rot90")
+    if spec.get("xrev") or spec.get("yrev"):
+        variants.append("label:reversed")
+    if "font" in spec and i != 124:
+        variants.append("label:" + ("bold" if weight == "bold" else "italic" if fstyle == "italic" else
+                                    {"Franklin Gothic Medium Cond": "condensed", "Consolas": "mono"}.get(family, "serif")))
+    if "em" in spec:
+        variants.append("label:tiny")
+    if "color" in spec:
+        variants += ["label:grey", "grey-axes"]
+    if "xcolor" in spec:
+        variants.append("label:coloured")
+    if not ticks_drawn:
+        variants += ["label:no-tickmarks", "x-no-tickmarks", "no-tickmarks"]
+    if style == "dark_background":
+        variants.append("label:dark-bg")
+    if any(plan["minor"] and ticks_drawn for plan in (px_, py_)):
+        variants.append("minor-ticks")
+    tags += [t for t in variants if t not in tags]
+    name = f"c{i:02d}"
+    ext = "jpg" if jpeg_q else "png"
+    doc = {
+        "image": f"{name}.{ext}",
+        "width": img.width,
+        "height": img.height,
+        "description": (f"Synthetic label-variety chart ({kind}; X labels: {spec['x']}, Y labels: {spec['y']}"
+                        + "".join(f", {k} {spec[k]}" for k in ("xrot", "yrot", "xrev", "yrev", "minus", "style") if k in spec)
+                        + (f"; axis notes {notes}" if notes else "")
+                        + f"), dpi {dpi}, font {family} {weight} {fstyle} {fontsize:.1f}pt" + (f", JPEG q{jpeg_q}" if jpeg_q else "")
+                        + ". Generated by bench/axes/generate.py."),
+        "tags": tags,
+        **truth,
+    }
+    return img, doc, jpeg_q
+
+
 def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str):
     """Ticks inside the view limits, placed on the axis line (pixel centres)."""
     a = ax.xaxis if axis == "x" else ax.yaxis
@@ -733,8 +1089,9 @@ def main() -> int:
         old.unlink()
     bad = 0
     total = 0
-    for i in list(range(COUNT)) + sorted(HANDLETTERED) + sorted(RANGE_FRAME):
-        img, doc, q = build_handlettered(i) if i in HANDLETTERED else build_range(i) if i in RANGE_FRAME else build(i)
+    for i in list(range(COUNT)) + sorted(HANDLETTERED) + sorted(RANGE_FRAME) + sorted(LABEL_VARIETY):
+        img, doc, q = (build_handlettered(i) if i in HANDLETTERED else build_range(i) if i in RANGE_FRAME
+                       else build_labels(i) if i in LABEL_VARIETY else build(i))
         name = doc["image"]
         if q:
             img.save(OUT / name, quality=q)
@@ -742,12 +1099,13 @@ def main() -> int:
         else:
             img.save(OUT / name, optimize=True)
         (OUT / f"c{i:02d}.json").write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
-        err = self_check(img, doc)
+        # Light lines on a dark background: the check measures darkness, so look at the negative.
+        err = self_check(Image.eval(img, lambda p: 255 - p) if "label:dark-bg" in doc["tags"] else img, doc)
         total += (OUT / name).stat().st_size
         flag = "" if err <= 0.35 else "  <-- truth check FAILED"
         bad += err > 0.35
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} truth-check {err:4.2f}px  {' '.join(doc['tags'])}{flag}")
-    print(f"{COUNT + len(HANDLETTERED) + len(RANGE_FRAME)} charts, {total / 1e6:.2f} MB of images")
+    print(f"{COUNT + len(HANDLETTERED) + len(RANGE_FRAME) + len(LABEL_VARIETY)} charts, {total / 1e6:.2f} MB of images")
     return 1 if bad else 0
 
 
