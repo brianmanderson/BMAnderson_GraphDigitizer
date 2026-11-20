@@ -1731,6 +1731,97 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   for marker-sized bars, 4–5 px above the centres; the compact-family rule above gives them back
   to Find points (7/7, 10/11 as before), with no bar or path trace changing.
 
+- **Stroke and open markers (2026-11-20; 675 traces)**: round two on the two marker types round
+  one barely moved — thin "x"/"+" (precision 48 %: x among dots of their colour over-counted;
+  kind 43 %: x on a line, a dashed curve or a gridline read as a curve) and open markers (scan
+  rings 36 % recall). Corpus first: l290–l301 (`MARK_CHARTS2` in `generate.py`, `build_marks`,
+  `scenario:marker-lines`, 29 series): several open shapes of one colour in black and white, open
+  markers with error bars or with the line showing through them (`fill:hollow`), thin "x" and "+"
+  on lines, at 6–7 px, in JPEG at 72–96 dpi, among dots of their colour, with error bars. Honest
+  baseline committed first (l00–l229 byte-identical, 0 of 646 earlier entries changed); thin
+  x/+ on lines read as curves there (8 of 29 series).
+  - *Stroke markers by their arms* (`cross.ts`, new): (1) *ink profile* — mean coverage along 16
+    rays from the centre over the arms (0.4–1 of half the blob + 1 px): an "x" has four troughs
+    between its diagonals, a "+" four where the "x" has peaks, a dot or filled shape none. In the
+    busy blob match (`matchMarkers`), when the clicked small marker has that pattern (≥ 4 trough
+    rays ≤ 0.65 of the strongest, ≥ 4 arm rays ≥ 0.85) and the plot has look-alikes — ≥ 25
+    compact blobs of the colour, ≥ 0.3 of its area and no larger, without its pattern, and at
+    least a quarter as many as its markers (single matches + merged ink in markers' areas) —
+    single matches and every copy placed in a cluster must correlate with its profile (Pearson
+    ≥ 0.5 at the best of 9 centres within ½ px, arms ≥ ½ as inked). Without look-alikes nothing
+    changes (crowded "+" lose more to the test than they gain). (2) *Geometry* — for a stroke
+    marker on a line no blob test sees: `crossAtSeed` looks for a centre on ink within 8 px of
+    the click (on pixels and between them: a thin "x" about a pixel corner has its arms half a
+    pixel off every pixel centre's diagonals), any angle in 3° steps, with four arms whose
+    lengths agree within 35 % (the shortest three: a line may run on along one pair), strokes of
+    alike width (halfway out all four within 2×, or 0.7 out three of them) no wider than ½ the
+    arm, arms inked all along (weakest sample ≥ ½: a ray leaving a thick line beside it is not),
+    ≥ 3 arms ending (1.5–3 px past the tip ≤ 0.3) with ≥ 2 free tips (nothing beside the tip: a
+    square's side ends at corners), ≥ 3 gaps clear (45° between arms, from ½ the stroke width
+    out, ≤ 0.4 of the arms; 2 when the other two are one line through it) and the click within
+    the arm length + 1.5 px. `findCrosses` then judges every ink pixel (and, for arms ≤ 2 px wide,
+    the points half a pixel right / below) at that angle and arm length: arms ≥ ½ as inked,
+    3 arms ending (2 when the two that run on are opposite and the two that end have free tips),
+    2 gaps clear; peaks closer than the arm length are one marker; the centre is refined in ¼-px
+    steps to the strongest arms; legend samples dropped (`withoutLegendSamples`, the rule
+    `findMarkers` uses). Hooked in `index.ts` before the marker branch: in auto/markers mode when
+    the trace would be a curve, the blob is not small and no shape was cut, or the shape cut is a
+    filled one or an open one with a tiny inside (a thick "x" opened into a filled shape with
+    concave corners, the pocket between an "x" and its line) — never over an open marker with a
+    real inside, nor a small marker standing alone (the blob match and its profile test). Auto
+    mode needs ≥ 3 found; markers mode 1.
+  - *Open markers with a line through them* (`markers.ts`): an open template with an inside of
+    ≥ 12 px clear of its ring (`roomy`) is matched by its ring's *core* (pixels within a pixel of
+    its ridge, depth measured in the ring band alone: a stroke merged with the clicked ring is no
+    part of it) — a scanned ring a pixel thinner in places no longer misses a fifth of its ink.
+    Inside such a template, ink that is one straight stroke (PCA: ≤ 0.35 of the marker wide,
+    spanning ≥ 0.7 of the inside) and *runs on* outside the ring on one side at least (a cap or
+    mark inside a ring does not) is unknown, not fill, and the anchor may be on it; a hit that
+    needed this (`through`) and fits the outline only roughly must agree on ≥ 0.6 of it (a ring of
+    another shape with a line through it fits as well). The clicked marker's own inside, when a
+    line splits it, is the convex hull of its pieces (`wholeInside`: pieces within the clicked
+    piece's size of it and ≤ 3× its area, hull ≤ 1.7× the pieces, what the hull adds ink and one
+    straight band) — a D-shaped template from a ring the curve runs through missed every clean
+    ring.
+  - *Results* (honest baseline → now): OVERALL kind 95.9 → 98.4 %, marker recall 78.2 → 79.2 %,
+    precision 84.5 → 91.1 %, wrong group 8.9 → 2.6 %; curve metrics unchanged (no curve trace
+    moves); time per trace unchanged within load noise (scans 571 → 518 ms mean). By marker type:
+    `marker:x` kind 43.5 → 100 %, recall 66.5 → 72.8 %, precision 49.3 → 92.0 %, wrong group
+    42.0 → 0.7 %; `marker:plus` kind 71.4 → 100 %, recall 74.9 → 75.4 %; `fill:open` recall
+    81.5 → 83.7 %, precision 74.1 → 75.4 %; `fill:hollow` precision 68.9 → 75.0 %;
+    `scenario:scan-grid` kind 80.0 → 93.3 %, recall 30.2 → 68.2 %, precision 29.2 → 67.8 %;
+    `scenario:busy-scatter` precision 85.1 → 93.0 %, wrong group 10.9 → 2.6 %, recall 76.5 →
+    76.3 %; `scenario:marker-lines` kind 72.4 → 96.6 %, recall 78.5 → 96.0 %; `layout:on-line`
+    kind 78.4 → 97.3 %, recall 80.1 → 95.2 %; `errorbars` kind 95 → 100 %, recall 87.5 → 98.4 %.
+    On the earlier corpus alone (l00–l229): thin "x" recall 66.9 → 71.2 %, precision 48.0 →
+    91.3 %, wrong group 43.0 → 0.8 %; scan "x" 26.2 → 80.4 % / 17.8 → 60.1 %; scan rings recall
+    36.1 → 50.0 %, precision 92.9 → 97.3 %; open markers recall 76.6 → 79.4 %.
+    31 traces change: 28 strictly better (every scan "x" series found, `l126/s4` 6/7 of 61 →
+    7/7 of 7, `l127/s4` 8/11 of 27 → 9/11 of 9, scan rings `l119/s3` 1 → 3, `l120/s3` 3 → 6,
+    `l124/s3` 3 → 5, `l127/s3` 3 → 5 of 6–7; `l169` thin x / + 0 → 9/9, 7/7). Trade-offs:
+    `l137/s3` (x among 760 dots) 79/87 of 691 (610 wrong) → 64/87 of 65 (1 wrong), `l138/s5`
+    42/59 of 135 (92 wrong) → 41/59 of 48 (6 wrong) — the x merged with a dot fails the profile
+    test; `l292/s1` (new chart: hollow squares with a line through every marker) 8/8 of 11 →
+    of 12, a fourth hollow circle taken. Gated rows that dip for these: busy / `frame:range` /
+    `small-markers` / `linear` recall (−0.2 to −0.3 pt, l137), and `caps` / `errorbars` /
+    `errorbars:y` / `layout:scatter` precision and wrong group (−0.1 to −0.6 pt: `l299/s1` and
+    `l291/s0` go from no or fewer markers to 12/12 of 13, 8/8 of 9, each with one wrong).
+  - *Tried and rejected*: the lopsided-hit allowance of filled templates for open ones (+2 scan
+    rings, 9 hatch pockets in `l228/s1`); requiring every gap clear on half the rays for the
+    profile test (dot clusters split into "x" copies) or correlation ≥ 0.3–0.4 (more dots than x
+    regained); a two-class test against the look-alikes' median profile (no gain on l137, worse on
+    l138); a clean-outline requirement (agree ≥ 0.75, arc ≥ ½) for line-through hits (gave back
+    most scan rings and `l297/s0`); rejecting line-through hits that disagree over ≥ 3 stretches
+    (lost true rings whose crossing line breaks the outline); free arm tips for found crosses
+    (scan "x" tips touch dashes and gridlines) — kept for the clicked one only, 2 of 3.
+  - *Known failures*: an "x" merged with a dot of its colour fails the profile test (`l137/s3`
+    recall 74 %); scan rings crossed by two lines, or whose ring is broken by the scan, still miss
+    (scan ring recall 50 %); a hollow circle with a line through it can pass for a hollow square
+    of its size (`l292`); an "x" on its error bar can pass for a "+" of the same size (`l299/s1`,
+    one); a scan "x" next to a dash crossing gives one extra find (`l121/s4`); stroke markers of
+    ≤ 4 px on a line are not found by their arms (an arm is ≥ 2 px), nor are "x" with fewer than
+    two free arm tips (all touching other ink).
+
 ## Auto-trace — UI
 
 The tracing engine (`traceLine` in `src/auto/trace/`) and its benchmark are specified separately;

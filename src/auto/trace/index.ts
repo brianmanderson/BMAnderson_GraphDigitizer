@@ -37,7 +37,8 @@ import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
 import { followStroke, mayDoubleBack, pickPoints, takesOver } from './follow.ts';
 import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
-import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
+import { crossAtSeed, findCrosses } from './cross.ts';
+import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, roomy, withoutLegendSamples, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { findRulings } from './rulings.ts';
@@ -372,6 +373,24 @@ export function traceLine(req: TraceRequest): TraceResult {
         const loop = follow();
         if (!(loop && loop.closed && takesOver(loop, null, region.x1 - region.x0 + 1, markerMax))) kind = 'markers';
       }
+    }
+  }
+  // A stroke marker ("x", "+") drawn on a line, a gridline or a dashed curve of its colour is one
+  // blob with them and no shape is cut out of it: found by its arms instead (cross.ts) — in auto
+  // mode when it is found three times or more.
+  // Its arms come first also over a shape cut out of it (a thick "x" opened into a filled shape
+  // with concave corners, the tiny pocket between an "x" and its line taken for an open marker),
+  // never over an open marker with a real inside, nor a small marker standing alone (the blob
+  // match, with its own stroke test for crowded plots).
+  if (req.mode !== 'curve' && !(shape && roomy(shape)) && (kind === 'curve' || !small || shape)) {
+    const cov = (x: number, y: number) => {
+      const a = alpha[y * w + x] ?? -1;
+      return a <= 0 ? 0 : a < 1 ? a : 1;
+    };
+    const cross = crossAtSeed(cov, region, s.x, s.y, markerMax / 2);
+    const crosses = cross ? withoutLegendSamples(alpha, other, region, findCrosses(cov, region, cross), 2 * cross.len) : [];
+    if (crosses.length >= (req.mode === 'markers' ? 1 : 3)) {
+      return result({ ok: true, kind: 'markers', style: 'unknown', color, path: crosses, points: crosses.map((p) => ({ ...p })) });
     }
   }
   if (kind === 'markers') {
