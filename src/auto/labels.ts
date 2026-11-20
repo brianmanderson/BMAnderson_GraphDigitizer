@@ -238,8 +238,39 @@ function median(xs: number[]): number {
   return s.length ? (s[s.length >> 1] as number) : 0;
 }
 
+/**
+ * A decimal point between two digits of one word: in the columns between `a` and `b` (glyphs of
+ * a row of body height `h`, baseline `baseline`) there is ink in the baseline zone — however faint,
+ * and whether or not it survived as a component (a 1-px point is one pixel: components need two) —
+ * at most 0.4 text heights wide, and none above it. Small text puts the digits on either side of a
+ * point further apart than the word gap, so without this the word splits at its point and only the
+ * digit next to the axis is kept: "0.8" read as "8".
+ */
+function pointBetween(p: Patch, a: Glyph, b: Glyph, baseline: number, h: number): boolean {
+  const x0 = Math.min(a.x1, b.x1) + 1;
+  const x1 = Math.max(a.x0, b.x0) - 1;
+  if (x1 < x0) return false;
+  const top = Math.max(0, Math.round(baseline - h));
+  const zone = baseline - 0.3 * h;
+  const bottom = Math.min(p.height - 1, Math.round(baseline + 0.35 * h));
+  let first = -1;
+  let last = -1;
+  for (let x = x0; x <= x1; x++) {
+    for (let y = top; y <= bottom; y++) {
+      if ((p.dark[y * p.width + x] ?? 0) < POINT_INK) continue;
+      if (y < zone) return false;
+      if (first < 0) first = x;
+      last = x;
+    }
+  }
+  return first >= 0 && last - first + 1 <= Math.max(1, 0.4 * h);
+}
+
+/** Darkness of a decimal point's ink (a 1-px point is antialiased; INK_THRESHOLD is 24). */
+const POINT_INK = 0.5 * INK_THRESHOLD;
+
 /** Rows of text → words, nearest row to the axis first (rows sorted by top). */
-function words(glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): LabelWord[][] {
+function words(p: Patch, glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): LabelWord[][] {
   // Solid roughly square blobs are markers (scatter points, legend swatches), not glyphs:
   // digit strokes fill well under 80 % of their box.
   const blob = (g: Glyph) => gh(g) >= BODY_MIN_HEIGHT && gw(g) >= 0.6 * gh(g) && gw(g) <= 1.6 * gh(g) && g.n >= 0.8 * gw(g) * gh(g);
@@ -278,6 +309,15 @@ function words(glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): Labe
     const gap = Math.max(2, 0.5 * height);
     // Y labels are right-aligned at the axis: grow words from the axis side.
     const sorted = [...r.glyphs].sort((a, b) => (fromRight ? b.x1 - a.x1 : a.x0 - b.x0));
+    // The word's body glyph next to `g`, and whether a point stands between the two.
+    const pointAcross = (wd: LabelWord, g: Glyph) => {
+      if (gh(g) < BODY_MIN_HEIGHT) return false;
+      const bodies = wd.glyphs.filter((q) => gh(q) >= BODY_MIN_HEIGHT);
+      if (bodies.length === 0) return false;
+      const edge = bodies.reduce((a, b) => (fromRight ? (b.x0 < a.x0 ? b : a) : b.x1 > a.x1 ? b : a));
+      const baseline = Math.max(edge.y1, g.y1);
+      return Math.abs(edge.y1 - g.y1) <= 1 && pointBetween(p, edge, g, baseline, Math.max(gh(edge), gh(g)));
+    };
     const out: LabelWord[] = [];
     // (A word that so far is only a minus sign has no height: the digit after it always fits.)
     const bodyHeight = (wd: LabelWord) => Math.max(0, ...wd.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT && !dash(g)).map(gh));
@@ -289,7 +329,9 @@ function words(glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): Labe
       const hw = last ? bodyHeight(last) : 0;
       const outside = last ? Math.min(last.y0 - g.y0, g.y1 - last.y1) : 0;
       const fits = hw === 0 || gh(g) < BODY_MIN_HEIGHT || gh(g) <= 1.4 * hw || outside <= 0.25 * hw;
-      if (last && dist <= gap && fits) {
+      // Across a wider gap only to the digit beyond a decimal point (at most a text height away).
+      const near = (d: number) => d <= gap || (d <= Math.max(gap, height) && pointAcross(last as LabelWord, g));
+      if (last && near(dist) && fits) {
         last.glyphs.push(g);
         last.x0 = Math.min(last.x0, g.x0);
         last.x1 = Math.max(last.x1, g.x1);
@@ -790,7 +832,7 @@ function labelsWith(
   }
   const glyphs = components(p, inkThreshold(p)).filter((g) => glyphChroma(p, g) < MAX_LABEL_CHROMA);
   // Y labels are aligned at the axis: words grow from the axis side.
-  const rows = words(glyphs, maxTextHeight, which === 'y' && !flipped);
+  const rows = words(p, glyphs, maxTextHeight, which === 'y' && !flipped);
   // X rows nearest the axis first.
   const xRows = flipped ? [...rows].reverse() : rows;
   // Distance of a Y word's near edge from the axis side of the patch.
@@ -957,7 +999,7 @@ function labelsWith(
       const q = makePatch(map, img, frame, flipped ? line.offset - 11 * h : line.offset - 3 * h, line.start - 3 * h, 14 * h, 3 * h - 1);
       // A fixed low threshold: a dark title beside a small grey note would set an adaptive one
       // so high that the note falls apart.
-      const qRows = words(components(q, 1.5 * INK_THRESHOLD).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA), maxTextHeight, false);
+      const qRows = words(q, components(q, 1.5 * INK_THRESHOLD).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA), maxTextHeight, false);
       // Above a Y axis that meets a top X axis runs the X labels' row: a word centred on that row
       // is an X label (one at the corner often has no tick of its own), not a note. A note
       // squeezed in beside it (matplotlib's, between the labels and the axis) is off-centre.

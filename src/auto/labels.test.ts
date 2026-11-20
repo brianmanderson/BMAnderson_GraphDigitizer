@@ -224,3 +224,88 @@ describe('findLabels on old-scan look-alikes (synthetic c70, c75: hand-lettered 
     expect([...upright.x.labels, ...upright.y.labels].some((l) => l.slanted)).toBe(false);
   });
 });
+
+describe('findLabels keeps a 1-px decimal point inside its word (small fonts)', () => {
+  // 5×9 digits, as small labels are drawn at ~96 dpi.
+  const DIGITS: Record<string, string[]> = {
+    '0': [' ### ', '#   #', '#   #', '#   #', '#   #', '#   #', '#   #', '#   #', ' ### '],
+    '2': [' ### ', '#   #', '    #', '   # ', '  #  ', ' #   ', '#    ', '#    ', '#####'],
+    '4': ['   # ', '  ## ', ' # # ', '#  # ', '#  # ', '#####', '   # ', '   # ', '   # '],
+    '6': [' ### ', '#    ', '#    ', '#### ', '#   #', '#   #', '#   #', '#   #', ' ### '],
+    '8': [' ### ', '#   #', '#   #', ' ### ', '#   #', '#   #', '#   #', '#   #', ' ### '],
+  };
+  /**
+   * A left Y axis at x = 80 with ticks every 40 px, labelled "0.0" … "0.8": the point is one dark
+   * pixel on the baseline, alone in the middle of a 5-column gap — wider than half the text height,
+   * so without the point the word splits there and only the digit next to the axis is kept ("0.8"
+   * read as "8": the axis comes out ten times too large).
+   */
+  function chart(): { img: RgbaImage; det: Parameters<typeof findLabels>[2] } {
+    const width = 220;
+    const height = 220;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    const ink = (x: number, y: number) => data.fill(0, (y * width + x) * 4, (y * width + x) * 4 + 3);
+    const axisX = 80;
+    for (let y = 10; y <= 200; y++) ink(axisX, y);
+    for (let x = axisX; x <= 210; x++) ink(x, 200);
+    const values = ['0.8', '0.6', '0.4', '0.2', '0.0'];
+    const ticks = values.map((_, i) => 30 + 40 * i);
+    values.forEach((text, i) => {
+      const cy = ticks[i] as number;
+      for (let x = axisX - 4; x < axisX; x++) ink(x, cy);
+      // Right-aligned 4 px left of the tick: digit, 5-column gap with the point, digit.
+      const right = axisX - 8;
+      const draw = (d: string, x0: number) =>
+        (DIGITS[d] as string[]).forEach((row, r) => [...row].forEach((c, k) => c === '#' && ink(x0 + k, cy - 4 + r)));
+      draw(text[2] as string, right - 4);
+      ink(right - 4 - 3, cy + 4);
+      draw(text[0] as string, right - 4 - 5 - 5);
+    });
+    const line = (family: 'vertical' | 'horizontal', offset: number, start: number, end: number) => ({
+      family,
+      offset,
+      start,
+      end,
+      p1: family === 'vertical' ? { x: offset, y: start } : { x: start, y: offset },
+      p2: family === 'vertical' ? { x: offset, y: end } : { x: end, y: offset },
+      length: end - start,
+      contrast: 255,
+      thickness: 1,
+      strength: end - start,
+    });
+    const tickSet = (pts: { x: number; y: number }[], along: (p: { x: number; y: number }) => number) => ({
+      ticks: pts.map((p) => ({ point: p, along: along(p), length: 4, kind: 'major' as const, confidence: 1 })),
+      spacing: 40,
+      pattern: 'even' as const,
+      side: 'outside' as const,
+      confidence: 1,
+      rejected: [],
+    });
+    const det = {
+      width,
+      height,
+      skewDegrees: 0,
+      xAxis: { line: line('horizontal', 200, 80, 210), position: 'bottom' as const, confidence: 1, ticks: tickSet([], (p) => p.x) },
+      yAxis: {
+        line: line('vertical', axisX, 10, 200),
+        position: 'left' as const,
+        confidence: 1,
+        ticks: tickSet(ticks.map((y) => ({ x: axisX, y })), (p) => p.y),
+      },
+      plotBox: null,
+      candidates: { horizontal: [], vertical: [] },
+    };
+    return { img: { width, height, data }, det };
+  }
+
+  it('reads "0.8" as one word with its point, not as "8"', () => {
+    const { img, det } = chart();
+    const f = findLabels(darknessMap(img), img, det);
+    expect(f.y.labels).toHaveLength(5);
+    for (const l of f.y.labels) {
+      // Both digits and the point: 5 + 5 + 5 px.
+      expect(l.box.width).toBeGreaterThanOrEqual(15);
+      expect(l.marks.points).toHaveLength(1);
+    }
+  });
+});
