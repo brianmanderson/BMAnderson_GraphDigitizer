@@ -132,9 +132,9 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
     let guessed = false;
     // A lone "1" as an exponent often comes back empty, but not beside its base at the same
     // scale ("10" + "1" reads "101"). A second guess: below the confidence that makes a ref.
-    // An exponent 2–4 px tall that comes back empty: its own crop at a smaller upscale, read on its
-    // own. A second guess like the one beside the base below.
-    if ((exp === '' || exp === '-') && l.exponentSmall) {
+    // An exponent 2–4 px tall that comes back without a digit (empty, "-", "."): its own crop at a
+    // smaller upscale, read on its own. A second guess like the one beside the base below.
+    if (!/\d/.test(exp) && l.exponentSmall) {
       const s = await ocr.recognize(l.exponentSmall, { charset: 'numeric', singleChar: l.exponentSingleChar });
       const t = s.text.trim().replace(/^[-−–]/, '');
       if (/^\d{1,2}$/.test(t)) {
