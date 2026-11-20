@@ -92,6 +92,25 @@ function reconcile(n: OcrLabel, t: OcrLabel, l: FoundLabel): OcrLabel {
   return n;
 }
 
+/** Space between a base and its exponent read together, px of the (upscaled) crops. */
+const JOIN_GAP = 8;
+/** Confidence cap of an exponent read beside its base (refs need 0.75). */
+const JOINED_CONFIDENCE = 0.7;
+
+/** Two crops side by side, vertically centred, `gap` px apart, on white. */
+function beside(a: RgbaImage, b: RgbaImage, gap: number): RgbaImage {
+  const height = Math.max(a.height, b.height);
+  const width = a.width + gap + b.width;
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  const put = (img: RgbaImage, x0: number) => {
+    const y0 = Math.round((height - img.height) / 2);
+    for (let j = 0; j < img.height; j++) data.set(img.data.subarray(j * img.width * 4, (j + 1) * img.width * 4), ((j + y0) * width + x0) * 4);
+  };
+  put(a, 0);
+  put(b, a.width + gap);
+  return { width, height, data };
+}
+
 /** Numeric reading of one label: exponent joined, a dropped minus sign restored. */
 async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
   if (l.base && l.exponent) {
@@ -99,8 +118,28 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
       ocr.recognize(l.base, { charset: 'numeric', singleChar: false }),
       ocr.recognize(l.exponent, { charset: 'numeric', singleChar: l.exponentSingleChar }),
     ]);
-    const exp = fixSign(e.text, l.exponentMinus);
-    return { text: `${restorePoints(fixSign(b.text, l.minus), l.marks)}^${exp}`, confidence: conf(Math.min(b.confidence, e.confidence)) };
+    // A power's base is 10 (or m×10). Anything else was no base + exponent: a digit standing a
+    // little high ("-4993", a monospace "70", "100000") was taken for one. Read the word whole —
+    // unless that reads "10…": a power whose base was misread ("10-", "0") reads whole as "102" for
+    // 10⁻², and three of those (102, 101, 100) would agree on a line.
+    if (!/(^|[x×*·])10$/.test(b.text.trim().replace(/^[-−–]/, ''))) {
+      const r = await ocr.recognize(l.crop, { charset: 'numeric', singleChar: l.singleChar });
+      if (!/^[-−–+]?10/.test(r.text.trim())) return withMarks(r.text, conf(r.confidence), l);
+      return { text: `${b.text.trim()}^${e.text.trim()}`, confidence: 0 };
+    }
+    let exp = e.text.trim();
+    let confidence = Math.min(b.confidence, e.confidence);
+    // A lone "1" as an exponent often comes back empty, but not beside its base at the same
+    // scale ("10" + "1" reads "101"). A second guess: below the confidence that makes a ref.
+    if (exp === '' || exp === '-') {
+      const j = await ocr.recognize(beside(l.base, l.exponent, JOIN_GAP), { charset: 'numeric', singleChar: false });
+      const t = j.text.trim();
+      if (t.startsWith(b.text.trim()) && t.length > b.text.trim().length) {
+        exp = t.slice(b.text.trim().length);
+        confidence = Math.min(b.confidence, j.confidence, JOINED_CONFIDENCE);
+      }
+    }
+    return { text: `${restorePoints(fixSign(b.text, l.minus), l.marks)}^${fixSign(exp, l.exponentMinus)}`, confidence: conf(confidence) };
   }
   const r = await ocr.recognize(l.crop, { charset: 'numeric', singleChar: l.singleChar });
   return withMarks(r.text, conf(r.confidence), l);
