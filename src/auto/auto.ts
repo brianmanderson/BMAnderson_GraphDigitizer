@@ -14,7 +14,7 @@ import { darknessMap } from './darkness.ts';
 import { detectAxesInMap } from './detect.ts';
 import { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
 import { parseAxisNote, parseNumberLabel, restorePoints, splitAffixes } from './parseLabel.ts';
-import { crossCheck, suggestAxis, type AutoCalibration, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
+import { crossCheck, logLattice, suggestAxis, type AutoCalibration, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
 import type { AxisDetection, RgbaImage } from './types.ts';
 
 export type OcrCharset = 'numeric' | 'text';
@@ -180,6 +180,7 @@ function readingBase(det: AxisDetection, labels: AxisLabels): Omit<AxisReading, 
     line: ax ? { p1: ax.line.p1, p2: ax.line.p2 } : null,
     tickPoints: ticks.length ? ticks.map((t) => t.point) : onGrid.length >= 2 ? onGrid.map((l) => l.point) : [],
     positionsFrom: ticks.length ? 'ticks' : 'gridlines',
+    lattice: ax && labels.mode === 'ticks' ? logLattice(ax.ticks) : null,
   };
 }
 

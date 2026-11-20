@@ -26,7 +26,7 @@
 import { calibrate, formatDateTime, forward, type CalibrationRefs, type ScaleType } from '../core/index.ts';
 import type { AxisLabels } from './labels.ts';
 import { parseAxisNote, parseNumberLabel, parseDateToken, resolveDateLabels, type LabelToken } from './parseLabel.ts';
-import type { AxisDetection, Point } from './types.ts';
+import type { AxisDetection, Point, TickSet } from './types.ts';
 
 /** One label as read, with how it fits the suggestion. */
 export interface ReadLabel {
@@ -346,6 +346,80 @@ export interface AxisReading {
   positionsFrom?: 'ticks' | 'gridlines';
   /** The OCR'd offset/multiplier note at the axis end, if one was found. */
   note: OcrLabel | null;
+  /** The log tick lattice of the axis's marks, when they show one (`logLattice`). */
+  lattice?: LogLattice | null;
+}
+
+/**
+ * What a log axis's tick marks say on their own, before any label is read: minor ticks at
+ * log10(2…9) of every major interval make each interval one decade, `decadePx` long, and they
+ * crowd towards the larger end of each decade, which tells which way the values grow
+ * (`ascending`: with increasing `along`).
+ */
+export interface LogLattice {
+  decadePx: number;
+  ascending: boolean;
+}
+
+const LOG_FRACTIONS = [2, 3, 4, 5, 6, 7, 8, 9].map((k) => Math.log10(k));
+
+/**
+ * The log lattice of a tick set (see `LogLattice`): only for a 'log' pattern with a spacing and at
+ * least four minors, of which ≥ 80 % sit at log10(2…9) counted from one end of their interval and
+ * at most half from the other (on a near-symmetric set the direction is not told).
+ */
+export function logLattice(ticks: TickSet): LogLattice | null {
+  const p = ticks.spacing;
+  if (ticks.pattern !== 'log' || !p || p <= 0) return null;
+  const majors = ticks.ticks.filter((t) => t.kind === 'major').map((t) => t.along).sort((a, b) => a - b);
+  const minors = ticks.ticks.filter((t) => t.kind === 'minor').map((t) => t.along);
+  if (majors.length < 2 || minors.length < 4) return null;
+  const first = majors[0] as number;
+  const tol = Math.max(1.5 / p, 0.012);
+  let fwd = 0;
+  let back = 0;
+  for (const m of minors) {
+    const f = ((((m - first) / p) % 1) + 1) % 1;
+    if (LOG_FRACTIONS.some((l) => Math.abs(f - l) <= tol)) fwd++;
+    if (LOG_FRACTIONS.some((l) => Math.abs(1 - f - l) <= tol)) back++;
+  }
+  const n = minors.length;
+  if (fwd >= 0.8 * n && back <= 0.5 * n) return { decadePx: p, ascending: true };
+  if (back >= 0.8 * n && fwd <= 0.5 * n) return { decadePx: p, ascending: false };
+  return null;
+}
+
+/**
+ * A log fit whose slope the tick lattice fixes (`LogLattice`): one decade per major interval,
+ * growing the way the minors say, so only the offset is unknown and each label read as an exact
+ * power of ten on a major tick proposes one. The offset most labels agree on (within `tol`) wins
+ * when at least two do and no other offset has as many. At least one of them must be read outright
+ * (not guessed beside its base), and no confidently read decade may disagree: with the lattice as
+ * the only other witness, a confident contrary reading leaves it undecided. A misread exponent puts
+ * its label a whole decade off the lattice, so it cannot agree by chance.
+ */
+function latticeFit(lat: LogLattice, labels: AxisLabels['labels'], alongs: number[], texts: OcrLabel[], tol: number): Fit | null {
+  const b = lat.ascending ? lat.decadePx : -lat.decadePx;
+  const exps = texts.map((t, k) => {
+    const tick = labels[k]?.tick;
+    if (tick === null || tick === undefined || (t.alternatives?.length ?? 0) > 0) return null;
+    const v = parseNumberLabel(t.text)?.value;
+    if (v === undefined || !(v > 0)) return null;
+    const e = Math.log10(v);
+    return Math.abs(e - Math.round(e)) < 1e-9 ? Math.round(e) : null;
+  });
+  const offsets = exps.map((e, k) => (e === null ? null : (alongs[k] as number) - b * e));
+  const groups = offsets.flatMap((o) => (o === null ? [] : [offsets.flatMap((q, j) => (q !== null && Math.abs(q - o) <= tol ? [j] : []))]));
+  const size = Math.max(0, ...groups.map((g) => g.length));
+  const largest = [...new Set(groups.filter((g) => g.length === size).map((g) => g.join()))];
+  if (size < 2 || largest.length !== 1) return null;
+  const best = (largest[0] as string).split(',').map(Number);
+  if (!best.some((k) => !texts[k]?.guessed)) return null;
+  const contrary = exps.some((e, k) => e !== null && !best.includes(k) && !texts[k]?.guessed && (texts[k]?.confidence ?? 0) >= 0.75);
+  if (contrary) return null;
+  const a = mean(best.map((k) => offsets[k] as number));
+  const values = exps.map((e) => (e === null ? null : Number(`1e${e}`)));
+  return { scale: 'log10', a, b, inliers: best, values, power: 0, inferred: [], resolved: [] };
 }
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 0);
@@ -363,6 +437,8 @@ interface AxisFit {
   unreadNote: string | null;
   /** The offset/multiplier applied to the numeric fit's values, if any. */
   note: { multiplier: number; offset: number } | null;
+  /** The fit's slope came from the log tick lattice (`latticeFit`). */
+  lattice?: boolean;
 }
 
 /**
@@ -381,7 +457,13 @@ export function fitAxis(r: AxisReading): AxisFit {
   const usable = (ts: OcrLabel[]) =>
     ts.map((t, i) => (r.labels.labels[i]?.clipped || r.labels.labels[i]?.partial ? { text: '', confidence: 0 } : t));
   const num = numericFit(alongs, usable(r.numeric), tol, r.logHint, note);
-  const best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote, note };
+  let best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote, note };
+  // Fewer than three labels agree, but the tick marks form a log lattice: its decades stand in
+  // for the missing labels (a log axis over two decades shows only two).
+  if (r.lattice && !r.note && r.labels.mode === 'ticks' && (num.fit?.inliers.length ?? 0) < 3) {
+    const lf = withUnreadExponents(latticeFit(r.lattice, r.labels.labels, alongs, usable(r.numeric), tol), alongs, r.numeric, tol);
+    if (lf) best = { fit: lf, certain: true, texts: r.numeric, reason: null, unreadNote, note, lattice: true };
+  }
   if (r.text) {
     // Dates increase to the right on X; on Y (rare) upwards, i.e. with decreasing w.
     const d = dateFit(alongs, usable(r.text), tol, r.labels.axis === 'x');
@@ -419,7 +501,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   const axis = r.labels.axis;
   const alongs = r.labels.labels.map((l) => l.along);
   const tol = tolerance(alongs, r.labels.mode);
-  const { fit, certain, texts, reason, unreadNote, note } = fitAxis(r);
+  const { fit, certain, texts, reason, unreadNote, note, lattice } = fitAxis(r);
   const labels: ReadLabel[] = r.labels.labels.map((l, i) => ({
     along: l.along,
     point: l.point,
@@ -474,7 +556,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   const readable = fit ? fit.values.filter((v) => v !== null).length : 0;
   const clipped = r.labels.labels.filter((l) => l.clipped).length;
   const partial = r.labels.labels.filter((l) => l.partial).length;
-  if (!fit || fit.inliers.length < 3) {
+  if (!fit || (fit.inliers.length < (lattice ? 2 : 3))) {
     return fallback(
       readable < 3
         ? `Only ${readable} of ${labels.length} labels could be read as values` +
@@ -511,7 +593,9 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   // other one is a factor of ten off the line.)
   const read = fit.inliers.filter((k) => !fit.inferred.includes(k) && !texts[k]?.guessed);
   const strong = read.filter((k) => (labels[k] as ReadLabel).confidence >= 0.75);
-  const pool = strong.length >= 2 ? strong : read;
+  // On a lattice fit a label read beside its base agrees with the lattice like any other: it may
+  // make the pair when only one label was read outright.
+  const pool = strong.length >= 2 ? strong : read.length >= 2 || !lattice ? read : fit.inliers.filter((k) => !fit.inferred.includes(k));
   let pair: [number, number] = [pool[0] as number, pool[1] as number];
   for (const i of pool) {
     for (const j of pool) {
@@ -563,6 +647,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
     maxResidualPx: maxInlierResidual,
     message:
       `${k} of ${labels.length} labels agree on a ${scaleWord} scale${certain ? '' : ' (scale uncertain)'}` +
+      (lattice ? ', one decade per major tick as the log minor ticks show' : '') +
       (outliers > 0 ? `; ${outliers} disagree${outliers === 1 ? 's' : ''}` : '') +
       `; largest error ${maxInlierResidual.toFixed(1)} px.` +
       (fit.inferred.length > 0 ? ` ${fit.inferred.length} unread exponent${fit.inferred.length === 1 ? '' : 's'} inferred from position.` : '') +
