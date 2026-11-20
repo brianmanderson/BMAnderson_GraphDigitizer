@@ -1322,6 +1322,129 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   read as a dull grey-blue, so the walk follows other ink either way) stops after 6 points instead
   of running 76 wrong ones (coverage 12.1 → 0.9 %; busy-scatter p95 28.1 → 1.9 px only because
   its wrong points no longer count); the other 53 busy-scatter traces are unchanged.
+- **New kinds: curves that double back, and bars (2026-11-19, `new-kinds`).** Two kinds the
+  column walker cannot do at all, each in its own file with a small hook in `index.ts`; both take
+  over only where the old code fails, and every one of the 397 earlier per-trace baseline entries
+  is unchanged.
+  - *Curves that double back* (`follow.ts`): closed loops (hysteresis M–H and P–E loops, cyclic
+    voltammograms, Lissajous figures, limit cycles), curves that fold back (S-curves, nose curves,
+    an impedance arc that curls back, depth profiles drawn with y as the variable), spirals. The
+    column walk gives one y per x, so it follows such a curve only between two folds.
+    `followStroke` walks the stroke as a path: a ring of ~1.5 line widths around the current point
+    is cut into arcs of the series' ink and the walk moves half a ring towards the straightest arc
+    it has not walked, centred on the stroke's cross-section; walked ink is marked, so a
+    self-crossing is crossed straight over. When nothing continues it: straight on further out
+    (across its own path, ink of another colour up to 60 px, or a short break), or along ink of
+    another colour that runs on its course (another series drawn over it) to where it comes out
+    again, or a turn (the one unwalked way on, looked for from the stroke's tip outwards — a
+    sharp one is a cusp and its tip a point; a faint way on, under ¾ of the strongest, or one
+    that does not go on for six rings, is not one; two equal ways end the walk), or, at a dead
+    end, back along its own path to an unwalked branch leaving within 35° of the way back (the
+    merged tips of an M–H loop) — never one crossed by unwalked ink the other way. Rulings
+    (`rulings.ts`) of every thickness may be crossed but never walked along. The walk is closed
+    when it comes back onto its start heading the way it set out. It replaces the column walk only
+    when `takesOver`: the path is closed, or comes back in x by more than max(the marker size
+    limit, 6 line widths, 4 % of the box) without having walked back along itself (an open path
+    that retraced is a guess), it passes through at least half of the column walk's points and is
+    at least 1.25× as long, and at most 6 % of its steps went through ink wider than the stroke (a
+    line through filled markers of its colour). The follower runs only when the column walk shows
+    a fold (`mayDoubleBack`: a jump between neighbouring columns, an end short of the box's left
+    or right edge, or ink of the series behind an end, off the walk). In auto mode, when a marker
+    shape cut from the clicked stroke is found three times or more, a closed loop through the
+    seed still makes it a curve. **Order**: an open path runs from its left end; a
+    closed one from its leftmost point, clockwise on screen, and its first point is repeated at
+    the end (the loop is closed in the table too). `path` and `points` are in drawing order, not
+    sorted by x (the `path` doc comment in `types.ts` says so; no shape change). Points
+    (`pickPoints`): the ends and cusps, then the point farthest from the polyline through those
+    kept (Douglas–Peucker order), then the longest stretch halved, up to `maxPoints`.
+  - *Data-step UI*: nothing to change. Accept appends the points in the order returned; the table
+    and the exports show placement order unless the user turns on "Sort by X" (off by default; on,
+    it sorts a loop by x like any line); the project file keeps placement order; placed points are
+    never joined by lines; the ghost path is drawn in path order.
+  - *Bars* (`bars.ts`, in auto and markers mode, never in curve mode; before frame lines along
+    the box are taken out, so a row of bars standing on the bottom edge is not one): one click on
+    a bar returns `kind: 'markers'` with one point per bar of that series at the middle of its
+    value end — a bar on the baseline: its top edge (horizontal: its right end); below the
+    baseline: its bottom edge (left end); a stacked segment: its edge away from the baseline (its
+    top); with an error bar: the bar's own end, never the cap; an edged bar: the middle of the
+    edge's stroke. Method: the series' ink is cut into runs along the value axis (both
+    orientations are tried; the one with more rectangles wins), thin ink of another colour inside
+    a run (hatching, caps, a curve over the bars) bridged; runs of neighbouring columns chain, and
+    a chain is cut into rectangles whose ends stay put (a column with more ink beyond an end than
+    the chain's usual outline — an error-bar stem, a curve — never cuts; one odd column between
+    two that fit is noise; a sliver beside a rectangle is its blurred side). The unit width is the
+    commonest among the rectangles sharing an end with the clicked one; in a chain of touching
+    rectangles one n units wide is n bars of one height (a histogram drawn without edges). The
+    baseline is the end most bars share — unless it is their far end (top; right for horizontal
+    bars) and their other ends sit on ink (the top of a 100 % stack, with or without a gridline
+    along it); bars away from it count when ink runs from them to it (stacked
+    segments). Without a baseline the bars are stacked segments sitting on ink, value at the far
+    end; a baseline must explain at least as many bars as that reading. Not bars: lengths all
+    alike and ≤ 30 px (markers in a row), the longest shorter than max(8 px, ¼ of the width), fewer
+    than four marker-sized rectangles (filled squares), a rectangle with ink of its colour on its
+    side that is no bar, or touching pieces sharing no end (a thick line's flat stretches). When the
+    plot box cut the bars — a value end on its edge, or the series' ink going on just past an edge
+    a bar ends on (a box that stops at the last gridline) — they are looked for again over the
+    whole image, and that answer is kept when it has at least as many bars. A lone
+    bar is returned only in markers mode.
+  - *Benchmark*: l200–l229 (`bench/lines/generate_kinds.py`, called by `generate.py`): 16 path
+    charts (32 series, tags `series:path` plus `loop`, `closed`, `cusps`, `merged-tips`,
+    `vertical`, `overhang`, `spiral`, `parametric`, `self-crossing`, …) and 14 bar charts (29
+    series, `kind: "bars"`, loaded as scatter series whose markers are the value ends; tags
+    `bars:plain|grouped|stacked|horizontal|negative|errorbars|outlined|hatched|edged|thin|labels`,
+    `histogram`), in matplotlib's ggplot, seaborn, dark_background, fivethirtyeight, bmh,
+    grayscale and classic styles, PNG/JPEG, 72–200 dpi. Coverage by columns says nothing about a
+    loop, so `series:path` traces get three more gated metrics (on top of the old ones, absent
+    from every other category): **path coverage** (share of the true path's length within 3 px of
+    the traced polyline), **path precision** (share of the traced polyline within 3 px of the
+    path: points out of order cut across and lose it) and **points order** (min/max of the
+    suggested points' polyline length and the true length). Committed first with today's engine
+    (honest baseline), then: **paths** (32) path coverage 51.1 → 87.6 %, path precision 91.1 →
+    92.8 %, points order 51.0 → 88.2 % (loop 50.6 → 76.7 % coverage, closed 51.8 → 86.3 %,
+    vertical 73.3 → 98.6 %, overhang 53.7 → 84.0 %, spiral 25.2 → 99.9 %, parametric 43.2 →
+    87.5 %, self-crossing 26.3 → 52.8 %); **bars** (29) kind 6.9 → 96.5 %, marker recall 0 →
+    93.1 %, precision 0 → 63.0 % (plain, stacked, histograms, horizontal, thin: 98–100 % / 98–100 %;
+    grouped 86.0 / 42.2 %, below zero 75.0 / 43.9 %, with error bars 80.0 / 51.1 %; the low
+    precisions are the hatched and outlined series below, which the old marker path still answers
+    with dozens of "markers"). 21 path traces and 26 bar traces gain; the one trade-off is
+    `l202/s1` (a P–E loop whose tips are one merged stroke): path coverage 53 → 96 % but its two
+    tips 2/2 → 0/2. The followed paths' centreline error is ~0.04 px median instead of the column
+    walk's ~0.02 px (half-pixel cross-section sampling), over far more of each path; with that
+    and the lost tips the shared categories the new traces fall into move (overall median 0.032
+    → 0.035 px, corner recall 58.81 → 58.75 %, `color:grey` corner recall 71.4 → 64.3 %). All 397
+    earlier per-trace entries are unchanged. Cost: the follower runs only when the column walk
+    shows a fold (a jump, an end short of the box's left or right edge, or its own ink turning
+    back behind an end), once per trace; the bar finder only when the click is inside a solid
+    4 × 4 block of ink.
+  - *Known failures (new kinds)*: a P–E loop whose two branches merge into one line before each
+    tip loses its tips (the walk stops where they merge: two equal ways back); a curve folding
+    back that the walk can only finish by walking back along itself (a minor loop drawn inside a
+    same-colour major loop, `l205`, and the curl of `l215/s1`) is left to the column walk — an
+    open path is never trusted after retracing (allowed, an earlier trace, `l114/s0`, went back
+    along its curve and out along an error bar); stress–strain cycles drawn in one black stroke (crossings
+    and shared zero-stress points at every reload, `l203`) close early and are not used; a P–E
+    ellipse crossing another loop of a similar grey is taken for markers (`l202/s0`); an S-curve
+    whose fold crosses the other S-curve (`l208/s1`) and the same-colour minor loop (`l205/s1`)
+    follow the other series (wrong). Bars: outlined bars without fill (`bars:outlined`) and bars
+    told apart only by hatching on white (`l228/s1`) are not found — their ink is a thin stroke,
+    traced as a curve or matched as markers; cross-hatched grey bars (`l229/s0`) give hatching
+    "markers"; one 100 % stack's JPEG boundary keeps one bar short (`l222/s3`, 6/7); a spine drawn
+    at zero is taken for the x axis by `detectAxes`, so bars below it are outside the plot box
+    and lost (unchanged by the 2026-11-19 detection work: the box still ends at the zero line; a
+    whole-image second look whenever a baseline sits on the box's edge found more false bars than
+    true ones, and was dropped); a click on a bar in curve mode traces its outline as before.
+  - *Tried and rejected*: summed reversal of the path in x as the "doubles back" test (a line
+    going round open markers on it reverses by their width every few columns: 3 earlier traces
+    changed) — replaced by the deepest return behind a point reached; agreement with ≥ 85 % of the
+    column walk's points (a walk that jumped to the other branch of a fold agrees only up to it);
+    accepting open paths that retraced (gains `l205`, `l215/s1`; changed the earlier `l114/s0`);
+    turn search connected through ink at any distance (turned from a curve's end at the frame
+    onto a bar's side 60 px away); running the follower on every trace (+70 % time per trace on a
+    loaded machine; now only on fold evidence); bars: an end reference from the first column (a
+    blurred side cut bars in two), the width of the narrowest mate as the unit (fragments made it
+    3 px), a baseline from coincident tops of an upper stack layer (now it must explain at least
+    as many bars as the stacked reading), and a whole-image retry whenever a baseline sits on the
+    box's edge (more false bars than true ones).
 
 ## Auto-trace — UI
 

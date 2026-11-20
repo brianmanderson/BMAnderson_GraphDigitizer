@@ -47,7 +47,11 @@ export interface TraceResult {
   style: LineStyle;
   /** Series colour sampled at the seed, sRGB 0–255. */
   color: [number, number, number];
-  /** Dense centreline (curves) or every marker centroid (markers), ordered by px. */
+  /**
+   * Dense centreline (curves) or every marker centroid (markers, and the value end of every bar),
+   * ordered by px — except a curve that doubles back (a loop, a fold, a spiral), which comes in
+   * drawing order; a closed loop ends on its first point (docs/SPEC.md → Auto-trace → New kinds).
+   */
   path: TracedPoint[];
   /** Suggested points to add to the line: resampled from path, keeping step corners and extrema. */
   points: TracedPoint[];
