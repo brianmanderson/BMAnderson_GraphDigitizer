@@ -406,6 +406,8 @@ export function traceColumns(
     /** The state just before the walk's last gap opened, and whether the walk ended in that gap. */
     gapStart: WalkState | null;
     died: boolean;
+    /** Whether that gap began under ink of another colour (a stroke the series may have gone under). */
+    gapUnder: boolean;
   }
   interface Candidate {
     run: Run;
@@ -670,6 +672,7 @@ export function traceColumns(
           row = Math.round(st.ride.y);
           st.rideOnly++;
         }
+        if (st.gap === 1) st.gapUnder = row >= 0;
         if (row >= 0) {
           st.hiddenCols++;
           if (!st.underMarker && markerSizedAt(st.x, row)) st.underMarker = true;
@@ -716,15 +719,18 @@ export function traceColumns(
     const hist = [...lead, first];
     // A continued walk keeps the stroke width it had: the piece it starts from may be a sliver.
     const minLen = only && lead.length ? Math.max(runLength(first), Math.min(...lead.map(runLength))) : runLength(first);
-    let st = walkFrom({ hist, minLen, entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false, sinceGap: only ? 0 : 1e9, minHist: [], ride: null, ridden: [], rideOnly: 0, mayRide: false, noisy: false, gapStart: null, died: false }, dir, 0);
+    let st = walkFrom({ hist, minLen, entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false, sinceGap: only ? 0 : 1e9, minHist: [], ride: null, ridden: [], rideOnly: 0, mayRide: false, noisy: false, gapStart: null, died: false, gapUnder: false }, dir, 0);
     // A walk that died in a gap: once more from where that gap opened, riding the stroke of another
     // colour the series went under there (a curve that runs along another for a stretch). Kept when
     // it follows clearly more of the series; then again from where that walk died.
     // Then, for a noisy series (a measured signal), once more from where the gap opened, looking
     // for it around its level as far as it may have wandered (`noisySeries`), for the rest of the walk.
-    for (let n = 0; n < MAX_RIDES && st.died && st.gapStart; n++) {
+    // (Not for a continued walk along one piece of a dashed line, dashes.ts: its gaps are short.)
+    for (let n = 0; n < MAX_RIDES && !only && st.died && st.gapStart; n++) {
       let next: WalkState | null = null;
-      for (const mode of opts.other ? (['ride', 'noisy'] as const) : (['noisy'] as const)) {
+      for (const mode of ['ride', 'noisy'] as const) {
+        // Riding needs a stroke of another colour where the gap began.
+        if (mode === 'ride' && !(opts.other && st.gapUnder)) continue;
         if (mode === 'noisy' && (st.noisy || !noisySeries(st.gapStart.hist))) continue;
         const again = clone(st.gapStart);
         again.died = false;
