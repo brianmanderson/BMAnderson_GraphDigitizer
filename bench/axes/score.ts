@@ -27,6 +27,21 @@ export interface AxisScore {
   detected: number;
   detectedMatched: number;
   tickConfidence: number;
+  /**
+   * Ticks reported on an axis without tick marks that are not drawn marks at a true tick position:
+   * every tick read from "tick marks" there, and every gridline-sourced tick (`TickSet.source`)
+   * that matches no labelled tick. 0 on axes with tick marks.
+   */
+  falseOnBare: number;
+  /** The detected positions come from gridlines. */
+  fromGridlines: boolean;
+  /** On an axis without tick marks: true ticks matched by gridline-sourced ticks, major / minor. */
+  gridMatchedMajor: number;
+  gridMatchedMinor: number;
+  /** Major ticks of an axis whose only position marks are gridlines (`gridlines`, no tick marks). */
+  gridTruthMajor: number;
+  /** All labelled major ticks of the axis, with or without tick marks. */
+  truthAllMajor: number;
 }
 
 export interface ImageScore {
@@ -78,7 +93,15 @@ function scoreAxis(truth: TruthAxis, det: DetectedAxis | null): AxisScore {
   }
   const majors = truth.ticks.filter((t) => !t.minor).length;
   const matchedMajor = [...usedT].filter((i) => !truth.ticks[i]?.minor).length;
+  const fromGridlines = det?.ticks.source === 'gridlines' && detTicks.length > 0;
+  const bareGrid = !truth.tickMarks && fromGridlines;
   return {
+    falseOnBare: truth.tickMarks ? 0 : fromGridlines ? detTicks.length - usedD.size : detTicks.length,
+    fromGridlines,
+    gridMatchedMajor: bareGrid ? matchedMajor : 0,
+    gridMatchedMinor: bareGrid ? usedT.size - matchedMajor : 0,
+    gridTruthMajor: !truth.tickMarks && truth.gridlines ? majors : 0,
+    truthAllMajor: majors,
     error,
     found: error !== null && error <= AXIS_TOL_PX,
     tickMarks: truth.tickMarks,
@@ -128,8 +151,16 @@ export interface Metrics {
   minorRecall: number | null;
   /** Matched detected ticks / detected ticks, on axes that have tick marks. */
   tickPrecision: number | null;
-  /** Ticks reported on axes that have no tick marks (should be 0). */
+  /**
+   * Ticks reported on axes that have no tick marks (should be 0), other than gridline-sourced ticks
+   * at a true tick position: a gridline is a drawn mark, a tick read off nothing is invented.
+   */
   falseTicksOnBareAxes: number;
+  /**
+   * Major ticks matched by gridline-sourced ticks / true major ticks, on axes whose only position
+   * marks are gridlines (truth `gridlines: true`, `tickMarks: false`).
+   */
+  gridRecall: number | null;
   meanMs: number;
 }
 
@@ -158,7 +189,8 @@ export function aggregate(scores: ImageScore[]): Metrics {
     tickRecall: ratio(sum(marked.map((a) => a.matchedMajor)), sum(marked.map((a) => a.truthMajor))),
     minorRecall: ratio(sum(marked.map((a) => a.matchedMinor)), sum(marked.map((a) => a.truthMinor))),
     tickPrecision: ratio(sum(marked.map((a) => a.detectedMatched)), sum(marked.map((a) => a.detected))),
-    falseTicksOnBareAxes: sum(bare.map((a) => a.detected)),
+    falseTicksOnBareAxes: sum(bare.map((a) => a.falseOnBare)),
+    gridRecall: ratio(sum(bare.map((a) => (a.gridTruthMajor ? a.gridMatchedMajor : 0))), sum(bare.map((a) => a.gridTruthMajor))),
     meanMs: scores.length ? sum(scores.map((s) => s.ms)) / scores.length : 0,
   };
 }
@@ -171,4 +203,5 @@ export const GATED: { key: keyof Metrics; higherIsBetter: boolean }[] = [
   { key: 'minorRecall', higherIsBetter: true },
   { key: 'tickPrecision', higherIsBetter: true },
   { key: 'falseTicksOnBareAxes', higherIsBetter: false },
+  { key: 'gridRecall', higherIsBetter: true },
 ];

@@ -72,6 +72,13 @@ export interface TickSet {
   confidence: number;
   /** Short marks that were seen but did not fit the pattern (for debugging and Phase 5). */
   rejected: Point[];
+  /**
+   * What the positions were read from. Absent = tick marks on the axis. 'gridlines' = the axis
+   * shows no tick marks and the positions are those of the gridlines crossing the plot (drawn
+   * marks at tick values, so not invented; `side` is 'inside' and each tick's `length` is the
+   * gridline's, i.e. the plot's extent). An axis with neither still has `ticks: []`.
+   */
+  source?: 'gridlines';
 }
 
 /**
@@ -86,6 +93,12 @@ export interface DetectedAxis {
   /** 0–1 heuristic: line strength, its length, and whether it forms a plausible axis pair. */
   confidence: number;
   ticks: TickSet;
+  /**
+   * True when no line is drawn here: `line` is the edge of the plot area — of a filled panel, or
+   * where the gridlines end — with `thickness` 0 and the darkness step across it (or the
+   * gridlines' contrast) as `contrast`. Absent for a drawn axis line.
+   */
+  virtual?: true;
 }
 
 /** Plot-area quadrilateral; corners in image px (a rectangle rotated by the skew angle). */

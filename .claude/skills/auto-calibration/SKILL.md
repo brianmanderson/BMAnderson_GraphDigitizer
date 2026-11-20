@@ -86,11 +86,11 @@ can pick another WASM core, so a small change on a new machine is not necessaril
 investigate per image (`Changed vs baseline` lines) before updating. Update the baseline
 (`-- --update`) only for an explained improvement or trade-off, in the same commit.
 
-## Known failures (2026-11-19: 72.1 % of 262 axes correct, 0 wrong)
+## Known failures (2026-11-19, merged with the styled corpus: 79.9 % of 334 axes correct, 0 wrong)
 
 Label variety: categorical and time-only axes (declined by design), times on a concise date axis
 (the date is only in the offset text), years on a second label line, offset notes over labels that
-lost their points (c136), coloured or light-on-dark labels, `m×10ⁿ` read as `10ⁿ` (c134), log
+lost their points (c136), coloured labels (c151), `m×10ⁿ` read as `10ⁿ` (c134), log
 exponents 2–4 px tall (c13, c14, c44, c45). Rejected (SPEC lists the numbers): OCR crop
 preprocessing, exponent-crop preprocessing, height-ratio exponent tests, glyph-shape-only rotation.
 

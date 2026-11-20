@@ -13,6 +13,8 @@
  *       "axisLineRow": 344.5,                 // shorthand for an unrotated line at this row
  *       "lineDrawn": false,                   // optional: no visible line (score vs the edge)
  *       "tickMarks": true,                    // false = labels only: any detected tick is false
+ *       "gridlines": true,                    // optional: the major tick positions are drawn as
+ *                                             // gridlines across the plot (see score.ts)
  *       "ticks": [{ "value": 0, "px": 134, "py": 344.5, "label": "0", "minor": true }]
  *     },
  *     "yAxis": { …, "axisLineCol": 134, "ticks": [{ "value": 0.2, "py": 283 }] }
@@ -45,6 +47,8 @@ export interface TruthAxis {
   line: [P, P];
   lineDrawn: boolean;
   tickMarks: boolean;
+  /** The axis's major tick positions are drawn as gridlines across the plot (absent = false). */
+  gridlines?: boolean;
   ticks: TruthTick[];
 }
 
@@ -100,6 +104,7 @@ function axis(raw: unknown, which: 'x' | 'y', file: string): TruthAxis {
     line,
     lineDrawn: a.lineDrawn !== false,
     tickMarks: a.tickMarks !== false,
+    gridlines: a.gridlines === true,
     ticks: rawTicks.map((t, i) => ({
       value: typeof t.value === 'string' ? t.value : num(t.value, `${which} tick ${i} value`),
       point: fill(t, i),

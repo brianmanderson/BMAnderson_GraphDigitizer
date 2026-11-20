@@ -96,6 +96,11 @@ export interface OcrLabel {
    * reading that lies on it is taken.
    */
   alternatives?: string[];
+  /**
+   * A second guess (an exponent read beside its base after it came back empty): it may agree with
+   * the fit, but like an inferred exponent it neither makes a ref nor counts towards "high".
+   */
+  guessed?: boolean;
 }
 
 interface Fit {
@@ -504,7 +509,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   // Refs: the most widely separated agreeing labels with confident OCR.
   // (A label settled between two readings was read: both readings are OCR's digits, and the
   // other one is a factor of ten off the line.)
-  const read = fit.inliers.filter((k) => !fit.inferred.includes(k));
+  const read = fit.inliers.filter((k) => !fit.inferred.includes(k) && !texts[k]?.guessed);
   const strong = read.filter((k) => (labels[k] as ReadLabel).confidence >= 0.75);
   const pool = strong.length >= 2 ? strong : read;
   let pair: [number, number] = [pool[0] as number, pool[1] as number];

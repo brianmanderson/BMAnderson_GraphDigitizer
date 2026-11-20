@@ -999,13 +999,12 @@ function labelsWith(
   // The labels' side: below a bottom X axis / above a top one; left of a left Y axis / right of
   // a right one. "Near" = the patch edge next to the axis.
   const flipped = ax.position === 'top' || ax.position === 'right';
-  // Ticks taken from gridlines (an optional `source` on a TickSet: no tick marks are drawn) leave
-  // the labels where labels-only axes have them, possibly written against the line: the band
-  // starts at the line, slivers of it are dropped and a label touching it may be cut off.
-  const fromGridlines = (ax.ticks as { source?: string }).source === 'gridlines';
-  const bare = mode === 'labels-only' || fromGridlines;
+  // (Ticks taken from gridlines, TickSet.source 'gridlines', are 'inside': the band starts at the
+  // line. Labels touching its edge there are not flagged as cut off: on the scanned c70–c73 they are
+  // whole and read right, and flagging them, as labels-only axes do, lost those axes.)
+  const bare = mode === 'labels-only';
   const outsideLen =
-    mode === 'ticks' && !fromGridlines && ax.ticks.side !== 'inside' ? Math.max(...majors.map(({ t }) => t.length)) : 0;
+    mode === 'ticks' && ax.ticks.side !== 'inside' ? Math.max(...majors.map(({ t }) => t.length)) : 0;
   // Past the line's edge by half its thickness again: a thick scanned or hand-ruled line wobbles
   // by that much, and labels touching it must not join it into one long component.
   const d0 = Math.max(line.thickness / 2, outsideLen) + 1 + (bare ? Math.max(0, line.thickness / 2 - 1) : 0);

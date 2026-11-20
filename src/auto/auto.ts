@@ -129,6 +129,7 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
     }
     let exp = e.text.trim();
     let confidence = Math.min(b.confidence, e.confidence);
+    let guessed = false;
     // A lone "1" as an exponent often comes back empty, but not beside its base at the same
     // scale ("10" + "1" reads "101"). A second guess: below the confidence that makes a ref.
     if (exp === '' || exp === '-') {
@@ -137,9 +138,11 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
       if (t.startsWith(b.text.trim()) && t.length > b.text.trim().length) {
         exp = t.slice(b.text.trim().length);
         confidence = Math.min(b.confidence, j.confidence, JOINED_CONFIDENCE);
+        guessed = true;
       }
     }
-    return { text: `${restorePoints(fixSign(b.text, l.minus), l.marks)}^${fixSign(exp, l.exponentMinus)}`, confidence: conf(confidence) };
+    const text = `${restorePoints(fixSign(b.text, l.minus), l.marks)}^${fixSign(exp, l.exponentMinus)}`;
+    return guessed ? { text, confidence: conf(confidence), guessed } : { text, confidence: conf(confidence) };
   }
   const r = await ocr.recognize(l.crop, { charset: 'numeric', singleChar: l.singleChar });
   return withMarks(r.text, conf(r.confidence), l);
