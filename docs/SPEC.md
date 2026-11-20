@@ -815,6 +815,87 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   900 600 300 0 300 600 900, Pittet's −20 … −5 read 20 … 5; Pittet's Y (only "1" and "0.5" read,
   both rejected); Chea (no X axis found, no labels read). `knownMaxError` in categories holding
   Chea or Pittet is 1 (their known values are not predicted).
+- **Label variety (2026-11-19)**: corpus c120–c155 (`build_labels`, tag `label-variety` plus one
+  `label:<variant>` tag per variant): ordinary axes with rotated (45°/90°) labels, thousands
+  separators, decimal commas, SI suffixes, %, currency, `1e-3`, `m×10ⁿ`, offset/multiplier notes,
+  both minus signs, plain-number log axes, reversed axes, serif/bold/italic/condensed/monospace,
+  tiny (9–10.5 px at 72 dpi), grey and coloured labels, years, months, `YYYY-MM`, quarters, times
+  of day, category names, no tick marks, light on dark. Truth scales `categorical` and
+  `time-of-day` (`bench/axes/calib.ts`) carry no values: declining is right, any medium/high
+  suggestion there counts as wrong. Decisions:
+  - **Minus sign**: a dash ≥ 4 px thick no longer counts as a body glyph for the text height or
+    the word gap (bold/large `−20` was split and read `20`).
+  - **Raised exponents** set clear of their base (mathtext `10⁻²`: no vertical overlap with it)
+    join the word they follow: within 0.3 text heights, at most 0.9 tall and 1.8 wide.
+  - **Decimal points** (`profilePoints`): besides the half-darkness profile, ink of the gap between
+    two digit runs that stays in the baseline zone (≥ 20 % of the darkest stroke) and stands clear
+    of both digits is a point, when the digits are ≥ 1.3 digit widths apart centre to centre
+    (digit width = median width of the axis's wide digit runs; neighbours without a point stand a
+    median 1.21 apart on the corpus, with one 1.42–2.0). In text ≤ 11.5 px a point touching a
+    digit is only *possible* (`PointMarks.uncertain`): the label gets both readings
+    (`OcrLabel.alternatives`, "25" / "2.5"), takes no part in the fit, and is settled one at a
+    time by the line the unambiguous labels fix (refitting after each; none or two readings on
+    the line → no value). A number has at most one point: with a certain one, none is uncertain.
+    And in labels ≤ 15 px a label that disagrees only by its point ("1.5" among 10, 20, 25 where
+    15 lies on the line) declines the axis: the others may have lost theirs (×10).
+  - **Word split at a point** (isolated fixes ad6d319, 8c40168): two digits are joined across a gap
+    of up to one text height when it holds a point (`pointBetween`): ink in the baseline zone at
+    least a quarter as dark as the strokes, at most 0.4 text heights wide, inside the gap (not
+    its first or last column, where the digits' antialiased edges bleed in at a sub-pixel band
+    offset), and no stroke (≥ half the digits' darkness) above it — whether or not the point
+    formed a component (a 1-px point is one pixel; components need two).
+  - **Pieces of labels** (`FoundLabel.partial`): a chosen word with more text left beside it —
+    same row, not chosen itself, same baseline, height within 25 %, within one character pitch
+    measured on this axis's own labels, upright digit shapes, alone in its column (a turned axis
+    title's letters stand in a column of more title) — on X only if the label with the piece is
+    still centred on its tick, on Y only on the far side from the axis. Its reading is shown but
+    gives no value, like `clipped`: five pieces "8 6 4 2 0" of "0.8 … 0.0" agreed on ×10 (c97).
+  - **Ticks from gridlines** (`TickSet.source === 'gridlines'`, Axis detection): handled like inside
+    ticks — the band starts at the line and a label touching its edge is *not* flagged as cut off.
+    A labels-only-style guard (band further out, every touching label flagged) was tried at the
+    merge with the gridline detection and lost c70–c73, whose labels touching the edge are whole
+    and read right ("60 40 20" at 0.00 %); flagging only labels whose ink meets the edge along half
+    their extent did not help either (on scans the labels merge with the line's ragged edge).
+    The ×10 risk of a label truly sliced by the line stays the same as on any inside-tick axis.
+  - **Suffixes, currency** (`splitAffixes`): `k`/`K` ×10³, `M` ×10⁶, `G`/`B` ×10⁹ after a digit
+    (never lower-case `m`: milli or a misread `M`), `$ € £ ¥` before or after. The numeric
+    whitelist cannot read them (`$` → `%`, `20k` → `20`), so they come from the text reading,
+    with the digits both readings agree on (otherwise half the text confidence).
+  - **Dropped characters**: `FoundLabel.runs` counts the label's character runs above the
+    baseline zone; a reading with fewer characters dropped one. The text pass then also runs, and
+    its reading replaces the numeric one when it is a number with all characters; when it has all
+    characters but is no number ("Q1 2000" vs "12000"), the label has no value.
+  - **Times of day** (`09:00`) are a token of their own, never numbers: two or more of them on an
+    axis decline it ("no date was read for them"). **Quarters** (`Q1 2024`, `2024-Q3`) are dates.
+  - **Exponents**: an empty exponent reading (a lone "1") is read again beside its base at the
+    same scale (8 px apart: "101"), capped at confidence 0.7 and marked `OcrLabel.guessed`: like an
+    inferred exponent it agrees with the fit but never makes a ref or counts towards "high". A "base"
+    that is not `10` or `m×10` was no base + exponent (a digit standing high, monospace `70`):
+    the word is read whole — unless that reads `10…`, which is what a power with a misread base
+    looks like (10⁻² → "102": three of those fit a line).
+  - **Rotated labels**: when the upright pass's glyphs vote for upright text (taller than wide +1,
+    ≥ 1.5× wider than tall −1, thin strokes abstain) less than 0.6 per major tick, the band is
+    sampled again turned by 45° or 90° (X) or 90° (Y); words a space apart in a row are one label;
+    a word belongs to the tick its axis-side end (X) or centre (Y) is level with. Shape votes
+    cannot tell turned text from small upright digits run together, so this is only
+    `AxisLabels.alternative` (optional, `rotated: true`, no note): `autoCalibrate` reads it only
+    when the upright reading gives no calibration and uses it only if it calibrates.
+  - **Results** (131 images): 63.7 % → **72.1 %** of axes correct, wrong 6 → **0** (w-high 2 → 0),
+    58.8 % of images end to end (48.1 %); on the 95 earlier images 120 → 130 of 190 axes correct.
+    **Merged with the styled corpus and its detection (167 images, 2026-11-19)**: **79.9 %** of axes
+    correct, **0 wrong**, 68.9 % end to end (main had 74.8 % / 61.1 % on its 131); every image equal
+    to or better than its parent branch; `style:ggplot` 75 → 100 %, `frame:none` 91.7 → 100 %,
+    `styled` 90.3 → 95.8 %; c155 (light on dark) now found and correct.
+    `label-variety` 65.3 → 81.9 %. **Known failures** (declined): categorical and time-only axes
+    (by design); times on a concise date axis (c152: the date is in the offset text, not read);
+    months with the year on a second line (c130); offset notes `+1e4`/`+2.5e3` whose labels lost
+    their points (c136); coloured labels (c151); `m×10ⁿ` on Y read as `10ⁿ` (c134: the mantissa is
+    lost, all labels agree on nothing); log exponents 2–4 px tall (c13, c14, c44, c45).
+    Rejected: crop preprocessing for OCR (gamma, binarising at 25 %/40 %, ×1.5, ×0.75, padding,
+    PSM 8/13, digits-only whitelist: none beat the current crops on the 1 288 truth-labelled
+    labels, best −0.4 pp); exponent-crop preprocessing (≤ +5 of 129, more misreads); telling real
+    superscripts from false splits by height ratio (ranges overlap); deciding rotation from glyph
+    shapes alone (lost three upright axes).
 
 ## Auto-trace (line tracing engine)
 

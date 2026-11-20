@@ -90,6 +90,17 @@ export interface AutoCalibration {
 export interface OcrLabel {
   text: string;
   confidence: number;
+  /**
+   * Other readings the label's layout allows (a possible decimal point in small text: "25" or
+   * "2.5"). Such a label gives no value of its own; once the axis's other labels fix a scale, the
+   * reading that lies on it is taken.
+   */
+  alternatives?: string[];
+  /**
+   * A second guess (an exponent read beside its base after it came back empty): it may agree with
+   * the fit, but like an inferred exponent it neither makes a ref nor counts towards "high".
+   */
+  guessed?: boolean;
 }
 
 interface Fit {
@@ -102,6 +113,8 @@ interface Fit {
   power: number;
   /** Labels whose value was inferred, not read (an unread exponent of a 10^k label). */
   inferred: number[];
+  /** Labels with two possible readings, settled by the line the other labels fix. */
+  resolved: number[];
 }
 
 /** Tick positions are exact to a fraction of a pixel; label centres (labels-only) less so. */
@@ -161,7 +174,7 @@ function consensus(alongs: number[], ts: (number | null)[], tol: number): { a: n
 function fitScale(scale: ScaleType, alongs: number[], values: (number | null)[], tol: number, power: number): Fit | null {
   const ts = values.map((v) => (v === null ? null : forward(scale, v)));
   const c = consensus(alongs, ts, tol);
-  return c ? { scale, ...c, values, power, inferred: [] } : null;
+  return c ? { scale, ...c, values, power, inferred: [], resolved: [] } : null;
 }
 
 const isYearSequence = (vals: number[]) => {
@@ -192,6 +205,60 @@ function withUnreadExponents(fit: Fit | null, alongs: number[], texts: OcrLabel[
   return { ...fit, values, inliers: [...fit.inliers, ...inferred].sort((a, b) => a - b), inferred };
 }
 
+/**
+ * Labels with alternative readings ("25" or "2.5": a possible decimal point in small text) take
+ * no part in the fit. Once the unambiguous labels fix a line, each of them takes the one reading
+ * that lies on it (within the tolerance), or stays without a value when none or several do.
+ */
+function withAlternatives(fit: Fit | null, alongs: number[], candidates: (number[] | null)[], tol: number): Fit | null {
+  if (!fit) return fit;
+  const values = [...fit.values];
+  const resolved: number[] = [];
+  let { a, b } = fit;
+  // One at a time, nearest the labels that already agree first, refitting after each: two
+  // neighbouring labels fix a line that is a few pixels off at the far end of the axis.
+  for (;;) {
+    const inliers = [...fit.inliers, ...resolved];
+    const open = candidates
+      .map((cs, i) => ({ cs, i }))
+      .filter(({ cs, i }) => cs && !resolved.includes(i))
+      .sort((p, q) => {
+        const d = (k: number) => Math.min(...inliers.map((j) => Math.abs((alongs[k] as number) - (alongs[j] as number))));
+        return d(p.i) - d(q.i);
+      });
+    let took = false;
+    for (const { cs, i } of open) {
+      const fitting = [...new Set(cs as number[])].filter((v) => {
+        const t = forward(fit.scale, v);
+        return t !== null && Math.abs((alongs[i] as number) - (a + b * t)) <= tol;
+      });
+      if (fitting.length !== 1) continue;
+      values[i] = fitting[0] as number;
+      resolved.push(i);
+      took = true;
+      break;
+    }
+    if (!took) break;
+    // Least squares over everything that agrees so far.
+    const all = [...fit.inliers, ...resolved];
+    const ts = all.map((k) => forward(fit.scale, values[k] as number) as number);
+    const mt = ts.reduce((s, v) => s + v, 0) / ts.length;
+    const ma = all.reduce((s, k) => s + (alongs[k] as number), 0) / all.length;
+    let sxy = 0;
+    let sxx = 0;
+    all.forEach((k, n) => {
+      sxy += ((ts[n] as number) - mt) * ((alongs[k] as number) - ma);
+      sxx += ((ts[n] as number) - mt) ** 2;
+    });
+    if (sxx > 0 && sxy !== 0 && Number.isFinite(sxy / sxx)) {
+      b = sxy / sxx;
+      a = ma - b * mt;
+    }
+  }
+  if (resolved.length === 0) return fit;
+  return { ...fit, a, b, values, inliers: [...fit.inliers, ...resolved].sort((p, q) => p - q), resolved };
+}
+
 /** The best interpretation of the numeric reading of an axis (after the axis note, if read). */
 function numericFit(
   alongs: number[],
@@ -200,20 +267,25 @@ function numericFit(
   logHint: boolean,
   note: { multiplier: number; offset: number } | null,
 ): { fit: Fit | null; certain: boolean } {
-  const parsed = texts.map((t) => parseNumberLabel(t.text));
-  const values = parsed.map((p) => {
+  const noted = (p: { value: number } | null) => {
     if (!p) return null;
     if (!note) return p.value;
     // Like the labels' own decimals: keep the sum free of binary noise (0.02 + 1e4).
     const v = p.value * note.multiplier + note.offset;
     return Number.isFinite(v) ? Number(v.toPrecision(15)) : null;
-  });
+  };
+  const ambiguous = (t: OcrLabel) => (t.alternatives?.length ?? 0) > 0;
+  const parsed = texts.map((t) => (ambiguous(t) ? null : parseNumberLabel(t.text)));
+  const values = parsed.map(noted);
+  const candidates = texts.map((t) =>
+    ambiguous(t) ? [t.text, ...(t.alternatives ?? [])].map((c) => noted(parseNumberLabel(c))).filter((v): v is number => v !== null) : null,
+  );
   const power = parsed.filter((p) => p?.power).length;
-  const lin = fitScale('linear', alongs, values, tol, power);
-  let log = withUnreadExponents(
-    fitScale('log10', alongs, values.map((v) => (v !== null && v > 0 ? v : null)), tol, power),
+  const lin = withAlternatives(fitScale('linear', alongs, values, tol, power), alongs, candidates, tol);
+  let log = withAlternatives(
+    withUnreadExponents(fitScale('log10', alongs, values.map((v) => (v !== null && v > 0 ? v : null)), tol, power), alongs, texts, tol),
     alongs,
-    texts,
+    candidates.map((cs) => cs && cs.filter((v) => v > 0)),
     tol,
   );
   // Over a narrow range (100.00–100.08, 2016–2021) log and linear fit equally well; a log axis
@@ -278,6 +350,9 @@ export interface AxisReading {
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : 0);
 
+/** Labels up to this tall (image px) can hide a decimal point from both OCR and the layout. */
+const SMALL_LABEL_PX = 15;
+
 interface AxisFit {
   fit: Fit | null;
   certain: boolean;
@@ -286,6 +361,8 @@ interface AxisFit {
   reason: string | null;
   /** A note was seen but could not be read as an offset/multiplier. */
   unreadNote: string | null;
+  /** The offset/multiplier applied to the numeric fit's values, if any. */
+  note: { multiplier: number; offset: number } | null;
 }
 
 /**
@@ -304,13 +381,24 @@ export function fitAxis(r: AxisReading): AxisFit {
   const usable = (ts: OcrLabel[]) =>
     ts.map((t, i) => (r.labels.labels[i]?.clipped || r.labels.labels[i]?.partial ? { text: '', confidence: 0 } : t));
   const num = numericFit(alongs, usable(r.numeric), tol, r.logHint, note);
-  const best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote };
+  const best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote, note };
   if (r.text) {
     // Dates increase to the right on X; on Y (rare) upwards, i.e. with decreasing w.
     const d = dateFit(alongs, usable(r.text), tol, r.labels.axis === 'x');
     const months = r.text.filter((t) => parseDateToken(t.text)?.kind === 'month').length;
     if (d && d.inliers.length >= 3 && d.inliers.length >= (num.fit?.inliers.length ?? 0)) {
-      return { fit: d, certain: true, texts: r.text, reason: null, unreadNote: null };
+      return { fit: d, certain: true, texts: r.text, reason: null, unreadNote: null, note: null };
+    }
+    // Times of day (`09:00 12:00`) are not numbers: read as such, `12.00 15.00 18.00` fit a line.
+    if (r.text.filter((t) => parseDateToken(t.text)?.kind === 'time').length >= 2) {
+      return {
+        fit: null,
+        certain: false,
+        texts: r.text,
+        reason: 'The labels are times of day, and no date was read for them.',
+        unreadNote: null,
+        note: null,
+      };
     }
     if (months > 0) {
       return {
@@ -319,6 +407,7 @@ export function fitAxis(r: AxisReading): AxisFit {
         texts: r.text,
         reason: 'The labels look like dates, but no year could be read for them.',
         unreadNote: null,
+        note: null,
       };
     }
   }
@@ -330,7 +419,7 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   const axis = r.labels.axis;
   const alongs = r.labels.labels.map((l) => l.along);
   const tol = tolerance(alongs, r.labels.mode);
-  const { fit, certain, texts, reason, unreadNote } = fitAxis(r);
+  const { fit, certain, texts, reason, unreadNote, note } = fitAxis(r);
   const labels: ReadLabel[] = r.labels.labels.map((l, i) => ({
     along: l.along,
     point: l.point,
@@ -396,8 +485,31 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
     );
   }
 
+  // A label that disagrees only by its decimal point — "1.5" among 10, 20, 25, 30, where 15 would
+  // sit on the line — says the others may have lost theirs (Tesseract drops a faint point at 96 %
+  // confidence, and the layout does not always catch it): the whole axis could be off by ten.
+  // Only in small text: there a point is a faint pixel or two; in large text the layout finds
+  // every point, and a lone "-2.0" among 60, 40, 20, -40 is that label's own misreading.
+  const heights = r.labels.labels.map((l) => l.box.height).sort((p, q) => p - q);
+  if (fit.scale !== 'date' && (heights[heights.length >> 1] ?? 0) <= SMALL_LABEL_PX) {
+    const lostPoint = texts.some((t, k) => {
+      if (fit.inliers.includes(k)) return false;
+      const m = /^([-+−–]?)(\d+)[.,](\d+)$/.exec(t.text.trim());
+      if (!m) return false;
+      const raw = Number(`${m[1] === '' || m[1] === '+' ? '' : '-'}${m[2]}${m[3]}`);
+      const v = note ? raw * note.multiplier + note.offset : raw;
+      const f = forward(fit.scale, v);
+      return f !== null && Math.abs((alongs[k] as number) - (fit.a + fit.b * f)) <= tol;
+    });
+    if (lostPoint) {
+      return fallback('The labels disagree about a decimal point: one shows a point that the others, read without it, would also need.');
+    }
+  }
+
   // Refs: the most widely separated agreeing labels with confident OCR.
-  const read = fit.inliers.filter((k) => !fit.inferred.includes(k));
+  // (A label settled between two readings was read: both readings are OCR's digits, and the
+  // other one is a factor of ten off the line.)
+  const read = fit.inliers.filter((k) => !fit.inferred.includes(k) && !texts[k]?.guessed);
   const strong = read.filter((k) => (labels[k] as ReadLabel).confidence >= 0.75);
   const pool = strong.length >= 2 ? strong : read;
   let pair: [number, number] = [pool[0] as number, pool[1] as number];
@@ -454,6 +566,9 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
       (outliers > 0 ? `; ${outliers} disagree${outliers === 1 ? 's' : ''}` : '') +
       `; largest error ${maxInlierResidual.toFixed(1)} px.` +
       (fit.inferred.length > 0 ? ` ${fit.inferred.length} unread exponent${fit.inferred.length === 1 ? '' : 's'} inferred from position.` : '') +
+      (fit.resolved.length > 0
+        ? ` ${fit.resolved.length} label${fit.resolved.length === 1 ? '' : 's'} with a possible decimal point settled by the others.`
+        : '') +
       (r.note ? ` The axis note "${r.note.text}" is applied.` : ''),
   };
 }

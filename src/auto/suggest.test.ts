@@ -214,6 +214,38 @@ describe('suggestAxis on labels written against the axis, and labels-only fallba
   });
 });
 
+describe('suggestAxis with ambiguous readings and times of day', () => {
+  it('settles a label that may have a decimal point by the line the other labels fix', () => {
+    // 1.0 … 3.5: two labels read with their point, four as "25" or "2.5" (point not certain).
+    const amb = (a: string, b: string): OcrLabel => ({ text: a, confidence: 0.95, alternatives: [b] });
+    const s = suggestAxis(reading('x', xs, ['1.0', '1.5', amb('20', '2.0'), amb('25', '2.5'), amb('30', '3.0'), amb('35', '3.5')]));
+    expect(s).toMatchObject({ status: 'calibrated', scale: 'linear' });
+    expect(s.labels.map((l) => l.value)).toEqual([1, 1.5, 2, 2.5, 3, 3.5]);
+  });
+
+  it('gives an ambiguous label no value when no other labels fix the line', () => {
+    const amb = (a: string, b: string): OcrLabel => ({ text: a, confidence: 0.95, alternatives: [b] });
+    const s = suggestAxis(reading('x', xs.slice(0, 3), [amb('10', '1.0'), amb('15', '1.5'), amb('20', '2.0')]));
+    expect(s.status).not.toBe('calibrated');
+  });
+
+  it('declines when one small label shows a point the others lost (all would be ×10)', () => {
+    // "1.5" disagrees, but 15 would sit on the line of 10, 20, 25, 30, 35.
+    const s = suggestAxis(reading('y', xs, ['10', '1.5', '20', '25', '30', '35']));
+    expect(s.status).not.toBe('calibrated');
+    expect(s.message).toMatch(/decimal point/);
+  });
+
+  it('declines times of day read as numbers ("12.00 15.00 18.00" fit a line)', () => {
+    const times = ['03:00', '06:00', '09:00', '12:00', '15:00', '18:00'];
+    const s = suggestAxis(
+      reading('x', xs, ['0300', '0600', '0900', '12.00', '15.00', '18.00'], { text: times.map((t) => ({ text: t, confidence: 0.96 })) }),
+    );
+    expect(s.status).not.toBe('calibrated');
+    expect(s.message).toMatch(/times of day/);
+  });
+});
+
 describe('suggestAxis with pieces of labels', () => {
   it('gives labels marked as pieces no value (five "8 6 4 2 0" pieces of "0.8 … 0.0" never agree on ×10)', () => {
     const r = reading('y', [30, 70, 110, 150, 190], ['8', '6', '4', '2', '0']);

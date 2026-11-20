@@ -98,6 +98,8 @@ family — the inputs Phase 5's OCR and scale inference need.
   `gridlines` (true = the major tick positions are drawn as gridlines; scored by `grid-R`), `ticks`
   `[{ value, px, py?, label?, minor? }]` and either `line: [[x1,y1],[x2,y2]]` or the unrotated
   shorthand `axisLineRow` (x) / `axisLineCol` (y). `lineDrawn: false` = no visible line.
+  `scale: "categorical"` or `"time-of-day"` = labels without calibratable values (values are tick
+  indices); the calibration score counts any medium/high suggestion there as wrong.
   The axis line is the line the ticks hang on — in a closed frame with zero inside it, the
   bottom/left frame lines (see `fixtures/real/km-sas-frame-ikawa.json`), not the value-0 line.
 

@@ -153,3 +153,49 @@ describe('restorePoints', () => {
     expect(restorePoints('Oct', marks(0, 12, [5, 6]))).toBe('Oct');
   });
 });
+
+describe('affixes: SI suffixes and currency (labels-variety corpus)', () => {
+  it.each([
+    ['20k', 20000],
+    ['1.5M', 1500000],
+    ['1.25M', 1250000],
+    ['750k', 750000],
+    ['2G', 2e9],
+    ['$200', 200],
+    ['$12,500', 12500],
+    ['-$5', -5],
+    ['€1.5k', 1500],
+  ])('%s → %d', (text, value) => {
+    expect(parseNumberLabel(text)?.value).toBe(value);
+  });
+
+  it('does not take a lower-case m (milli or a misread M: 10⁹ apart) or a lone suffix', () => {
+    expect(parseNumberLabel('5m')).toBeNull();
+    expect(parseNumberLabel('k')).toBeNull();
+    expect(parseNumberLabel('$')).toBeNull();
+    expect(parseNumberLabel('08k')).toBeNull();
+  });
+});
+
+describe('parseDateToken: times of day and quarters', () => {
+  it('reads a time of day as its own kind (never a number or a date)', () => {
+    expect(parseDateToken('09:30')).toEqual({ kind: 'time', ms: (9 * 60 + 30) * 60_000 });
+    expect(parseDateToken('21:00:15')).toEqual({ kind: 'time', ms: (21 * 3600 + 15) * 1000 });
+    expect(parseDateToken('25:00')).toBeNull();
+  });
+
+  it('dates a quarter at its first day, either way round', () => {
+    expect(parseDateToken('Q1 2024')).toEqual({ kind: 'date', ms: Date.UTC(2024, 0, 1) });
+    expect(parseDateToken('Q4 1999')).toEqual({ kind: 'date', ms: Date.UTC(1999, 9, 1) });
+    expect(parseDateToken('2024-Q3')).toEqual({ kind: 'date', ms: Date.UTC(2024, 6, 1) });
+    expect(parseDateToken('Q5 2024')).toBeNull();
+  });
+});
+
+describe('restorePoints with uncertain marks', () => {
+  const marks = { start: 0, end: 20, points: [], uncertain: [{ x0: 9, x1: 10, char: '.' as const }] };
+  it('leaves them out unless asked', () => {
+    expect(restorePoints('25', marks)).toBe('25');
+    expect(restorePoints('25', marks, true)).toBe('2.5');
+  });
+});

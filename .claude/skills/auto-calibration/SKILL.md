@@ -55,6 +55,19 @@ description: >
   (`slanted`). Tesseract cannot really read hand-lettering: declining with labelled-gridline
   positions is the expected result there, not a bug to tune away.
 
+- Label variety (c120–c155, SPEC → Auto-calibration → Label variety): small text can hide a
+  decimal point, so a label may carry two readings (`OcrLabel.alternatives`) that only the axis's
+  unambiguous labels settle; never give such a label a value of its own. A reading with fewer
+  characters than `FoundLabel.runs` dropped one (`20k` → `20`, `20` → `0`): the text pass
+  reconciles it (`reconcile` in auto.ts). Rotated labels are `AxisLabels.alternative`, read only
+  when the upright reading declines. Any re-read of a `10ⁿ` label must not turn into a plain
+  number starting with `10` (`102` for 10⁻²): that is the confident-wrong trap. A word that split
+  (a lost point) must never leave a trusted digit behind: `FoundLabel.partial` labels give no
+  value, like `clipped` ones — never drop the guard to win an axis.
+- Tools that paid off (scratch scripts, outside the repo): an OCR lab that reads every label with
+  a `label` in the truth under crop/OCR variants and scores them (1 288 labels, ~25 s); a per-gap
+  dump of digit pitch and gap ink against the true text (how the point thresholds were set).
+
 ## Debugging a figure
 
 - `npm run bench:axes -- --verbose --only c12,km` prints each axis: `ok/WRONG level scale err%` and
@@ -73,7 +86,15 @@ can pick another WASM core, so a small change on a new machine is not necessaril
 investigate per image (`Changed vs baseline` lines) before updating. Update the baseline
 (`-- --update`) only for an explained improvement or trade-off, in the same commit.
 
-## Known failures (Phase 5 baseline: 65 % of axes correct, 0 wrong)
+## Known failures (2026-11-19, merged with the styled corpus: 79.9 % of 334 axes correct, 0 wrong)
+
+Label variety: categorical and time-only axes (declined by design), times on a concise date axis
+(the date is only in the offset text), years on a second label line, offset notes over labels that
+lost their points (c136), coloured labels (c151), `m×10ⁿ` read as `10ⁿ` (c134), log
+exponents 2–4 px tall (c13, c14, c44, c45). Rejected (SPEC lists the numbers): OCR crop
+preprocessing, exponent-crop preprocessing, height-ratio exponent tests, glyph-shape-only rotation.
+
+### Earlier (Phase 5 baseline: 65 % of axes correct, 0 wrong)
 
 ggplot-style charts (no axis lines), low-DPI/JPEG labels misread, log exponents 2–4 px tall, date
 axes with day numbers or no year, offset notes too small to read, axes whose ticks were not found.
