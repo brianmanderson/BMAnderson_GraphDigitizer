@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 // End-to-end tests against the Vite dev server on its own port (5174), so a dev server you
 // have open on 5173 doesn't interfere. Chromium only; run `npx playwright install chromium` once.
-const PORT = 5174;
+const PORT = Number(process.env.E2E_PORT ?? 5174);
 
 export default defineConfig({
   testDir: 'e2e',
