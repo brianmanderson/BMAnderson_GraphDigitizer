@@ -56,13 +56,20 @@ description: >
    rim and the ≤ 12-px pieces left touching it (never the seed's piece); its mask goes to the
    style reading as `darker`, where a gap crossing it is an occlusion, not a pattern gap. A frame line
    along an edge is excluded only when it has the series colour (`excludeEdgeLines`).
-   Rulings (`rulings.ts`): straight axis-parallel lines of the series' colour spanning ≥ 70 % of the
-   region, only as a grid (≥ 2, never the one under the seed) — a scanned figure's grid ruled in the
-   curves' black. Heavy ones (≥ 2 px, ½ the stroke; 6 px for a dotted/dash-dot read; none for a
-   series read as dashed or a clean marker seed) are taken out and the seed's blob and style read
-   again: kept out for a dashed/dotted series or a marker (an occluder; `cut` gaps join a cut
-   dash; slivers beside one are hidden), put back for a solid curve as `rulingInk` (never take a
-   run that is all ruling; a prediction on one is a hidden gap).
+   Rulings (`rulings.ts`): straight, nearly axis-parallel lines (tilt ≤ 0.04: a scan up to ~2°
+   askew) of the series' colour, only as a grid (≥ 2, never the one under the seed) — a scanned
+   figure's grid ruled in the curves' black. Found by a vote over every tilt (a small Hough
+   transform over the strips' full-row bands): a line needs its own clean band in ≥ 50 % of the
+   strips and shows (own band, or inside a thicker band where curves converge on it or markers
+   sit on it) in ≥ 70 %. Heavy ones (≥ 2 px, ½ the stroke; 6 px for a dotted/dash-dot read; none
+   for a clean marker seed) are taken out and the seed's blob and style read again: kept out for a
+   dotted/dash-dot series or a marker (an occluder; `cut` gaps — all ruling but a pixel or two of
+   a rotated edge — join a cut dash; slivers beside one are hidden), put back for a solid curve as
+   `rulingInk` (never take a run that is all ruling; a prediction on one is a hidden gap). A seed
+   left marker-sized but read as a pattern is tried as markers first (on the cut map, then with the
+   gridlines through it put back). A series read as dashed keeps that style read, but rulings
+   ≥ 3 px (`DASH_RULING`; a 1–2 px gridline stays) are cut out before `applyStyle` and the walk (a
+   dash touching the grid is otherwise one blob with it and is dropped with it).
 3. Style (`style.ts → classifyStyle`): the chain of blobs around the seed → solid / dashed /
    dotted / dash-dot / unknown (gaps that agree, piece lengths; occlusions end a chain, crossings
    of same-colour ink don't count). Mode: blobs of "on" pixels (`markers.ts → findBlobs`); seed
@@ -102,7 +109,8 @@ description: >
    fill's edge is not `flatTopped` (pieces between > 1.5-px steps drift > 2 px: a smooth layer).
    The fold follower (`follow.ts`) takes over only when what it adds has the walk's strength
    (`strengthAlong`, within 1.15×): shades of one hue meeting at a common start.
-5. Dash hopping (`dashes.ts → hopDashes`, dashed / dash-dot): from each end of the walk, the next
+5. Dash hopping (`dashes.ts → hopDashes`, dashed / dash-dot; a hopped piece is walked from its
+   middle both ways, so a long dash keeps its near half): from each end of the walk, the next
    piece ahead on the walk's course (size, alignment, no series-colour ink between), walked alone
    and primed with the line's direction; repeated to the real end. `traceColumns(…, only)` is the
    one-direction continued walk; `tips` (a ruled figure's dashed walk) keeps a piece's tapering
@@ -154,22 +162,48 @@ description: >
    → `findCrosses` (that angle and length; ends 3, or 2 + a line on along one pair with free
    tips; legend samples dropped). Hooked in `index.ts` before the marker branch whenever the
    trace would be a curve, the blob is large without a shape, or the shape cut is filled or a
-   tiny-inside open one; never over a roomy open template or a small blob standing alone.
-10. Bars (`bars.ts → filledBars`, 2026-11-19; not in curve mode; before `excludeEdgeLines`, so a
-    row of bars on the bottom edge is no frame line): the series' ink cut into runs along the value
+   tiny-inside open one; never over a roomy open template or a small blob standing alone. The
+   ruled-scan marker check (a marker-sized seed reading as a pattern) tries the arms first too,
+   on the map with the gridlines in (`strokeMarkers`).
+10. Bars (`bars.ts → findBars`, 2026-11-19, outlined/hatched 2026-11-20; not in curve mode; before
+    `excludeEdgeLines`, so a row of bars on the bottom edge is no frame line). Two ways in, one
+    reading: a click in a solid 4 × 4 block of the series' colour reads *filled bars*; if that finds
+    nothing and the fill has an outline of another colour (`edgeColour`: the strongest ink met
+    walking out of the fill four ways, ≥ 3 ways nearer it than the background), or the click is on
+    a thin stroke (an outline, a hatch line), *outlined cells* (`outlinedReadings`): walls = the
+    outline colour's ink on straight runs ≥ 7 px, thickened 1 px; cells = what the walls enclose
+    (with an outline colour, everything neither fill nor outline also closes a cell); a bar = a
+    closed cell with no other cell in its box (stems and caps inside are walls), and its series =
+    every such cell drawn alike (`sameTexture`: face colour, block-median texture density,
+    patterned or not, next-pixel continuity in 4 directions = hatch angle, ruled or not). Ruled
+    hatching ("++", "--", "||") joins ≥ 4 lined-up empty cells ≤ 24 px across into one ruled inside,
+    moved out past the last rule to the outline. The matched cells become solid boxes (others
+    neither fill nor background; a run never bridges into another cell) and the filled reading
+    runs on them. Guards: a clicked wall must be its cell's own side (covers ≥ 60 % of it, never
+    runs on past both ends: a gridline, a flat dash); a hatch click needs a cell patterned all
+    over (a dash or curve crossing an outlined bar is not); cells all of one length are a ruled
+    grid; cells reaching across the box along a third edge are background beside a frame.
+    Filled reading: the series' ink cut into runs along the value
     axis (both orientations tried; thin other ink inside a run — hatching, caps, a curve — bridged),
     chained across columns, cut into rectangles whose ends stay put (columns with more ink beyond
     an end than the chain's usual outline never cut; one odd column between two that fit is
     noise; slivers beside a rectangle are its blurred side). Unit = commonest width among the
     segments sharing an end with the clicked one; a touching chain n units wide is n bars. Family:
-    baseline = the end most bars share (unless it is their far end and the other ends sit on ink: a
-    100 % stack's top, gridline or not), else stacked segments sitting on ink; a baseline must explain at least as
-    many bars as the stacked reading. Not bars: lengths all alike and ≤ 30 px, longest bar
+    baseline = the end most bars share, voted only by bars ≥ ⅕ of the clicked one's length (legend
+    swatches, a thick step curve's risers) (unless it is their far end and the other ends sit on ink: a
+    100 % stack's top, gridline or not), else stacked segments sitting on ink down to the floor
+    most of them reach (all sitting or all hanging; a swatch on its legend frame is not); a baseline must explain at least as
+    many bars as the stacked reading. Of one fill colour only bars textured like the clicked one
+    (`alike`: other thin ink inside the fill, not on straight runs; a short bar is hatched only
+    when marked all over, ≥ 10 %, running on diagonally — a crossing curve is not). Not bars: lengths all alike and ≤ 30 px, longest bar
     < max(8 px, ¼ width), fewer than 4 marker-sized ones, marker-sized ones none longer than 1.5
     widths (edged markers' fills: left to Find points, which runs only when no bars are found), a bar with non-bar ink of its colour on
     its side or touching pieces that share no end (a thick line's flat stretches). Box cut the
     bars (a value end on its edge, or series ink just past an edge a bar ends on) → looked at
-    again over the whole image. Returns `kind: 'markers'`, one
+    again over the whole image; so are bars hanging past a baseline on the box's edge (a box
+    ending at a zero line: series colour past it away from the bars), kept only if every first
+    bar is still there. Up to 3 odd columns are noise when they are a stem of the bars' own colour
+    (black error bar on a black bar), 1 always. Returns `kind: 'markers'`, one
     point per bar at its value end's middle.
 11. Doubling back (`follow.ts`, 2026-11-19): `followStroke` walks the stroke as a path (ring of
     ~1.5 line widths → arcs of ink; straightest unwalked arc; centred on the cross-section;
@@ -184,6 +218,17 @@ description: >
     loop through the seed overrides a marker shape found ≥ 3 times.
     Order: open from its left end; closed from its leftmost point, clockwise, first point
     repeated at the end. Points: `pickPoints` (ends, cusps, then largest deviation).
+12. Ruled figures (`follow.ts → withFollowed`, 2026-11-20): a solid curve with `rulingInk`, or a
+    dashed/dash-dot one in a figure with rulings, is also followed by `followStroke` (rulings
+    blocked: crossed, never walked along; for a dashed one `openGap` = 1.5 gaps + 2 widths, so it
+    jumps the dash gaps along its smoothed heading). Its longest x-monotone stretch through the seed
+    (short curls round a marker joined; a dashed one cut at its first > 50° turn out from the seed —
+    an "x" arm) is merged with the walk column by column: where both agree (within a stroke) the
+    walk's own points (the follower's when they differ by > 1.5 px); a lasting disagreement (≥
+    max(4, 2t) columns) goes to the one that keeps to the course so far (quadratic/linear fit of the
+    agreed stretch, over 60+ px) — the follower unless the walk is clearly (2×) closer — until the
+    two meet again; one alone goes on only from where they agreed. A solid curve's walk-bridged
+    columns are filled from the follower; a dashed one keeps only ink.
 
 ## Debugging a failing trace
 
@@ -200,12 +245,15 @@ description: >
 ## Corpus and truth
 
 - `bench/lines/generate_kinds.py` (called by `generate.py`'s main, or alone: rewrites only its
-  own files) → l200–l229 "new kinds": `series:path` lines (path in drawing order, not functions
+  own files) → l200–l229 and l240–l247 "new kinds" (`NUMBERS`): `series:path` lines (path in drawing order, not functions
   of x: loops, folds, spirals, parametric; `corners` = tips/cusps/step corners) and
-  `kind: "bars"` series (loaded as scatter; `markers` = value ends; tags `bars:*`, `histogram`).
+  `kind: "bars"` series (loaded as scatter; `markers` = value ends; tags `bars:*`, `histogram`;
+  l240–l247, appended 2026-11-20 (l230–l239 unused): black-and-white hatched / outlined / ruled "++" bars, one face
+  colour told apart by hatching, a spine at zero, hatched horizontal bars both sides of zero,
+  an outlined histogram, four series with error caps).
   `score.ts` adds `pathCoverage` / `pathPrecision` / `pointsOrder` (gated) for `series:path` only
   — absent from every other category, so earlier entries gain no key.
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (242 charts, 653 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (258 charts, 715 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
@@ -232,7 +280,9 @@ description: >
   the fill when it has no edge line —, 6–8 series of one palette, noisy series, curves running
   together, 1-px lines, dark / grey-panel themes, gridlines in the series' colour, annotations
   and a legend over curves, KM pairs with "|" ticks, steep sigmoids, log-x, log-log; seeds by
-  `pick_seed_styles`) — so earlier ones stay
+  `pick_seed_styles`), l270–l277 `scan-rotated` (`build_scan(i, strong=True)`, written alone by
+  `write_scan2`: the scan-grid charts rotated 0.8–2° and, every other one, ruled every 10 units —
+  tag `grid:dense`) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -262,9 +312,12 @@ markers; same-colour (Phase 6): a dashed series merged into the solid one for a 
 dashed trace there, dashed/dotted KM steps keep few corners; grid-crossing: dashed bounds among
 own-colour gridlines get their style misread; top X axis: Office dashes (gaps longer than the
 dashes) often leave the style unread, a series running inside the axis stroke is lost there with
-the axis, a dashed trace stops at an open marker whose cap it entered; scan-grid: x/o markers on a
-gridline where curves converge still divert a trace (wrong series 27.8 %), hand-dashed curves cut
-by a dense grid often go unread, a ring touching a curve or gridline can still trace as a curve (an "x" there is found by its arms since 2026-11-20);
+the axis, a dashed trace stops at an open marker whose cap it entered; scans (scan-grid wrong 11.1 %,
+scan-rotated 25.0 %): a dashed curve where an "x" sits on a gridline crossing still leaves along
+the "x" (`l124/s2`, `l277/s1`), a dash touching a gridline at the seed can read solid
+(`l120/s2`), dashed curves converging on another's dashes at a shallow angle switch (`l122/s1`,
+`l270/s1`), a dash cut into a stub by a gridline kinks the path, most "o" clicks in a dense grid
+still trace a curve; an "x" there is found by its arms (cross.ts, 2026-11-20);
 busy-scatter: an "x" merged with a dot of its colour fails the profile test (l137 recall 74 %), two grey
 curves of different shades meeting can send the walk along the darker one, corners hidden under a
 marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
@@ -283,11 +336,12 @@ ticks read as dash-dot; a JPEG dashed line touching a thick related-hue curve ca
 (`l31/s3`). Scans: keeping a walk off a gridline it only touches (no far-end exit from a run
 that is mostly ruling) fixes `l121/s0` but costs steep curves crossing horizontal gridlines —
 rejected, see SPEC.
-New kinds (l200–l229): a P–E loop whose tips are one merged line leaves its tips
+New kinds (l200–l229, l240–l247): a P–E loop whose tips are one merged line leaves its tips
 out (the walk stops where the branches merge), a curve folding back that the walk retraces is left
 to the column walk (an open path is never trusted after retracing), stress–strain cycles in one
 black stroke (crossings at every reload) are not followed, a P–E ellipse among another loop is
-taken for markers, a minor loop inside a same-colour major loop follows the major one; outlined
-and hatched-only bars (white fill) are not found, cross-hatched grey bars read as markers, a
-spine drawn at zero cuts the plot box (bars below it lost unless the box is right). Numbers: docs/SPEC.md → Auto-trace →
+taken for markers, a minor loop inside a same-colour major loop follows the major one; bars:
+every bar series of the corpus is found (2026-11-20) — left: outlined bars all of one length
+read as a ruled grid, a thin outline blended into a fill of its own grey read ~2 px short,
+equal-height touching outlined bars of one series with ruled hatching could join. Numbers: docs/SPEC.md → Auto-trace →
 Line-chart styles / Baseline / Known failures.

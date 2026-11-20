@@ -238,8 +238,15 @@ export function hopDashes(
       }
       // The piece only: its end is the next hop's start (every gap after the first hop is bridged
       // by this test, not by the walker's own gap bridging).
-      const next = traceColumns(alpha, region, { x: sx, y: sy }, { ...opts, maxGap: PIECE_GAP, maxHiddenGap: PIECE_GAP }, { dir: right ? 1 : -1, lead });
-      const beyond = (next ?? []).filter((e) => (right ? e.x > end.x : e.x < end.x));
+      const pieceOpts = { ...opts, maxGap: PIECE_GAP, maxHiddenGap: PIECE_GAP };
+      const fwd = traceColumns(alpha, region, { x: sx, y: sy }, pieceOpts, { dir: right ? 1 : -1, lead }) ?? [];
+      // …and back from the middle towards the gap, primed with what lies ahead: the piece's near
+      // half (a long dash entered at its middle would keep only its far half).
+      const ahead = fwd.filter((e) => (right ? e.x > sx : e.x < sx)).sort((a, c) => Math.abs(a.x - sx) - Math.abs(c.x - sx)).slice(0, 8);
+      const back = ahead.length >= 2 ? (traceColumns(alpha, region, { x: sx, y: sy }, pieceOpts, { dir: right ? -1 : 1, lead: ahead }) ?? []) : [];
+      const nearHalf = back.filter((e) => (right ? e.x > end.x && e.x < sx : e.x < end.x && e.x > sx));
+      const next = [...nearHalf, ...fwd].sort((a, c) => a.x - c.x);
+      const beyond = next.filter((e) => (right ? e.x > end.x : e.x < end.x));
       if (!beyond.length) continue;
       const gap = Math.max(0, (right ? beyond[0]!.x - end.x : end.x - beyond[beyond.length - 1]!.x) - 1);
       if (right) {

@@ -238,6 +238,85 @@ describe('bars (bars.ts)', () => {
     });
   });
 
+  /** A bar x0…x1 × y0…y1 with a black outline of width `lw` centred on its edges, face `face`, and hatching "/" every `pitch` px. */
+  const outlined = (c: Canvas, x0: number, y0: number, x1: number, y1: number, face: RGB, pitch = 0, lw = 1.5) => {
+    c.rect(x0 - lw / 2, y0 - lw / 2, x1 + lw / 2, y1 + lw / 2, [0, 0, 0]);
+    c.rect(x0 + lw / 2, y0 + lw / 2, x1 - lw / 2, y1 - lw / 2, face);
+    if (pitch) {
+      const inside = (x: number, y: number) => x > x0 + lw / 2 && x < x1 - lw / 2 && y > y0 + lw / 2 && y < y1 - lw / 2;
+      c.paint([0, 0, 0], x0, y0, x1, y1, (x, y) => inside(x, y) && (((x + y) % pitch) + pitch) % pitch < 1.4);
+    }
+  };
+  /** A pixel of the "/" hatching inside x0…x1 at about row y. */
+  const onHatch = (x: number, y: number, pitch: number) => ({ x, y: y - ((((x + y) % pitch) + pitch) % pitch) });
+
+  it('reads outlined bars from their outline and hatched ones from a hatch line, as two series', () => {
+    const c = new Canvas(460, 300);
+    c.stroke([{ x: 20, y: 251 }, { x: 440, y: 251 }], 1, [0, 0, 0]);
+    const plain = [120, 60, 180, 90, 140];
+    const hatched = [70, 150, 40, 110, 100];
+    plain.forEach((v, i) => outlined(c, 45 + 80 * i, 250 - v, 75 + 80 * i, 250, [255, 255, 255]));
+    hatched.forEach((v, i) => outlined(c, 75 + 80 * i, 250 - v, 105 + 80 * i, 250, [255, 255, 255], 8));
+    // The plain bars' left outline; a hatch line inside the second hatched bar.
+    const a = c.trace({ x: 45 + 80, y: 240 });
+    expect(a.kind).toBe('markers');
+    expect(a.points).toHaveLength(plain.length);
+    a.points.forEach((p, i) => {
+      expect(Math.abs(p.px - (60 + 80 * i))).toBeLessThan(1);
+      expect(Math.abs(p.py - (250 - plain[i]!))).toBeLessThan(1);
+    });
+    const b = c.trace(onHatch(170, 200, 8));
+    expect(b.kind).toBe('markers');
+    expect(b.points).toHaveLength(hatched.length);
+    b.points.forEach((p, i) => {
+      expect(Math.abs(p.px - (90 + 80 * i))).toBeLessThan(1);
+      expect(Math.abs(p.py - (250 - hatched[i]!))).toBeLessThan(1);
+    });
+  });
+
+  it('tells bars of one fill colour apart by their hatching', () => {
+    const c = new Canvas(460, 300);
+    const plain = [120, 60, 180, 90, 140];
+    const hatched = [70, 150, 40, 110, 100];
+    plain.forEach((v, i) => outlined(c, 45 + 80 * i, 250 - v, 75 + 80 * i, 250, BLUE, 0, 1));
+    hatched.forEach((v, i) => outlined(c, 75 + 80 * i, 250 - v, 105 + 80 * i, 250, BLUE, 10, 1));
+    const a = c.trace({ x: 140, y: 230 });
+    expect(a.points.map((p) => Math.round(p.px))).toEqual(plain.map((_, i) => 60 + 80 * i));
+    // In the fill between two hatch lines of a hatched bar.
+    const h = onHatch(170, 200, 10);
+    const b = c.trace({ x: h.x, y: h.y - 5 });
+    expect(b.points.map((p) => Math.round(p.px))).toEqual(hatched.map((_, i) => 90 + 80 * i));
+    b.points.forEach((p, i) => expect(Math.abs(p.py - (250 - hatched[i]!))).toBeLessThan(1));
+  });
+
+  it('reads outlined bars on both sides of a zero line, and their error bars are no bar ends', () => {
+    const c = new Canvas(460, 300);
+    c.stroke([{ x: 20, y: 151 }, { x: 440, y: 151 }], 1, [0, 0, 0]);
+    const values = [80, -50, 120, -90, 60];
+    values.forEach((v, i) => {
+      const x = 60 + 80 * i;
+      outlined(c, x - 15, Math.min(150 - v, 150), x + 15, Math.max(150 - v, 150), [255, 255, 255], 6);
+      const end = 150 - v;
+      const err = 12;
+      c.stroke([{ x, y: end - err }, { x, y: end + err }], 1, [0, 0, 0]);
+      c.stroke([{ x: x - 5, y: end - err }, { x: x + 5, y: end - err }], 1, [0, 0, 0]);
+      c.stroke([{ x: x - 5, y: end + err }, { x: x + 5, y: end + err }], 1, [0, 0, 0]);
+    });
+    const r = c.trace(onHatch(150, 160, 6), 'auto', 25, [[10, 10], [450, 10], [450, 290], [10, 290]]);
+    expect(r.kind).toBe('markers');
+    expect(r.points).toHaveLength(values.length);
+    r.points.forEach((p, i) => expect(Math.abs(p.py - (150 - values[i]!))).toBeLessThan(1));
+  });
+
+  it('leaves a dashed curve over outlined bars to the curve tracer', () => {
+    const c = new Canvas(460, 300);
+    c.stroke([{ x: 20, y: 251 }, { x: 440, y: 251 }], 1, [0, 0, 0]);
+    [120, 60, 180, 90, 140].forEach((v, i) => outlined(c, 45 + 80 * i, 250 - v, 75 + 80 * i, 250, [255, 255, 255]));
+    const f = (x: number) => 230 - 0.4 * (x - 30);
+    for (let x = 30; x < 430; x += 12) c.stroke([{ x, y: f(x) }, { x: x + 7, y: f(x + 7) }], 1.5, [0, 0, 0]);
+    expect(c.trace({ x: 57, y: Math.round(f(57)) }).kind).toBe('curve');
+  });
+
   it('is not used in curve mode, and leaves a thick line alone', () => {
     const c = chart([120, 60, 180]);
     expect(c.trace({ x: 100, y: 230 }, 'curve').kind).not.toBe('markers');
