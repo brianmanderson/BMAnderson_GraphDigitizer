@@ -27,7 +27,9 @@ separators and decimal commas, SI suffixes, percent, currency, scientific notati
 multiplier notes, both minus signs, log axes with plain numbers, reversed axes, serif / bold /
 italic / condensed / monospace fonts, tiny, grey and coloured labels, years, months, quarters,
 times of day, category names (truth scale `categorical`: the right answer is to decline), no tick
-marks, and light text on a dark background. Each variant has a `label:<variant>` tag. Do not edit the output by hand and do not change a chart because the
+marks, and light text on a dark background. Charts c156-c167 (appended in round two) widen the colour
+cases: blue/red/green/purple/orange/cyan labels, spines and labels in one colour, light grey
+labels at low DPI, and dark themes with coloured, log and JPEG labels. Each variant has a `label:<variant>` tag. Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -142,6 +144,20 @@ LABEL_VARIETY = {
     153: dict(x="time-only", y="plain"),
     154: dict(x="categorical", y="plain-zero"),
     155: dict(x="plain", y="plain", style="dark_background"),
+    # Appended (round two): tick labels in colour and light labels on a dark background. `axiscolor`
+    # draws the spines, ticks and labels in one colour (a twin axis in its series colour).
+    156: dict(x="plain", y="plain", xcolor="#1f77b4", ycolor="#1f77b4"),
+    157: dict(x="plain-big", y="percent", xcolor="#d62728", ycolor="#2ca02c"),
+    158: dict(x="log-pow", y="plain", xcolor="#9467bd", ycolor="#9467bd"),
+    159: dict(x="plain", y="plain", axiscolor="#1f77b4"),
+    160: dict(x="plain", y="plain", style="dark_background", xcolor="#8dd3c7", ycolor="#feffb3"),
+    161: dict(x="plain", y="plain", color="#a6a6a6", dpi=72, jpeg=80),
+    162: dict(x="plain", y="plain-big", xcolor="#ff7f0e", ycolor="#17becf"),
+    163: dict(x="plain", y="log-pow", style="dark_background"),
+    164: dict(x="plain", y="plain", style="dark_background", dpi=72, jpeg=80),
+    165: dict(x="log-pow", y="log-pow", xcolor="#1f77b4", ycolor="#d62728", jpeg=85),
+    166: dict(x="plain", y="plain", axiscolor="#d62728", em=11.0, dpi=100),
+    167: dict(x="negative", y="plain", xcolor="#7f7f7f", ycolor="#2ca02c", dpi=72),
 }
 
 
@@ -1160,7 +1176,7 @@ def build_labels(i: int) -> tuple[Image.Image, dict, int]:
     style = spec.get("style", "default")
     plain_style = style == "default"
     ticks_drawn = spec.get("ticks", True)
-    color = spec.get("color", "#000000")
+    color = spec.get("color", spec.get("axiscolor", "#000000"))
     frame = "box" if not plain_style or rng.random() < 0.55 else "L"
     grid = not plain_style or bool(rng.random() < 0.3)
     spine_lw = float(rng.choice([0.8, 1.0, 1.25]))
@@ -1172,6 +1188,8 @@ def build_labels(i: int) -> tuple[Image.Image, dict, int]:
     rc = {"path.snap": False, "font.family": family, "font.size": fontsize, "axes.unicode_minus": minus == "unicode",
           "xtick.major.size": tick_len, "ytick.major.size": tick_len, "xtick.minor.size": tick_len * 0.55,
           "ytick.minor.size": tick_len * 0.55}
+    if not plain_style and ("xcolor" in spec or "ycolor" in spec):
+        rc.update({"xtick.labelcolor": spec.get("xcolor", "inherit"), "ytick.labelcolor": spec.get("ycolor", "inherit")})
     if plain_style:
         rc.update({"axes.linewidth": spine_lw, "axes.edgecolor": color, "xtick.color": color, "ytick.color": color,
                    "xtick.labelcolor": spec.get("xcolor", color), "ytick.labelcolor": spec.get("ycolor", color),
@@ -1296,6 +1314,8 @@ def build_labels(i: int) -> tuple[Image.Image, dict, int]:
         variants += ["label:grey", "grey-axes"]
     if "xcolor" in spec:
         variants.append("label:coloured")
+    if "axiscolor" in spec:
+        variants += ["label:coloured", "label:axis-coloured"]
     if not ticks_drawn:
         variants += ["label:no-tickmarks", "x-no-tickmarks", "no-tickmarks"]
     if style == "dark_background":

@@ -695,7 +695,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
   adaptive threshold (30 % of the band's 98th-percentile darkness, clamped to 24–80); dropped:
   too big, solid square blobs (markers, ≥ 80 % filled), colourful ones (mean chroma ≥ 80: data,
-  coloured tables — tick labels are black or grey). Rows by vertical overlap, words by gaps under
+  coloured tables — tick labels are usually black or grey; labels printed in a colour are found
+  as a colour class of their own, see Label colours below). Rows by vertical overlap, words by gaps under
   half the text height; Y words grow from the axis side, and a much taller glyph sticking out
   above and below (an axis-title letter) starts a new word. **Matching**: with ≥ 2 major ticks,
   X = the row with most words centred on ticks (nearest the axis on a tie); Y = per tick the
@@ -896,6 +897,64 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
     labels, best −0.4 pp); exponent-crop preprocessing (≤ +5 of 129, more misreads); telling real
     superscripts from false splits by height ratio (ranges overlap); deciding rotation from glyph
     shapes alone (lost three upright axes).
+- **Label colours, faint labels and log exponents (round two, 2026-11-20)**: corpus c156–c167
+  (`build_labels`, appended; earlier charts byte-identical): blue, red, green, purple, orange and
+  cyan labels, spines + ticks + labels in one colour (`label:axis-coloured`), light grey labels at
+  72 dpi in a JPEG, dark themes with coloured, log-power and low-DPI JPEG labels. Their honest
+  baseline had one axis wrong at high (c165 y: red `10ⁿ` labels on a log axis read `1 −2 −3` from
+  the colourless fringes of the dropped red glyphs). Decisions:
+  - **Colour classes** (`colourClasses`, `labels.ts`): per band, text-sized glyphs whose *core*
+    (pixels ≥ half the glyph's darkest, where antialiasing has not diluted the colour) has chroma
+    ≥ 80 are clustered by hue (gaps > 25°); a cluster of ≥ 3 is a class. A class's glyphs are no
+    neutral ink (even when their mean chroma is under 80), and each class is matched to the ticks
+    like the neutral ink — its glyphs only (core within 25° of its hue, chroma ≥ 40), at an ink
+    threshold set by its own strokes (a light orange is far lighter than the black ticks and
+    title that set the band's). It replaces the neutral result when it finds more labels, or —
+    at tick marks only — at least half as many that carry more than twice their ink (the neutral
+    pass matched fringes) or sit clearly nearer the axis (by half a label height, ≥ 2 px: the
+    neutral pass matched the black axis title beyond coloured Y labels). Otherwise neutral wins:
+    a coloured number-at-risk table under black labels matches the same ticks with ink like
+    theirs, further out. A labels-only class matched bar edges (c96), hence ticks only.
+    Not handled: a muted colour whose core chroma stays under 80 (c158's purple, ~76) forms no
+    class; seeding classes from chroma 60 or 45 lost a real figure and c165 x.
+  - **Faint labels**: when the neutral pass matches fewer labels than there are major ticks, the
+    band is read again at the lowest ink threshold (24) and kept if that finds more labels at the
+    ticks (light grey 72-dpi labels beside a black axis title fell apart at 30 % of the title's
+    darkness). Light-on-dark labels need nothing new: the darkness map is the negative's on a dark
+    theme, so label finding and OCR crops are already dark text on light (c155, c160, c163 read).
+  - **Exponent crops**: a pixel of an exponent's box nearer the base's ink than the exponent's is
+    masked (and vice versa for the base), and specks no larger than a quarter of the exponent's
+    height lying wholly in front of its strokes are cut with the base: the top of the base's "0"
+    and JPEG flecks of it made `10³` read `10²³` (c13). A second crop of each exponent at a 16 px
+    upscale (`FoundLabel.exponentSmall`) is read when the first reading has no digit: on the 118
+    corpus exponents 16 px read 105 with no misread, 28 px 99 with 2 (14 px: 106 / 1; 18 px: 105 /
+    0; end to end 14 and 18 px each lost an axis). Like the reading beside the base, it is a guess
+    (`OcrLabel.guessed`: no ref of its own, never "high").
+  - **Log lattice** (`logLattice`, `latticeFit` in `suggest.ts`): a tick set with pattern `log` and
+    ≥ 4 minors, ≥ 80 % of them at log10(2…9) counted from one end of their interval and ≤ 50 % from
+    the other, makes each major interval one decade (`decadePx` = the lattice spacing) and tells
+    from the tick marks alone which way the values grow. When fewer than three labels agree on an
+    axis with such a lattice (and no axis note), the fit's slope is fixed at ± `decadePx`; each label
+    read as an exact power of ten on a major tick proposes the offset, and the offset that most
+    labels share (≥ 2, unique, within the tolerance) wins if one of them was read outright (not
+    guessed) and no reading at confidence ≥ 0.75 contradicts it. Medium at most (a "high" needs
+    three labels read), refs from the read labels (a guessed one may make the pair). A misread
+    exponent lands a whole decade off the lattice, and a lost minus sign reverses the growth, so
+    neither can agree by chance. Two-decade log axes, which show only two labels, were always
+    declined before (c28, c33, c49, c91, c105).
+  - **Results** (179 images): correct 79.6 % (1 wrong at high) → **84.1 %**, **0 wrong**, end to end
+    69.8 → 74.3 %. On the 167 earlier images 267 → 280 of 334 axes correct (79.9 → 83.8 %), no axis
+    worse; on c156–c167 8 → 21 of 24. `label:coloured` 25 → 90 %, `x:log10` 76.8 → 78.6 %, `y:log10`
+    77.3 → 78.8 % (main: 71.2 / 62.9 % on its corpus), `scanned` 58.3 → 66.7 % (c74 y read at the
+    faint threshold). **Known failures** (declined): dates without a year, times, categories (by
+    design, 8 axes); range frames without tick labels (8); hand-lettered scans (6); log exponents
+    OCR still misses — one decade read and the other's exponent unread or the base misread (c06,
+    c14, c25, c37, c44 y, c45, c52 y, c57, c62, c30 x, c158 x: 11; a single read exponent is not
+    trusted with the lattice alone); tiny or low-DPI labels that lose points or digits (c24, c27,
+    c30 y, c55, c148, c164 y, c167 y, c42: 11); offset notes (c03, c34, c63, c136: 5); others (c115
+    inset, c132, c134, c36, c69, c59, two real figures with two labels: 8).
+    Not attempted: a guard for labels sliced by the frame on gridline-sourced axes — no axis of the
+    corpus fails that way, and the position-only guard lost c70–c73 (see Ticks from gridlines).
 
 ## Auto-trace (line tracing engine)
 
@@ -979,12 +1038,19 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
 - **Rulings** (`rulings.ts`, 2026-11-13): old printed figures rule their grid and frame in the
   same black as the curves, often as heavy as the curves; on a scan a trace ran along them
   (tester feedback: a 1928 dose-response scan). A ruling is a straight, nearly axis-parallel line
-  of the series' colour spanning ≥ 70 % of the region (bands of rows ≥ 80 % on, per 1/48-wide
-  strip, linked across ≤ 2 missing strips; centres within max(2 px, a third of its width) of a
-  fitted line, so a hand-ruled, slightly rotated scan qualifies), and only in a grid: two or more,
-  never the line under the seed (a bias line, a plateau). Those at least 2 px, half the clicked
-  stroke and (for a series read as dotted or dash-dot) 6 px thick are kept off the trace; a series
-  read as dashed, or a seed on a marker standing clear, is traced as before. Taken out of the
+  of the series' colour spanning ≥ 70 % of the region, and only in a grid: two or more, never the
+  line under the seed (a bias line, a plateau). Detection (2026-11-20): per 1/48-wide strip, bands
+  of rows ≥ 80 % on; the lines through them are found by a vote over every tilt up to 0.04 (a
+  scan ~2° askew) — a small Hough transform: the line with bands in the most strips first, then
+  the next among the bands left; a line needs a clean band of its own (centre within max(2 px, a
+  third of its width) of its least-squares fit) in ≥ 50 % of the strips and shows — in such a
+  band, or inside a thicker one holding its rows — in ≥ 70 %. (Until then bands were linked strip
+  to strip; where curves converge on a gridline, or markers sit on it, a curve's band took over
+  the chain and the gridline was never found — on the rotated scans no grid was found at all.)
+  Those at least 2 px, half the clicked stroke and (for a series read as dotted or dash-dot) 6 px
+  thick are kept off the trace; a seed on a marker standing clear is traced as before; a series
+  read as dashed keeps that reading, but rulings ≥ 3 px are cut out before the style constraint
+  and the walk (below, Scans 2026-11-20). Taken out of the
   coverage map (an occluder, like another colour), the seed's blob and style are read again: a
   dash or marker that touched a gridline stands alone. If that reads as dashed / dotted / a
   marker, the rulings stay out (gaps across one count as crossings; a gap that is all ruling joins
@@ -1180,7 +1246,10 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   two dashed confidence curves whose dashes and gaps vary by a quarter (hand-drawn), "x" and
   open "o" markers on and near them (some on gridlines), 120–200 DPI; rendered, blurred,
   thresholded against a smooth random field (uneven stroke width), noised, rotated by up to
-  0.5° in two charts of three (the truth rotated with it), saved as one grey channel; (l128–l139,
+  0.5° in two charts of three (the truth rotated with it), saved as one grey channel; (l270–l277,
+  appended 2026-11-20, `scenario:scan-rotated`, `build_scan(i, strong=True)` via `write_scan2`)
+  the same scans rotated 0.8–2° every one, and every other one ruled every 10 units (`grid:dense`);
+  (l128–l139,
   `scenario:busy-scatter`, tags `log-log` | `linear`, `frame:range`, series tags `busy`,
   `marker:plus|x|dot|diamond`, `small-markers`, `through-markers`, `corner`, `color:grey`,
   modelled on tester feedback about a dense clinical scatterplot) 300–1000 small black markers
@@ -1681,6 +1750,12 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     the denominator. Negative bars: a zero line inside the box was already read (`l219`, `l229`);
     a bottom spine drawn at zero (`l242`) was boxed as the whole plot here; where the box ends at
     the zero line (`l247`) the bars below it are now found by the second look.
+    *Merged with label colours and scan traces (#23, #25)*: against that main only `l228/s0`,
+    `l228/s1` and `l229/s0` changed (as above; every scan trace, l270–l277 included, unchanged);
+    OVERALL wrong-group rate 8.66 → 8.64 % (the new bar traces add 132 clean points), while
+    `color:black` (10.24 → 10.26 %), `legend`, `no-grid` and `same-colour` (0.73 → 0.80 %) rise
+    slightly: the same 924 wrong-group markers over 118 fewer found (the hatching "markers" of
+    `l228`/`l229` gone).
   - *Benchmark*: l200–l229 (`bench/lines/generate_kinds.py`, called by `generate.py`): 16 path
     charts (32 series, tags `series:path` plus `loop`, `closed`, `cusps`, `merged-tips`,
     `vertical`, `overhang`, `spiral`, `parametric`, `self-crossing`, …) and 14 bar charts (29
@@ -1804,6 +1879,76 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   finder first took the fills of black-edged circles on their error bars (`l147/s0`, `l148/s0`)
   for marker-sized bars, 4–5 px above the centres; the compact-family rule above gives them back
   to Find points (7/7, 10/11 as before), with no bar or path trace changing.
+
+- **Scans: tilted rulings, a stroke follower beside the walk (2026-11-20; 686 traces)**: round
+  two on the two categories round one left unchanged (`scenario:scan-grid`, `rotated`). Overlays
+  of every failing trace showed four causes: (1) `rulings.ts` missed the gridline curves converge
+  on (a curve's band took over its chain of bands) and every ruling of the rotated charts; (2) a
+  solid curve's column walk, at an "o" or "x" sitting on a gridline crossing, came out of the hidden
+  stretch on another series; (3) a dash touching a gridline is one blob with the whole grid, which
+  the style constraint drops (much longer than a dash) — so the dashed walk had nothing to hop to;
+  (4) an "x" on a dashed curve turned the hop's direction along an arm. Changes:
+  - *Rulings by a vote over tilts* (Rulings above): a small Hough transform over the strips' bands,
+    tilt ≤ 0.04; a cut gap may hold a pixel or two of a rotated ruling's edge outside the mask.
+  - *The stroke follower beside the walk* (`follow.ts → withFollowed`): for a solid curve with
+    `rulingInk`, and a dashed / dash-dot one in a figure with rulings, `followStroke` runs too
+    (rulings blocked: crossed, never walked along; a dashed one jumps up to 1.5 gaps + 2 widths of
+    background straight on along its smoothed heading). Its longest stretch through the seed that
+    runs one way in x (curls round a marker shorter than 8 widths + 8 px joined; a dashed one cut
+    at its first turn over 50° out from the seed, an "x" arm) is merged with the walk column by
+    column: where they agree within a stroke the walk's own points (the follower's where they
+    differ by over 1.5 px — a run merged with a marker); where they disagree for at least max(4,
+    2 widths) columns, the one that keeps to the course so far — a quadratic (a line when the
+    agreed stretch is shorter than the window) through the agreed stretch, over 60+ px, compared
+    over 60+ px ahead — the follower unless the walk is twice as close; until they meet again (a
+    detour through a marker) or for good. A path alone goes on only from where the two agreed. A
+    solid curve's columns the walk bridged are filled from the follower; a dashed one keeps only ink.
+  - *Dashed series in a ruled figure*: the style is read as before (with the rulings in), but rulings
+    ≥ 3 px are cut out before the style constraint and the walk (`DASH_RULING`: the 1–2 px
+    gridlines of `grid-crossing`, which dashed bounds run along, stay); a patterned walk's points
+    are continued across a ruling it crossed. A hopped dash is walked from its middle both ways
+    (`dashes.ts`; a long dash kept only its far half).
+  - *A marker on a gridline*: when the piece left at the seed after the cut is marker-sized but
+    reads as a pattern (it chains with the dashes it sits among), the marker's shape is tried
+    first — on the cut map, then with only the gridlines through its box put back — and kept when
+    found three times or more.
+  - *Corpus*: l270–l277 (`scenario:scan-rotated`, appended with an honest baseline first: coverage
+    52.3 %, wrong 54.2 %) — the scans rotated 0.8–2°, every other one ruled every 10 units.
+  Before → after: `scenario:scan-grid` coverage 65.5 → 83.0 %, wrong series 27.8 → 11.1 %, p95
+  77.8 → 5.2 px, kind 80.0 → 83.3 %, marker recall 30.2 → 34.1 %, precision 29.2 → 29.9 %, style
+  88.9 % unchanged; `rotated` (round one's 40 traces) coverage 71.8 → 84.0 %, wrong 29.2 → 12.5 %;
+  `rotated` (80) 62.0 → 83.6 %, wrong 41.7 → 18.8 %, style 83.3 → 89.6 %;
+  `scenario:scan-rotated` coverage 52.3 → 83.2 %, wrong 54.2 → 25.0 %, kind 82.5 → 90.0 %, style
+  70.8 → 83.3 %; `grid:dense` 49.9 → 73.8 %, wrong 75.0 → 25.0 %; OVERALL (686) coverage 89.5 →
+  92.5 %, wrong 6.7 → 4.1 %, p95 4.17 → 1.29 px, kind 96.1 → 96.8 %, style 91.7 → 92.3 %. Every
+  solid scan curve of round one is now at 97–100 % (`l118/s0` 44.1 → 100, `l120/s0` 57.4 → 100,
+  `l121/s0` 84.4 → 99.4, `l126/s0` 82.0 → 100). Earlier traces outside the scans: `l202/s1`
+  coverage 95.4 → 97.8 %, corners 0 → 1 of 2 (its added points move the pooled p95 of `closed`,
+  `cusps`, `scenario:paths`, `color:grey` up by 0.001–0.06 px); the 1928 scan's fit 94.7 → 95.5 %,
+  upper confidence curve 82.3 → 86.0 % (median 1.03 → 1.13 px), lower one 92.5 → 89.6 % (the
+  `dashed` / `real` median 0.670 → 0.677 px); `l101/s2` median 0.05 → 0.06 px; `l103/s2` (already
+  45.7 % at a median 10.7 px off its series) now counted as wrong series — the new rulings change its
+  `rulingInk` (the `grid-crossing` / `frame:L` / `dpi:low` wrong rates). Trade-offs among the
+  scans: `l119/s2` 74.8 → 72.2 %, `l127/s2` 82.5 → 78.2 % (the follower wins a disagreement the
+  walk had right), `l124/s2` 4.2 → 10.0 % but now on the wrong series (an "x" arm at a gridline
+  crossing). Markers: clicks the old tracer took for curves now find markers, imprecisely —
+  `l123/s4` 0 → 5 of 9 (12 found), `l116/s4` 0 → 2 of 6, `l276/s4` 0 → 3 of 7 (one of another
+  group), `l274/s4` 0 → 1 of 9 (one of another group), `l124/s4` 5 of 8 found as 8 — which lowers
+  pooled marker precision (OVERALL 84.21 → 84.07 %, `dpi:high` 73.5 → 64.4 %) and raises
+  wrong-group rates in the scan categories (`scan-rotated` 1.3 → 3.3 %). Time per scan trace
+  roughly doubles (the follower and the marker check). **Tried and rejected**: taking rulings out
+  for a dashed series before its style is read (cut dashes read as dash-dot: style 88.9 → 77.8 %,
+  and `grid-crossing` dashed bounds running along 1–2 px gridlines lost up to 27 %); the follower
+  alone for solid curves (it stops or curls at an "x" on the curve: `l117/s0`, `l127/s0`); the
+  first disagreement taken as a fork for good (a walk detouring through a marker and back lost the
+  rest); points interpolated through a dashed curve's gaps (pooled median error up); keeping the
+  walk's points where it disagrees with the follower by up to a stroke for dashed curves too (the
+  1928 curves lost 0.7–2.4 %). **Known failures**: dashed curves where an "x" sits on a gridline
+  crossing still leave along the "x" (`l124/s2`, `l120/s2` whose dash touching a gridline reads
+  solid, `l277/s1`/`s2`, `l275/s2`); dashed curves converging on another curve's dashes at a
+  shallow angle switch (`l122/s1`, `l270/s1`/`s2`); a dash cut by a gridline into a stub kinks the
+  path there (the 1928 lower curve); most "x" and "o" clicks in a dense grid still trace a curve
+  (marker recall 31–35 %).
 
 ## Auto-trace — UI
 

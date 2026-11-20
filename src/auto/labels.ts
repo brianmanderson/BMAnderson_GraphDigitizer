@@ -48,6 +48,8 @@ interface Patch {
   dark: Float32Array;
   /** Colourfulness (max − min of R, G, B) of the nearest image pixel, 0–255. */
   chroma: Uint8Array;
+  /** Hue of the nearest image pixel, degrees 0–360 (meaningless where chroma is low). */
+  hue: Float32Array;
 }
 
 export interface LabelWord {
@@ -92,6 +94,8 @@ export interface FoundLabel {
   /** When the word ends in a raised exponent: the base and exponent cut separately. */
   base: RgbaImage | null;
   exponent: RgbaImage | null;
+  /** The exponent cut again at a smaller upscale, for a second reading when the first is empty. */
+  exponentSmall?: RgbaImage;
   /** A minus sign was seen in front of the digits (of the base, and of the exponent). */
   minus: boolean;
   exponentMinus: boolean;
@@ -156,12 +160,18 @@ export interface AxisLabels {
 const BODY_MIN_HEIGHT = 4;
 /** Text is upscaled so its body height is about this many px before OCR. */
 const OCR_TEXT_HEIGHT = 28;
+/**
+ * A second crop of a raised exponent, upscaled less: a lone exponent digit 2–4 px tall that comes
+ * back empty at OCR_TEXT_HEIGHT is often read at this height (see SPEC → Exponents).
+ */
+const EXP_REREAD_HEIGHT = 16;
 
 function makePatch(map: DarknessMap, img: RgbaImage, frame: Frame, u0: number, w0: number, width: number, height: number): Patch {
   const w = Math.max(1, Math.round(width));
   const h = Math.max(1, Math.round(height));
   const dark = new Float32Array(w * h);
   const chroma = new Uint8Array(w * h);
+  const hue = new Float32Array(w * h);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
       const p = familyPoint(frame, 'horizontal', u0 + i, w0 + j);
@@ -175,11 +185,23 @@ function makePatch(map: DarknessMap, img: RgbaImage, frame: Frame, u0: number, w
         const g = img.data[o + 1] ?? 0;
         const b = img.data[o + 2] ?? 0;
         chroma[j * w + i] = Math.max(r, g, b) - Math.min(r, g, b);
+        hue[j * w + i] = hueOf(r, g, b);
       }
     }
   }
-  return { u0, w0, width: w, height: h, dark, chroma };
+  return { u0, w0, width: w, height: h, dark, chroma, hue };
 }
+
+/** Hue angle of an RGB colour, degrees in [0, 360). */
+function hueOf(r: number, g: number, b: number): number {
+  const h = (Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b) * 180) / Math.PI;
+  return h < 0 ? h + 360 : h;
+}
+
+const hueDistance = (a: number, b: number) => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
 
 /** Mean colourfulness of a glyph's pixels. */
 function glyphChroma(p: Patch, g: Glyph): number {
@@ -190,14 +212,114 @@ function glyphChroma(p: Patch, g: Glyph): number {
 
 /**
  * Glyphs this colourful are data (markers, coloured curves, a coloured number-at-risk table),
- * not tick labels, which are drawn in the axis colour: black or grey.
+ * not tick labels, which are usually drawn in the axis colour: black or grey. Labels printed in a
+ * colour (a twin axis in its series colour, a styled figure) are looked for as a colour class of
+ * their own (`colourClasses`) when the neutral ink gives fewer labels.
  */
 const MAX_LABEL_CHROMA = 80;
 
-/** Ink threshold for text in this patch: a fraction of its darkest strokes, never below INK. */
-function inkThreshold(p: Patch): number {
+/** Which glyphs of a patch may be label text. */
+type Ink = (p: Patch, g: Glyph) => boolean;
+
+const NEUTRAL: Ink = (p, g) => glyphChroma(p, g) < MAX_LABEL_CHROMA;
+
+/**
+ * The colour of a glyph's core: the mean chroma and hue of its pixels at least half as dark as its
+ * darkest one. Antialiased and JPEG-blurred edges mix the colour with the background, so a whole
+ * glyph's mean understates it (a thin red "−" averages under MAX_LABEL_CHROMA) while its core
+ * keeps it.
+ */
+function coreColour(p: Patch, g: Glyph): { chroma: number; hue: number } {
+  let max = 0;
+  for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
+  let n = 0;
+  let c = 0;
+  let hx = 0;
+  let hy = 0;
+  for (const k of g.pixels) {
+    if ((p.dark[k] ?? 0) < 0.5 * max) continue;
+    const ch = p.chroma[k] ?? 0;
+    const a = ((p.hue[k] ?? 0) * Math.PI) / 180;
+    n++;
+    c += ch;
+    hx += ch * Math.cos(a);
+    hy += ch * Math.sin(a);
+  }
+  if (!n) return { chroma: 0, hue: 0 };
+  const h = (Math.atan2(hy, hx) * 180) / Math.PI;
+  return { chroma: c / n, hue: h < 0 ? h + 360 : h };
+}
+
+/** A glyph of a colour class: its core within this many degrees of the class hue … */
+const CLASS_HUE_TOLERANCE = 25;
+/** … and at least this colourful (half the neutral limit: a fringe-diluted glyph of the class). */
+const CLASS_MIN_CHROMA = 0.5 * MAX_LABEL_CHROMA;
+/** A colour class needs this many text-sized glyphs of clear colour in the band. */
+const CLASS_MIN_GLYPHS = 3;
+
+/**
+ * The hues of text-sized coloured glyphs in a band (core chroma ≥ MAX_LABEL_CHROMA), clustered:
+ * glyphs are sorted by hue and split where neighbours differ by more than the class tolerance;
+ * each cluster of at least CLASS_MIN_GLYPHS glyphs is a class, centred on its circular mean hue,
+ * most glyphs first.
+ */
+function colourClasses(p: Patch, glyphs: Glyph[], maxTextHeight: number): number[] {
+  const hues = glyphs
+    .filter((g) => gh(g) >= BODY_MIN_HEIGHT && gh(g) <= maxTextHeight && gw(g) <= 2 * maxTextHeight)
+    .map((g) => coreColour(p, g))
+    .filter((c) => c.chroma >= MAX_LABEL_CHROMA)
+    .map((c) => c.hue)
+    .sort((a, b) => a - b);
+  if (hues.length < CLASS_MIN_GLYPHS) return [];
+  // Start the circular walk after the widest gap, so a cluster does not straddle 0°/360°.
+  let start = 0;
+  let widest = -1;
+  hues.forEach((h, i) => {
+    const prev = hues[(i + hues.length - 1) % hues.length] as number;
+    const gap = (h - prev + 360) % 360;
+    if (gap > widest) {
+      widest = gap;
+      start = i;
+    }
+  });
+  const walk = [...hues.slice(start), ...hues.slice(0, start)];
+  const clusters: number[][] = [];
+  for (const h of walk) {
+    const last = clusters[clusters.length - 1];
+    if (last && hueDistance(last[last.length - 1] as number, h) <= CLASS_HUE_TOLERANCE) last.push(h);
+    else clusters.push([h]);
+  }
+  return clusters
+    .filter((c) => c.length >= CLASS_MIN_GLYPHS)
+    .sort((a, b) => b.length - a.length)
+    .map((c) => {
+      const x = c.reduce((s, h) => s + Math.cos((h * Math.PI) / 180), 0);
+      const y = c.reduce((s, h) => s + Math.sin((h * Math.PI) / 180), 0);
+      const m = (Math.atan2(y, x) * 180) / Math.PI;
+      return m < 0 ? m + 360 : m;
+    });
+}
+
+/** The glyphs of one colour class (see `colourClasses`). */
+const ofHue =
+  (hue: number): Ink =>
+  (p, g) => {
+    const c = coreColour(p, g);
+    return c.chroma >= CLASS_MIN_CHROMA && hueDistance(c.hue, hue) <= CLASS_HUE_TOLERANCE;
+  };
+
+/**
+ * Ink threshold for text in this patch: a fraction of its darkest strokes, never below INK. For a
+ * colour class (`hue`), of that colour's strokes only: an orange label is far lighter than the
+ * black ticks and title beside it, and at their threshold its thin strokes fall apart.
+ */
+function inkThreshold(p: Patch, hue: number | null = null): number {
   const vals: number[] = [];
-  for (const v of p.dark) if (v >= INK_THRESHOLD) vals.push(v);
+  p.dark.forEach((v, k) => {
+    if (v < INK_THRESHOLD) return;
+    if (hue !== null && ((p.chroma[k] ?? 0) < CLASS_MIN_CHROMA || hueDistance(p.hue[k] ?? 0, hue) > CLASS_HUE_TOLERANCE)) return;
+    vals.push(v);
+  });
   if (vals.length < 10) return INK_THRESHOLD;
   vals.sort((a, b) => a - b);
   const p98 = vals[Math.floor(0.98 * (vals.length - 1))] as number;
@@ -651,6 +773,24 @@ function layoutOf(word: LabelWord, p: Patch, digitWidth: number | null): Layout 
   };
 }
 
+/**
+ * An exponent's glyphs for its own crop, and the specks among them: at low resolution or in a JPEG
+ * a fleck of the base's last digit (the top of a "0") ends up raised beside the exponent and is
+ * taken for part of it; cut out with the exponent it reads as a point or a digit ("²" as ".2").
+ * A speck is no taller and no wider than a quarter of the exponent's height, not a minus sign, and
+ * lies wholly in front of the exponent's other glyphs.
+ */
+function exponentParts(exponent: Glyph[], bodyH: number, expH: number): [Glyph[], Glyph[]] {
+  const tiny = (g: Glyph) => !isDash(g, bodyH) && gh(g) <= 0.25 * expH && gw(g) <= 0.25 * expH;
+  const solid = exponent.filter((g) => !tiny(g));
+  if (!solid.length) return [exponent, []];
+  // Only in front of the exponent's own strokes: a small piece under or beside them is a part of
+  // a digit broken up at low resolution (the foot of a "3").
+  const start = Math.min(...solid.map((g) => g.x0));
+  const speck = (g: Glyph) => tiny(g) && g.x1 < start;
+  return [exponent.filter((g) => !speck(g)), exponent.filter(speck)];
+}
+
 /** Shears tried for italic text (horizontal shift per pixel of height, top to the right). */
 const SLANTS = Array.from({ length: 17 }, (_, i) => i * 0.05);
 /** Below this shear (about 8.5°) text is treated as upright. */
@@ -708,14 +848,34 @@ function slantOf(p: Patch, glyphs: Glyph[], bodyHeight: number): number {
  * `slant` > 0 shears italic text upright (rows shift left in proportion to their height above
  * the box's bottom).
  */
-function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0): RgbaImage {
+function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0, exclude: Glyph[] = [], textHeight = OCR_TEXT_HEIGHT): RgbaImage {
   const x0 = Math.min(...glyphs.map((g) => g.x0)) - 1;
   const x1 = Math.max(...glyphs.map((g) => g.x1)) + 1;
   const y0 = Math.min(...glyphs.map((g) => g.y0)) - 1;
   const y1 = Math.max(...glyphs.map((g) => g.y1)) + 1;
   let max = 1;
   for (const g of glyphs) for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
-  const scale = Math.min(10, Math.max(1, OCR_TEXT_HEIGHT / Math.max(1, bodyHeight)));
+  // The other part of a word (the base beside an exponent, or the exponent above a base) can
+  // reach into this part's box: the top of a "0" next to a small exponent made "³" read as "23".
+  // A pixel of the box nearer to that part's ink than to this part's is left out (its own pixels
+  // and its antialiased rim; faint ink of this part, such as a light point, stays).
+  const masked = new Set<number>();
+  if (exclude.length) {
+    const coords = (gs: Glyph[]) =>
+      gs.flatMap((g) => g.pixels.map((k) => [k % p.width, Math.floor(k / p.width)] as const));
+    const own = coords(glyphs);
+    const other = coords(exclude).filter(([x, y]) => x >= x0 - 3 && x <= x1 + 3 && y >= y0 - 3 && y <= y1 + 3);
+    const nearest = (pts: readonly (readonly [number, number])[], x: number, y: number) =>
+      pts.reduce((m, [px, py]) => Math.min(m, Math.max(Math.abs(px - x), Math.abs(py - y))), Infinity);
+    if (other.length) {
+      for (let y = Math.max(0, y0); y <= Math.min(p.height - 1, y1); y++) {
+        for (let x = Math.max(0, x0); x <= Math.min(p.width - 1, x1); x++) {
+          if (nearest(other, x, y) < nearest(own, x, y)) masked.add(y * p.width + x);
+        }
+      }
+    }
+  }
+  const scale = Math.min(10, Math.max(1, textHeight / Math.max(1, bodyHeight)));
   const margin = Math.round(0.5 * OCR_TEXT_HEIGHT);
   // Upright x = x + slant·(y − y1): the box's bottom row stays put, its top moves left.
   const xu0 = x0 - slant * (y1 - y0);
@@ -726,7 +886,8 @@ function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0): RgbaImag
   const data = new Uint8ClampedArray(width * height * 4).fill(255);
   // Everything inside the glyphs' box: faint parts below the glyph threshold (a light decimal
   // point) stay visible to OCR.
-  const at = (x: number, y: number) => (x < x0 || y < y0 || x > x1 || y > y1 ? 0 : (p.dark[y * p.width + x] ?? 0));
+  const at = (x: number, y: number) =>
+    x < x0 || y < y0 || x > x1 || y > y1 || masked.has(y * p.width + x) ? 0 : (p.dark[y * p.width + x] ?? 0);
   for (let j = 0; j < ch; j++) {
     const fy = y0 - 0.5 + (j + 0.5) / scale;
     const iy = Math.floor(fy);
@@ -822,6 +983,33 @@ function labelsFor(
     const viaLabels = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing);
     if (viaLabels.labels.length >= 2) primary = viaLabels;
   }
+  // Labels printed in a colour: each colour class of the band is matched like the neutral ink,
+  // and replaces the neutral pass when it finds more labels, or at least half as many that either
+  // have more than twice their ink (the neutral pass then matched the faint, colourless fringes of
+  // the coloured glyphs: empty readings at every tick) or sit nearer the axis (it matched the
+  // black axis title beyond them) — both only at tick marks. Its glyphs only, so a black gridline or a curve of another hue
+  // is no part of them. Otherwise neutral wins: a coloured number-at-risk table under black tick
+  // labels matches the same ticks with ink like theirs, further from the axis.
+  // Faint labels (light grey, small, JPEG) beside dark ink (black ticks, a black axis title): the
+  // band's threshold, set by the dark ink, breaks their strokes into fragments. Read again at the
+  // lowest ink threshold when that finds more labels, at tick marks.
+  if (tickMode === 'ticks' && primary.labels.length < majors.length) {
+    const faint = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, null, true);
+    if (faint.labels.length >= 2 && faint.labels.length > primary.labels.length) primary = faint;
+  }
+  for (const hue of HUES.get(viaTicks) ?? []) {
+    let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, hue);
+    if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, hue);
+    const n = alt.labels.length;
+    const m = primary.labels.length;
+    const half = alt.mode === 'ticks' && n >= 0.5 * m;
+    const inkier = half && (MASS.get(alt) ?? 0) > 2 * (MASS.get(primary) ?? 0);
+    const nearer = half && m > 0 && reach(alt) < reach(primary) - Math.max(2, 0.5 * median(alt.labels.map((l) => l.box.height)));
+    if (n >= 2 && (n > m || inkier || nearer)) {
+      primary = alt;
+      UPRIGHT.set(viaTicks, UPRIGHT.get(alt) ?? 0);
+    }
+  }
   // Rotated tick labels (45° or 90°, common for long X labels: dates, big numbers; 90° on Y),
   // looked for only when few of the labels found read as upright text: the band is sampled again
   // in a frame turned by that angle, where the text is upright. Glyph shapes alone cannot tell
@@ -840,6 +1028,9 @@ function labelsFor(
   }
   return primary;
 }
+
+/** Median distance of a pass's labels from their points on the axis line, image px. */
+const reach = (r: AxisLabels) => median(r.labels.map((l) => Math.hypot(l.box.center.x - l.point.x, l.box.center.y - l.point.y)));
 
 /** How upright the labels a pass found read (`uprightness`), per result. */
 const UPRIGHT = new WeakMap<AxisLabels, number>();
@@ -962,14 +1153,16 @@ function rotatedLabels(
     const hasExp = l.exponent.length > 0;
     const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
     const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
+    const [expGlyphs, specks] = exponentParts(l.exponent, bodyH, expH);
     const bodies = pick.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
     labels.push({
       along: t.along,
       point: t.point,
       tick: i,
       crop: cut(q, pick.glyphs, bodyH),
-      base: hasExp ? cut(q, l.base, bodyH) : null,
-      exponent: hasExp ? cut(q, l.exponent, expH) : null,
+      base: hasExp ? cut(q, l.base, bodyH, 0, l.exponent) : null,
+      exponent: hasExp ? cut(q, expGlyphs, expH, 0, [...l.base, ...specks]) : null,
+      ...(hasExp ? { exponentSmall: cut(q, expGlyphs, expH, 0, [...l.base, ...specks], EXP_REREAD_HEIGHT) } : {}),
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       singleChar: bodies.length === 1 && !hasExp && pick.x1 - pick.x0 + 1 <= 0.8 * bodyH,
@@ -993,7 +1186,12 @@ function labelsWith(
   mode: AxisLabels['mode'],
   majors: { t: DetectedAxis['ticks']['ticks'][number]; i: number }[],
   crossing: LineCandidate[],
+  /** A colour class's hue (`colourClasses`): only its glyphs are label text; null = neutral ink. */
+  hue: number | null = null,
+  /** Use the lowest ink threshold (INK_THRESHOLD) instead of the band's adaptive one. */
+  faint = false,
 ): AxisLabels {
+  const ink: Ink = hue === null ? NEUTRAL : ofHue(hue);
   const { width: W, height: H } = map;
   const line: AxisGeometry = ax.line;
   // The labels' side: below a bottom X axis / above a top one; left of a left Y axis / right of
@@ -1022,7 +1220,13 @@ function labelsWith(
     const u0 = flipped ? line.offset + d0 : line.offset - d0 - depth;
     p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
-  const glyphs = components(p, inkThreshold(p)).filter((g) => glyphChroma(p, g) < MAX_LABEL_CHROMA);
+  const all = components(p, faint ? INK_THRESHOLD : inkThreshold(p, hue));
+  // The band's colour classes; in the neutral pass, a glyph of one of them is no neutral ink even
+  // when its mean colour, diluted by its antialiased edge, falls under MAX_LABEL_CHROMA (a muted
+  // purple label splits into "neutral" digits and coloured exponents otherwise).
+  const classes = ink === NEUTRAL ? colourClasses(p, all, maxTextHeight) : [];
+  const inks = classes.map(ofHue);
+  const glyphs = all.filter((g) => ink(p, g) && !inks.some((c) => c(p, g)));
   // Y labels are aligned at the axis: words grow from the axis side.
   const rows = words(p, glyphs, maxTextHeight, which === 'y' && !flipped);
   // X rows nearest the axis first.
@@ -1148,6 +1352,7 @@ function labelsWith(
     const hasExp = l.exponent.length > 0 && slant === 0;
     const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
     const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
+    const [expGlyphs, specks] = exponentParts(l.exponent, bodyH, expH);
     const bodies = word.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
     const cx = (word.x0 + word.x1) / 2;
     const cy = (word.y0 + word.y1) / 2;
@@ -1158,8 +1363,9 @@ function labelsWith(
       point,
       tick,
       crop: cut(q, word.glyphs, bodyH, slant),
-      base: hasExp ? cut(q, l.base, bodyH, slant) : null,
-      exponent: hasExp ? cut(q, l.exponent, expH, slant) : null,
+      base: hasExp ? cut(q, l.base, bodyH, slant, l.exponent) : null,
+      exponent: hasExp ? cut(q, expGlyphs, expH, slant, [...l.base, ...specks]) : null,
+      ...(hasExp ? { exponentSmall: cut(q, expGlyphs, expH, slant, [...l.base, ...specks], EXP_REREAD_HEIGHT) } : {}),
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       // One glyph no wider than it is tall (two touching digits make one wide component).
@@ -1235,7 +1441,7 @@ function labelsWith(
       const q = makePatch(map, img, frame, flipped ? line.offset - 11 * h : line.offset - 3 * h, line.start - 3 * h, 14 * h, 3 * h - 1);
       // A fixed low threshold: a dark title beside a small grey note would set an adaptive one
       // so high that the note falls apart.
-      const qRows = words(q, components(q, 1.5 * INK_THRESHOLD).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA), maxTextHeight, false);
+      const qRows = words(q, components(q, 1.5 * INK_THRESHOLD).filter((g) => ink(q, g)), maxTextHeight, false);
       // Above a Y axis that meets a top X axis runs the X labels' row: a word centred on that row
       // is an X label (one at the corner often has no tick of its own), not a note. A note
       // squeezed in beside it (matplotlib's, between the labels and the axis) is off-centre.
@@ -1259,8 +1465,17 @@ function labelsWith(
   }
   const result: AxisLabels = noteTangled ? { axis: which, mode, labels, note, noteTangled } : { axis: which, mode, labels, note };
   UPRIGHT.set(result, uprightness(snapped.map(({ word }) => word)));
+  let mass = 0;
+  for (const { word } of snapped) for (const g of word.glyphs) for (const k of g.pixels) mass += p.dark[k] ?? 0;
+  MASS.set(result, mass);
+  if (ink === NEUTRAL) HUES.set(result, classes);
   return result;
 }
+
+/** The summed darkness of the glyphs of the labels a pass found, per result. */
+const MASS = new WeakMap<AxisLabels, number>();
+/** The colour classes seen in a neutral pass's band (`colourClasses`), per result. */
+const HUES = new WeakMap<AxisLabels, number[]>();
 
 /** Tick labels beside both detected axes (empty lists when an axis was not found). */
 export function findLabels(map: DarknessMap, img: RgbaImage, det: AxisDetection): { x: AxisLabels; y: AxisLabels } {
