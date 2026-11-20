@@ -208,3 +208,180 @@ export function extendHiddenEnds(path: PathPoint[], thickness: number, maps: Ink
   const tail = extend(last, path.filter((p) => p.px >= last.px - reach && !p.corner), 1);
   return [...(head ? [head] : []), ...path, ...(tail ? [tail] : [])];
 }
+
+/** Beside a step's vertical the path stays within LEVEL_SIDE px of the level for LEVEL_REACH px. */
+const LEVEL_SIDE = 1.5;
+const LEVEL_REACH = 2;
+/** Points of a level lie within this of its mean height, px. */
+const LEVEL_TOL = 0.6;
+/** A step curve's neighbouring points: this share of them within this height of each other, px. */
+const FLAT_SHARE = 0.7;
+const FLAT_PX = 0.2;
+const SLOPED_SHARE = 0.2;
+const SLOPED_PX = 2;
+
+interface Level {
+  /** First and last path index, and the mean height. */
+  a: number;
+  b: number;
+  y: number;
+}
+
+/** The path's levels: stretches of consecutive points at one height, at least two strokes long. */
+function levelsOf(path: PathPoint[], thickness: number): Level[] {
+  const minLen = Math.max(4, 2 * thickness);
+  const levels: Level[] = [];
+  for (let i = 0; i < path.length; ) {
+    let j = i;
+    let sum = path[i]!.py;
+    while (j + 1 < path.length && !path[j + 1]!.corner && path[j + 1]!.px > path[j]!.px && Math.abs(path[j + 1]!.py - sum / (j - i + 1)) <= LEVEL_TOL) {
+      j++;
+      sum += path[j]!.py;
+    }
+    if (path[j]!.px - path[i]!.px >= minLen) levels.push({ a: i, b: j, y: sum / (j - i + 1) });
+    i = j + 1;
+  }
+  return levels;
+}
+
+/**
+ * Whether a path is a step curve: between its verticals it is level. Of its pairs of neighbouring
+ * points (no corner, at most 1.5 px apart in x) at least FLAT_SHARE keep their height within
+ * FLAT_PX, and at most SLOPED_SHARE change it by up to SLOPED_PX — a smooth curve with a long
+ * plateau is as flat, but slopes gently where it leaves it; a step jumps.
+ */
+export function stepLike(path: PathPoint[]): boolean {
+  let pairs = 0;
+  let flat = 0;
+  let sloped = 0;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = path[i]!;
+    const b = path[i + 1]!;
+    if (a.corner || b.corner || b.px - a.px > 1.5 || b.px <= a.px) continue;
+    pairs++;
+    const d = Math.abs(b.py - a.py);
+    if (d <= FLAT_PX) flat++;
+    else if (d <= SLOPED_PX) sloped++;
+  }
+  return pairs >= 8 && flat >= FLAT_SHARE * pairs && sloped <= SLOPED_SHARE * pairs;
+}
+
+/**
+ * Step corners of a patterned (dashed, dotted, dash-dot) step curve. Its verticals are drawn as
+ * dashes and gaps like the rest, so no column shows a vertical stroke from one level to the next:
+ * the path has a dash somewhere along the vertical, or jumps from level to level across a gap.
+ * The corners are read from the geometry either side instead. The path's levels are its horizontal
+ * stretches (`levelsOf`; used only for a step curve, `stepLike`): between two consecutive levels at different heights whose
+ * ends are close — with nothing between them but points near one x — lies one vertical. Its x is
+ * the centre of the series' ink between the two levels there (the vertical's own dashes or dots);
+ * with no ink at all (a short vertical lost in a gap) the middle of the two level ends, when they
+ * are within 4 px. The two corners (x, level before) and (x, level after) replace what was between
+ * the levels. `join`: the farthest apart two level ends around one vertical can be, px.
+ */
+export function levelCorners(path: PathPoint[], thickness: number, maps: InkMaps, join: number): PathPoint[] {
+  const levels = levelsOf(path, thickness);
+  if (levels.length < 2) return path;
+  const near = Math.max(1.5, thickness / 2 + 1);
+  const half = (thickness - 1) / 2;
+  const on = (x: number, y: number) => (x >= 0 && y >= 0 && x < maps.width && y < maps.height ? Math.max(0, Math.min(1, maps.alpha[y * maps.width + x] ?? 0)) : 0);
+  /** Replacements: path indices from…to (inclusive) give way to the two corners. */
+  const cuts: { from: number; to: number; x: number; y1: number; y2: number }[] = [];
+  for (let k = 0; k + 1 < levels.length; k++) {
+    const l1 = levels[k]!;
+    const l2 = levels[k + 1]!;
+    if (Math.abs(l2.y - l1.y) < Math.max(2.5, thickness)) continue;
+    const xa = path[l1.b]!.px;
+    const xb = path[l2.a]!.px;
+    if (xb - xa > join) continue;
+    // What lies between the levels is one vertical: near one x, and no corner found there already.
+    const between = path.slice(l1.b + 1, l2.a);
+    if (between.some((p) => p.corner)) continue;
+    const bx = between.map((p) => p.px);
+    if (bx.length && Math.max(...bx) - Math.min(...bx) > 2 * near) continue;
+    const lo = Math.min(l1.y, l2.y);
+    const hi = Math.max(l1.y, l2.y);
+    const r0 = Math.ceil(lo + half + 0.5);
+    const r1 = Math.floor(hi - half - 0.5);
+    let best = -1;
+    let bestInk = 0;
+    const ink = (x: number) => {
+      let n = 0;
+      for (let y = r0; y <= r1; y++) if (on(x, y) >= 0.5) n += on(x, y);
+      return n;
+    };
+    for (let x = Math.floor(xa - near); x <= Math.ceil(xb + near); x++) {
+      const n = ink(x);
+      if (n > bestInk) {
+        bestInk = n;
+        best = x;
+      }
+    }
+    let xv: number;
+    if (best >= 0) {
+      let sw = 0;
+      let sx = 0;
+      const r = Math.max(1, Math.ceil(thickness / 2));
+      for (let x = best - r; x <= best + r; x++) {
+        for (let y = r0; y <= r1; y++) {
+          sw += on(x, y);
+          sx += on(x, y) * x;
+        }
+      }
+      xv = sw > 0 ? sx / sw : best;
+    } else if (xb - xa <= 4) xv = (xa + xb) / 2;
+    else continue;
+    cuts.push({ from: l1.b + 1, to: l2.a - 1, x: xv, y1: l1.y, y2: l2.y });
+  }
+  if (!cuts.length) return path;
+  const out: PathPoint[] = [];
+  let c = 0;
+  /** Points of the level after the last vertical that lie before it are dropped. */
+  let after = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < path.length; i++) {
+    const cut = cuts[c];
+    if (cut && i === Math.min(cut.from, cut.to + 1)) {
+      // The level before ends at the vertical.
+      while (out.length && !out[out.length - 1]!.corner && out[out.length - 1]!.px > cut.x - 0.5) out.pop();
+      out.push({ px: cut.x, py: cut.y1, confidence: 0.8, corner: true }, { px: cut.x, py: cut.y2, confidence: 0.8, corner: true });
+      after = cut.x + 0.5;
+      i = cut.to;
+      c++;
+      continue;
+    }
+    const p = path[i]!;
+    if (!p.corner && p.px < after) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Step corners of a patterned step curve read from its walk while the pattern's gaps were still
+ * filled in (style.ts → `applyStyle`): there a vertical is one stroke, and `columnsToPath` gives its
+ * two corners — pairs of one x, the level the walk came in at and the level it left at. `corners`
+ * are those points; each pair replaces what the real ink left of that vertical (the points within a
+ * stroke of its x between the two levels), in path order — when the path beside it is level on both
+ * sides. `levelCorners` then finds the corners of the verticals whose gaps were not filled.
+ */
+export function withStepCorners(path: PathPoint[], corners: PathPoint[], thickness: number): PathPoint[] {
+  let out = path;
+  const near = Math.max(1.5, thickness / 2 + 1);
+  for (let i = 0; i + 1 < corners.length; i++) {
+    const a = corners[i]!;
+    const b = corners[i + 1]!;
+    if (Math.abs(a.px - b.px) > 1e-6) continue;
+    i++;
+    const lo = Math.min(a.py, b.py);
+    const hi = Math.max(a.py, b.py);
+    // Only a vertical the real path reaches on both sides: not one beyond what `unfill` kept.
+    if (!out.length || a.px < out[0]!.px - near || a.px > out[out.length - 1]!.px + near) continue;
+    // A step's levels run flat up to the vertical; a smooth curve bends into its steep stretch.
+    const level = (from: number, to: number, y: number) => out.every((p) => p.corner || p.px < from || p.px > to || Math.abs(p.py - y) <= LEVEL_SIDE);
+    if (!level(a.px - near - LEVEL_REACH, a.px - near, a.py) || !level(b.px + near, b.px + near + LEVEL_REACH, b.py)) continue;
+    const kept = out.filter((p) => !(Math.abs(p.px - a.px) <= near && p.py >= lo - near && p.py <= hi + near));
+    let at = 0;
+    while (at < kept.length && kept[at]!.px <= a.px) at++;
+    out = [...kept.slice(0, at), a, b, ...kept.slice(at)];
+  }
+  return out;
+}

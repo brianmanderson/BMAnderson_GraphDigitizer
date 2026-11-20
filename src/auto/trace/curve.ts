@@ -47,6 +47,13 @@ export interface ColumnEntry extends Run {
   afterGap: number;
   /** Highest coverage in the run. */
   peak: number;
+  /**
+   * Where the series ran hidden just before this column in the walk: the centre of the stroke of
+   * another colour it was under, column by column (`ride`), when that is how the walk found it again.
+   */
+  hidden?: { x: number; y: number }[];
+  /** A darker shade than the trace's own (DARKER_RATIO): no evidence of the series' slope. */
+  dark?: boolean;
 }
 
 export interface PathPoint {
@@ -72,6 +79,12 @@ function runPeak(alpha: Float32Array, width: number, x: number, r: Run): number 
  * colour blend at α ≈ 0.6 everywhere, but never reaches the series' full strength.
  */
 const PEAK_RATIO = 0.65;
+/**
+ * A run whose strongest pixel is above this multiple of the trace's typical peak is a darker shade
+ * of the series' hue (another series of a one-hue palette, where it crosses or runs beside this
+ * one): it ranks behind a run of the series' own strength in reach, and never sets the walk's slope.
+ */
+const DARKER_RATIO = 1.15;
 
 /** Runs of "on" pixels in column x between rows y0…y1; single-pixel holes are closed. */
 export function columnRuns(alpha: Float32Array, width: number, x: number, y0: number, y1: number): Run[] {
@@ -118,13 +131,57 @@ function median(values: number[]): number {
 
 /** Median slope (dy per column, in walk direction) over the last few entries. */
 function recentSlope(hist: ColumnEntry[]): number {
-  const d: number[] = [];
-  for (let i = Math.max(1, hist.length - 8); i < hist.length; i++) {
+  const all: number[] = [];
+  const own: number[] = [];
+  for (let i = hist.length - 1; i >= 1 && own.length < 8 && hist.length - i <= SLOPE_LOOKBACK; i--) {
     const a = hist[i - 1]!;
     const b = hist[i]!;
-    d.push((b.cy - a.cy) / Math.max(1, Math.abs(b.x - a.x)));
+    const d = (b.cy - a.cy) / Math.max(1, Math.abs(b.x - a.x));
+    if (hist.length - i <= 8) all.push(d);
+    if (!a.dark && !b.dark) own.push(d);
   }
-  return median(d);
+  // Runs of a darker shade say nothing of the series' slope (the last pairs of its own, as far back
+  // as SLOPE_LOOKBACK columns), unless that is all there is: the series hidden under a darker one
+  // for a long stretch runs where that one does.
+  return median(own.length >= 3 ? own : all);
+}
+/** Entries a darker shade's stretch may push the series' own slope back by. */
+const SLOPE_LOOKBACK = 30;
+
+/** A series is noisy when its column-to-column slopes scatter by more than this about their median, px. */
+const NOISY_ROUGH = 0.6;
+/** Reversals of direction (by at least NOISY_ROUGH px per column) among its last NOISY_MIN slopes. */
+const NOISY_REVERSALS = 2;
+/** Columns of history needed to call a series noisy. */
+const NOISY_MIN = 12;
+/** How far a noisy series may have wandered after g columns out of sight: NOISY_REACH × its jump per column × √g. */
+const NOISY_REACH = 1.5;
+
+/**
+ * A noisy series (a measured signal: it jumps up and down from column to column): its last few slopes say nothing about
+ * where it comes out of a gap. It is looked for around the level it was last seen at (the median
+ * of its last columns), as far off as a random walk with its column-to-column jumps would have
+ * wandered since. Null for a smooth curve or a staircase (slopes that agree, whatever they are), or
+ * with too little history. `level`: that median; `jump`: the median jump per column, px.
+ */
+function noisySeries(hist: ColumnEntry[]): { level: number; jump: number } | null {
+  if (hist.length < NOISY_MIN + 1) return null;
+  const last = hist.slice(-(NOISY_MIN + 1));
+  const d: number[] = [];
+  for (let i = 1; i < last.length; i++) d.push((last[i]!.cy - last[i - 1]!.cy) / Math.max(1, Math.abs(last[i]!.x - last[i - 1]!.x)));
+  const med = median(d);
+  if (median(d.map((v) => Math.abs(v - med))) < NOISY_ROUGH) return null;
+  // It turns back and forth all the time: a steep line's pixel stairs scatter its slope too, and a
+  // polyline turns at its vertices, but neither keeps reversing.
+  let reversals = 0;
+  let sign = 0;
+  for (const v of d) {
+    if (Math.abs(v) < NOISY_ROUGH) continue;
+    if (sign && Math.sign(v) !== sign) reversals++;
+    sign = Math.sign(v);
+  }
+  if (reversals < NOISY_REVERSALS) return null;
+  return { level: median(last.slice(-5).map((e) => e.cy)), jump: median(d.map(Math.abs)) };
 }
 
 export interface TraceOptions {
@@ -171,6 +228,25 @@ const MAX_RETRY_DEPTH = 3;
  */
 const KINK_SLOPE = 3;
 const KINK_COLUMNS = 16;
+/**
+ * Riding: a stroke of another colour is followed as the series' hiding place while its height in a
+ * column is at most RIDE_STROKE line widths + 4 px (RIDE_MIN_STROKE at least); the series comes out
+ * within RIDE_BESIDE px of its edge; the ridden centres become path points when they cover at least
+ * RIDE_SHARE of the gap.
+ */
+const RIDE_STROKE = 4;
+const RIDE_MIN_STROKE = 10;
+const RIDE_BESIDE = 2.5;
+const RIDE_SHARE = 0.8;
+/**
+ * After RIDE_CHECK columns the ridden stroke must still run the series' way: its slope within
+ * RIDE_TURN × (1 + |slope|) of the series' own before the gap.
+ */
+const RIDE_CHECK = 6;
+const RIDE_TURN = 0.3;
+/** A ridden walk is kept when it follows at least RIDE_GAIN more columns of ink; at most MAX_RIDES per direction. */
+const RIDE_GAIN = 8;
+const MAX_RIDES = 6;
 
 export function defaultMaxGap(region: Region): number {
   return Math.min(40, Math.max(10, Math.round(0.035 * (region.x1 - region.x0 + 1))));
@@ -190,7 +266,7 @@ function cleanSlope(hist: ColumnEntry[], t: number): { slope: number; n: number 
   for (let i = hist.length - 1; i >= 1 && d.length < 8; i--) {
     const a = hist[i - 1]!;
     const b = hist[i]!;
-    if (runLength(a) - t < 2.5 && runLength(b) - t < 2.5) d.push((b.cy - a.cy) / Math.max(1, Math.abs(b.x - a.x)));
+    if (runLength(a) - t < 2.5 && runLength(b) - t < 2.5 && !a.dark && !b.dark) d.push((b.cy - a.cy) / Math.max(1, Math.abs(b.x - a.x)));
   }
   return { slope: median(d), n: d.length };
 }
@@ -315,6 +391,21 @@ export function traceColumns(
     /** Columns accepted since the last gap; `minLen` before each of the last accepted columns. */
     sinceGap: number;
     minHist: number[];
+    /**
+     * In a gap: the stroke of another colour the series went under, where it is in the last gap
+     * column (centre and half its height), or null; and its centres since the gap opened.
+     */
+    ride: { y: number; half: number } | null;
+    ridden: { x: number; y: number }[];
+    /** Gap columns counted as hidden only because a ride was under way. */
+    rideOnly: number;
+    /** Riding is on for the next gap only: the retry of a walk that died in that gap (`walk`). */
+    mayRide: boolean;
+    /** The walk is a retry for a noisy series (`noisySeries`): its gaps are bridged around its level. */
+    noisy: boolean;
+    /** The state just before the walk's last gap opened, and whether the walk ended in that gap. */
+    gapStart: WalkState | null;
+    died: boolean;
   }
   interface Candidate {
     run: Run;
@@ -323,6 +414,27 @@ export function traceColumns(
     /** Reached only through the kink allowance of a hidden gap. */
     kinkOnly: boolean;
   }
+
+  /**
+   * The run of ink of another colour in column x through (or within `slack` rows of) row y: the
+   * stroke the series is hidden under. Null when there is none.
+   */
+  const otherRun = (x: number, y: number, slack: number): Run | null => {
+    const other = opts.other;
+    if (!other) return null;
+    const c = Math.round(y);
+    let row = -1;
+    for (let d = 0; d <= slack && row < 0; d++) {
+      if (c - d >= y0 && other[(c - d) * w + x]) row = c - d;
+      else if (c + d <= y1 && other[(c + d) * w + x]) row = c + d;
+    }
+    if (row < 0) return null;
+    let top = row;
+    while (top > y0 && other[(top - 1) * w + x]) top--;
+    let bottom = row;
+    while (bottom < y1 && other[(bottom + 1) * w + x]) bottom++;
+    return { top, bottom };
+  };
 
   /** Take run `index` of column `st.x` into the walk. */
   const accept = (st: WalkState, runs: Run[], index: number): void => {
@@ -353,12 +465,24 @@ export function traceColumns(
       }
     }
     const cy = runCentre(alpha, w, h, st.x, best);
-    if (!isLong(best)) {
+    const peak = runPeak(alpha, w, st.x, best);
+    const ref = st.hist.length >= 5 ? median(st.hist.slice(-15).filter((e) => !e.dark).map((e) => e.peak)) : 0;
+    const dark = ref > 0 && peak > DARKER_RATIO * ref;
+    if (!isLong(best) && !dark) {
       st.entryY = cy;
       st.entryX = st.x;
       st.farOnly = false;
     }
-    st.hist.push({ ...best, x: st.x, cy, afterGap: st.gap, peak: runPeak(alpha, w, st.x, best) });
+    const entry: ColumnEntry = { ...best, x: st.x, cy, afterGap: st.gap, peak };
+    if (dark) entry.dark = true;
+    // Found again beside the stroke it was hidden under: that stroke's course is the series' there.
+    const rode = st.ride && st.ridden.length >= RIDE_CHECK && Math.abs(cy - st.ride.y) <= st.ride.half + t / 2 + RIDE_BESIDE + 1;
+    if (rode && st.ridden.length >= RIDE_SHARE * st.gap) entry.hidden = st.ridden;
+    st.hist.push(entry);
+    st.ride = null;
+    st.ridden = [];
+    st.rideOnly = 0;
+    st.mayRide = false;
     // The stroke's width: the shortest run, but not over a dash's tapering tips (a scanned dash, a
     // dash cut by a gridline): not in the first columns after a gap, and the last ones before a
     // gap are taken back when it opens (`openGapAt`).
@@ -374,21 +498,32 @@ export function traceColumns(
   };
 
   /** Acceptable runs in column `st.x`, best first. */
-  const candidates = (st: WalkState, runs: Run[]): { list: Candidate[]; pred: number; t: number } => {
+  const candidates = (st: WalkState, runs: Run[]): { list: Candidate[]; pred: number; t: number; reach?: number } => {
+    const found = candidatesAhead(st, runs);
+    // Hidden under a stroke of another colour that turned away from where the series was heading:
+    // the series comes out beside that stroke, wherever it has gone meanwhile.
+    if (!found.list.length && st.ride && st.gap > 0 && st.ridden.length >= RIDE_CHECK) {
+      const beside = found.rank(st.ride.y, 0, st.ride.half + found.t / 2 + RIDE_BESIDE).filter((c) => !c.kinkOnly && c.score < 1000);
+      if (beside.length) return { list: beside, pred: found.pred, t: found.t };
+    }
+    return found;
+  };
+  type Rank = (pred: number, slope: number, fixed?: number) => Candidate[];
+  const candidatesAhead = (st: WalkState, runs: Run[]): { list: Candidate[]; pred: number; t: number; rank: Rank; reach?: number } => {
     const prev = st.hist[st.hist.length - 1]!;
     const t = st.minLen;
     const half = (t - 1) / 2;
     const gap = st.gap;
     const crossLen = Math.max(0.5 * regionH, 12 * t + 10);
     const crossOut = Math.max(6, 3 * t);
-    const peakRef = st.hist.length >= 5 ? median(st.hist.slice(-15).map((e) => e.peak)) : 0;
-    const rank = (pred: number, slope: number): Candidate[] => {
+    const peakRef = st.hist.length >= 5 ? median(st.hist.slice(-15).filter((e) => !e.dark).map((e) => e.peak)) : 0;
+    const rank = (pred: number, slope: number, fixed?: number): Candidate[] => {
       // Hidden under another colour (a marker drawn over the curve), the curve may turn: a
       // V or Λ kink at a data point reverses the slope out of sight. Allow for it.
       const hidden = gap > 0 && st.underMarker && 2 * st.hiddenCols >= gap;
       const kink = hidden ? (Math.min(gap, KINK_COLUMNS) * KINK_SLOPE) / 2 : 0;
-      const plainWin = t / 2 + 1.5 + (gap + 1) * (0.3 + 0.3 * Math.abs(slope));
-      const win = plainWin + kink;
+      const plainWin = fixed ?? t / 2 + 1.5 + (gap + 1) * (0.3 + 0.3 * Math.abs(slope));
+      const win = fixed ?? plainWin + kink;
       // A run only the kink allowance reaches must come out from under the hiding ink: ink of
       // another colour right next to it in the previous column, as where a line leaves a marker.
       const back = st.x - Math.sign(st.x - prev.x);
@@ -410,7 +545,10 @@ export function traceColumns(
         if (!touches && dPred > win) return;
         if (!touches && dPred > plainWin && !emerges(r)) return;
         if (runLength(r) >= crossLen && r.top < pred - crossOut && r.bottom > pred + crossOut) return;
-        if (runPeak(alpha, w, st.x, r) < PEAK_RATIO * peakRef) return;
+        const peak = runPeak(alpha, w, st.x, r);
+        if (peak < PEAK_RATIO * peakRef) return;
+        // A darker shade ranks behind a run of the series' own strength within reach.
+        const darker = peakRef > 0 && peak > DARKER_RATIO * peakRef ? plainWin : 0;
         if (opts.rulingInk && allRuling(st.x, r)) return;
         // A sliver of the stroke beside a ruling (cut by it, thinner than the stroke): the column
         // is hidden by the ruling, like a marker drawn over the curve. (A thin gridline across a
@@ -420,12 +558,18 @@ export function traceColumns(
         out.push({
           run: r,
           index,
-          score: dPred > win ? 1000 + dPred : dPred + 0.01 * runLength(r),
+          score: dPred > win ? 1000 + dPred : dPred + 0.01 * runLength(r) + darker,
           kinkOnly: !touches && dPred > plainWin,
         });
       });
       return out.sort((a, b) => a.score - b.score);
     };
+    // Out of a gap in a noisy series: around where it was last seen, as far as it may have wandered.
+    const noisy = gap > 0 && st.noisy ? noisySeries(st.hist) : null;
+    if (noisy) {
+      const reach = t / 2 + 1.5 + NOISY_REACH * noisy.jump * Math.sqrt(gap + 1);
+      return { list: rank(noisy.level, 0, reach), pred: noisy.level, t, rank, reach };
+    }
     if (runLength(prev) - t >= 2.5) {
       // Leaving a long run. Straight through first, at the slope of the shallow curve before it
       // (a line or marker crossing the curve, a same-colour curve crossing it); otherwise from the
@@ -439,18 +583,18 @@ export function traceColumns(
       // Not on a retry branch that has just left the long run another way: going straight would
       // pull it back to the curve before the marker it chose not to follow.
       const s = st.farOnly ? [] : rank(straight, slope);
-      if (s.length && s[0]!.score < 1000) return { list: s, pred: straight, t };
+      if (s.length && s[0]!.score < 1000) return { list: s, pred: straight, t, rank };
       const a = prev.top + half;
       const b = prev.bottom - half;
       const far = (Math.abs(a - st.entryY) > Math.abs(b - st.entryY) ? a : b) + slope * gap;
-      return { list: rank(far, slope), pred: far, t };
+      return { list: rank(far, slope), pred: far, t, rank };
     }
     const slope = recentSlope(st.hist);
     const pred = prev.cy + slope * (gap + 1);
-    return { list: rank(pred, slope), pred, t };
+    return { list: rank(pred, slope), pred, t, rank };
   };
 
-  const clone = (st: WalkState): WalkState => ({ ...st, hist: st.hist.slice(), minHist: st.minHist.slice() });
+  const clone = (st: WalkState): WalkState => ({ ...st, hist: st.hist.slice(), minHist: st.minHist.slice(), ridden: st.ridden.slice(), gapStart: null });
 
   /** A gap opens: the stroke width measured on the tip just walked is taken back. */
   const openGapAt = (st: WalkState): void => {
@@ -459,6 +603,10 @@ export function traceColumns(
     const back = st.minHist[st.minHist.length - tip];
     if (back !== undefined && st.sinceGap >= tip) st.minLen = back;
   };
+
+  // The branch that followed the most columns of ink wins (then the farthest): a wrong branch
+  // kept alive across hidden gaps gets far without following much.
+  const followed = (s: WalkState) => s.hist.length + Math.abs(s.hist[s.hist.length - 1]!.x - seed.x) / 1e6;
 
   /**
    * Walk until the curve is lost. At the last column where more than one run was acceptable, the
@@ -476,18 +624,60 @@ export function traceColumns(
     let kinkFallback: { state: WalkState; runs: Run[]; index: number } | null = null;
     for (; st.x >= x0 && st.x <= x1; st.x += dir) {
       const runs = runsOf(st.x);
-      const { list, pred, t } = candidates(st, runs);
+      const { list, pred, t, reach } = candidates(st, runs);
       const kinkOnly = list.length > 0 && list.every((c) => c.kinkOnly);
       if (kinkOnly && !kinkFallback) kinkFallback = { state: clone(st), runs, index: list[0]!.index };
       if (!list.length || kinkOnly) {
-        if (st.gap === 0) openGapAt(st);
+        if (st.gap === 0) {
+          st.gapStart = clone(st);
+          openGapAt(st);
+        }
         st.gap++;
-        const row = occludedAt(st.x, pred, t);
+        // A noisy series' gap is never taken for a hidden stretch: where it went is a guess.
+        let row = reach ? -1 : occludedAt(st.x, pred, t);
+        // The stroke of another colour the series went under, followed from where the series was
+        // lost (the gap's first column) for as long as it runs on: round its bends, and down a
+        // step's vertical to the end farther from where it came in.
+        const at = st.ride ? st.ride.y : st.mayRide && st.gap === 1 && row >= 0 ? row : null;
+        const over = at === null ? null : otherRun(st.x, at, st.ride ? 2 : 0);
+        if (over && runLength(over) <= Math.max(RIDE_MIN_STROKE, RIDE_STROKE * t + 4)) {
+          st.ride = { y: (over.top + over.bottom) / 2, half: runLength(over) / 2 };
+        } else if (over && st.ride && runLength(over) <= 0.5 * regionH) {
+          const half = st.ride.half;
+          const a = over.top + half - 0.5;
+          const b = over.bottom - half + 0.5;
+          st.ride = { y: Math.abs(a - st.ride.y) > Math.abs(b - st.ride.y) ? a : b, half };
+        } else {
+          // A ride that ended before it proved to be a line (a marker, a "+"): its columns were open.
+          if (st.ride && st.ridden.length < RIDE_CHECK) {
+            st.openGap += st.rideOnly;
+            st.hiddenCols -= st.rideOnly;
+          }
+          st.ride = null;
+          st.rideOnly = 0;
+        }
+        if (st.ride) {
+          st.ridden.push({ x: st.x, y: st.ride.y });
+          // Only a stroke going the series' way hides it for long: one that crosses it (a gridline,
+          // another curve at an angle) has left its course after a few columns.
+          if (st.ridden.length === RIDE_CHECK) {
+            const slope = recentSlope(st.hist);
+            const rode = (st.ride.y - st.ridden[0]!.y) / (RIDE_CHECK - 1);
+            if (Math.abs(rode - slope) > RIDE_TURN * (1 + Math.abs(slope))) st.ride = null;
+          }
+        }
+        if (st.ride && row < 0) {
+          row = Math.round(st.ride.y);
+          st.rideOnly++;
+        }
         if (row >= 0) {
           st.hiddenCols++;
           if (!st.underMarker && markerSizedAt(st.x, row)) st.underMarker = true;
         } else st.openGap++;
-        if (st.openGap > opts.maxGap || st.gap > (opts.maxHiddenGap ?? opts.maxGap)) break;
+        if (st.openGap > opts.maxGap || st.gap > (opts.maxHiddenGap ?? opts.maxGap)) {
+          st.died = true;
+          break;
+        }
         continue;
       }
       // A fork: other acceptable runs (runs only the kink allowance reaches don't make one).
@@ -496,9 +686,6 @@ export function traceColumns(
       accept(st, runs, list[0]!.index);
       kinkFallback = null;
     }
-    // The branch that followed the most columns of ink wins (then the farthest): a wrong branch
-    // kept alive across hidden gaps gets far without following much.
-    const followed = (s: WalkState) => s.hist.length + Math.abs(s.hist[s.hist.length - 1]!.x - seed.x) / 1e6;
     let best = st;
     if (!branch || st.hist.length - branch.at > RETRY_COLUMNS) {
       // No recent fork to retry: resume from a run beyond a hidden kink, if one was seen.
@@ -529,7 +716,26 @@ export function traceColumns(
     const hist = [...lead, first];
     // A continued walk keeps the stroke width it had: the piece it starts from may be a sliver.
     const minLen = only && lead.length ? Math.max(runLength(first), Math.min(...lead.map(runLength))) : runLength(first);
-    const st = walkFrom({ hist, minLen, entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false, sinceGap: only ? 0 : 1e9, minHist: [] }, dir, 0);
+    let st = walkFrom({ hist, minLen, entryY: seed.y, entryX: seed.x, gap: 0, openGap: 0, hiddenCols: 0, underMarker: false, x: seed.x + dir, farOnly: false, sinceGap: only ? 0 : 1e9, minHist: [], ride: null, ridden: [], rideOnly: 0, mayRide: false, noisy: false, gapStart: null, died: false }, dir, 0);
+    // A walk that died in a gap: once more from where that gap opened, riding the stroke of another
+    // colour the series went under there (a curve that runs along another for a stretch). Kept when
+    // it follows clearly more of the series; then again from where that walk died.
+    // Then, for a noisy series (a measured signal), once more from where the gap opened, looking
+    // for it around its level as far as it may have wandered (`noisySeries`), for the rest of the walk.
+    for (let n = 0; n < MAX_RIDES && st.died && st.gapStart; n++) {
+      let next: WalkState | null = null;
+      for (const mode of opts.other ? (['ride', 'noisy'] as const) : (['noisy'] as const)) {
+        if (mode === 'noisy' && (st.noisy || !noisySeries(st.gapStart.hist))) continue;
+        const again = clone(st.gapStart);
+        again.died = false;
+        if (mode === 'ride') again.mayRide = true;
+        else again.noisy = true;
+        const res = walkFrom(again, dir, 0);
+        if (followed(res) >= followed(st) + RIDE_GAIN && (!next || followed(res) > followed(next))) next = res;
+      }
+      if (!next) break;
+      st = next;
+    }
     return st.hist.slice(lead.length + 1);
   };
 
@@ -595,10 +801,17 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
   /** x of entry k, or one column past the group's end when there is none. */
   const xAt = (k: number, dir: 1 | -1): number => entries[k]?.x ?? entries[k - dir]!.x + dir;
 
+  /** The stretch the series ran hidden before (in walk order) entry e: where the stroke over it ran. */
+  const hidden = (e: ColumnEntry, before: boolean) => {
+    if (!e.hidden?.length || e.hidden[0]!.x < e.x !== before) return;
+    for (const p of [...e.hidden].sort((a, b) => a.x - b.x)) out.push({ px: p.x, py: p.y, confidence: 0.4, corner: false });
+  };
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
+    hidden(e, true);
     if (!long(e)) {
       plain(e, 1);
+      hidden(e, false);
       continue;
     }
     let j = i;
@@ -679,7 +892,76 @@ export function columnsToPath(entries: ColumnEntry[], alpha: Float32Array, width
     } else {
       for (const g of group) plain(g, 0.8);
     }
+    hidden(e, false);
     i = j;
   }
   return out;
+}
+
+/** A filled area is at least this many px tall at the click (a stroke is thinner)… */
+const AREA_MIN_HEIGHT = 16;
+/** …and this fraction of the plot's height… */
+const AREA_HEIGHT = 0.04;
+/** …and runs on sideways for at least this fraction of the plot's width (a bar or a marker does not). */
+const AREA_WIDTH = 0.25;
+/** A click this close to the fill's lower edge (as a fraction of its height there) means that edge. */
+const AREA_LOWER = 0.12;
+
+/**
+ * The edge of a filled area: a click inside a fill of one colour (an area chart drawn without an
+ * outline, a layer of a stacked-area chart) follows the fill's upper edge — the layer's value — or
+ * its lower edge when the click is right at it. Null when the ink at the seed is no area (a stroke,
+ * a marker, a bar: not tall enough or not wide enough there). The edge is followed column by column
+ * through the run that overlaps the previous column's most, to where the fill ends; its position is
+ * the boundary of the coverage (sub-pixel, from the partly covered pixels at the edge).
+ */
+export function traceAreaEdge(alpha: Float32Array, region: Region, seed: { x: number; y: number }): PathPoint[] | null {
+  const { width: w, x0, x1, y0, y1 } = region;
+  const on = (x: number, y: number) => (alpha[y * w + x] ?? -1) >= ON_ALPHA;
+  if (!on(seed.x, seed.y)) return null;
+  let top = seed.y;
+  while (top > y0 && on(seed.x, top - 1)) top--;
+  let bottom = seed.y;
+  while (bottom < y1 && on(seed.x, bottom + 1)) bottom++;
+  const height = bottom - top + 1;
+  if (height < Math.max(AREA_MIN_HEIGHT, AREA_HEIGHT * (y1 - y0 + 1))) return null;
+  // Sideways through the middle of the fill there (the row of the click itself leaves a fill
+  // within a few px where its edge peaks; a steep stroke is no wider half-way up).
+  const mid = (top + bottom) >> 1;
+  let left = seed.x;
+  while (left > x0 && on(left - 1, mid)) left--;
+  let right = seed.x;
+  while (right < x1 && on(right + 1, mid)) right++;
+  if (right - left + 1 < Math.max(4 * AREA_MIN_HEIGHT, AREA_WIDTH * (x1 - x0 + 1))) return null;
+  const lower = bottom - seed.y < AREA_LOWER * height && seed.y - top >= AREA_LOWER * height;
+  /** The edge of run r in column x: the coverage boundary, from the two pixels it falls between. */
+  const edge = (x: number, r: Run): number => {
+    const inner = Math.min(1, Math.max(0, alpha[(lower ? r.bottom : r.top) * w + x] ?? 0));
+    const outerY = lower ? r.bottom + 1 : r.top - 1;
+    const outer = outerY >= y0 && outerY <= y1 ? Math.min(1, Math.max(0, alpha[outerY * w + x] ?? 0)) : 0;
+    return lower ? r.bottom - 0.5 + inner + outer : r.top + 0.5 - inner - outer;
+  };
+  const first: Run = { top, bottom };
+  const out: PathPoint[] = [{ px: seed.x, py: edge(seed.x, first), confidence: 0.9, corner: false }];
+  for (const dir of [1, -1] as const) {
+    let prev = first;
+    const side: PathPoint[] = [];
+    for (let x = seed.x + dir; x >= x0 && x <= x1; x += dir) {
+      let best: Run | null = null;
+      let bestOverlap = 0;
+      for (const r of columnRuns(alpha, w, x, y0, y1)) {
+        const overlap = Math.min(r.bottom, prev.bottom) - Math.max(r.top, prev.top) + 1;
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          best = r;
+        }
+      }
+      if (!best) break;
+      side.push({ px: x, py: edge(x, best), confidence: 0.9, corner: false });
+      prev = best;
+    }
+    if (dir === 1) out.push(...side);
+    else out.unshift(...side.reverse());
+  }
+  return out.length >= 2 ? out : null;
 }

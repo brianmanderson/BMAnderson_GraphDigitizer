@@ -33,8 +33,8 @@
 import { detectAxes } from '../detect.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
-import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
-import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
+import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
+import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
@@ -308,6 +308,16 @@ export function traceLine(req: TraceRequest): TraceResult {
   }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
+  // A click inside a fill (an area chart without an outline, a layer of a stacked-area chart): the
+  // fill's edge is the series (curve.ts → `traceAreaEdge`).
+  if (req.mode !== 'markers' && !small) {
+    const area = traceAreaEdge(alpha, region, s);
+    if (area) {
+      const path: TracedPoint[] = area.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+      return result({ ok: true, kind: 'curve', style: 'solid', color, path, points: resample(area, req.maxPoints, 1) });
+    }
+  }
+
   const ctx = { found, alpha, other, region, ruling, darker };
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
   const chained = small && template.elongation < 2.5 && regularChain(found, template, markerMax);
@@ -373,7 +383,16 @@ export function traceLine(req: TraceRequest): TraceResult {
     // A dashed line's walk ends where its gaps were not filled (dashes too uneven for one pattern,
     // a dash cut by a gridline): on from the next piece ahead, to the line's real end (dashes.ts).
     if (walked && (sig.style === 'dashed' || sig.style === 'dash-dot')) walked = hopDashes(walked, found, alpha, region, sig, opts);
+    // A patterned step curve has no vertical strokes to take corners from once the fill is undone:
+    // they are read from the walk over the filled line, then from the levels either side (kinks.ts).
+    const filled = walked && fill ? columnsToPath(walked, alpha, w) : [];
+    const filledCorners = filled.filter((p) => p.corner);
+    // Only for a step curve (level between its verticals, with the gaps filled or as drawn): a
+    // smooth dashed curve gets no corners.
+    const steps = (real: PathPoint[]) => patterned && (stepLike(real) || stepLike(filled));
     const e = walked && fill ? unfill(fill, walked, alpha, region) : walked;
+    // Level ends either side of one vertical of a patterned step: a gap and a piece apart at most.
+    const cornerJoin = sig.gap + sig.maxOn + 2 * sig.thickness + 2;
     // The dots the walk went through (a walk can't start up a steep thin dotted line from one dot).
     const dots: Blob[] = [];
     if (sig.style === 'dotted' && e) {
@@ -391,8 +410,9 @@ export function traceLine(req: TraceRequest): TraceResult {
     if (sig.style === 'dotted' && (dots.length >= 2 || straight.length >= 2)) {
       // A dotted line: its points are the centroids of its dots, along the walk or the straight
       // chain, whichever passes through more of them.
-      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
       thickness = Math.max(1, Math.min(blobWidth(template), blobHeight(template)));
+      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
+      if (steps(traced)) traced = levelCorners(withStepCorners(traced, filledCorners, thickness), thickness, { width: w, height: h, alpha, other }, cornerJoin);
     } else {
       if (!e || e.length < 2) return fail('Could not follow a line from the clicked point.', color);
       thickness = thicknessOf(e);
@@ -400,7 +420,9 @@ export function traceLine(req: TraceRequest): TraceResult {
       const maps = { width: w, height: h, alpha, other };
       // A solid line among dashes of its own colour: the dashes touching it stick out as spurs.
       const spurs = sig.style === 'solid' && dropped;
-      traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w, spurs), thickness, maps), thickness, maps);
+      let centre = columnsToPath(e, alpha, w, spurs);
+      if (steps(centre)) centre = levelCorners(withStepCorners(centre, filledCorners, thickness), thickness, maps, cornerJoin);
+      traced = extendHiddenEnds(insertHiddenKinks(centre, thickness, maps), thickness, maps);
     }
   }
   if (traced.length < 2) return fail('Could not follow a line from the clicked point.', color);
