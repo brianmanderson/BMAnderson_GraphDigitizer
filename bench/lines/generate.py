@@ -102,6 +102,12 @@ TOP_VARIANTS = ["log", "linear"]
 # black, "x" and "o" data markers on and near them, then a scanner's blur, noise, uneven stroke
 # width and (two charts in three) a slight rotation. Built by build_scan.
 SCAN_FROM = 116
+# Charts l270-l277 (appended in round two; SCAN2_FROM): the same scans, every one rotated, by 0.8-2
+# degrees (a page laid on the scanner askew), and every other one ruled twice as densely (a gridline
+# every 10 units; tag "grid:dense") — the rulings are then far from axis-parallel and close together
+# where the curves converge. build_scan(i, strong=True); written by write_scan2 (only its own files).
+SCAN2_FROM = 270
+SCAN2_COUNT = 8
 # Charts from BUSY_FROM on: a busy scatterplot ("busy-scatter"): 300-1000 small black markers of two
 # or three shapes ("+", "x" or dots, filled diamonds) in dense, overlapping clusters with rows of
 # equal y, one to three grey or coloured curves running through them (the first with a corner),
@@ -639,8 +645,8 @@ def blur(a: np.ndarray, sigma: float) -> np.ndarray:
     return a
 
 
-def build_scan(i: int):
-    """A scanned black-and-white dose-response figure (see SCAN_FROM)."""
+def build_scan(i: int, strong: bool = False):
+    """A scanned black-and-white dose-response figure (see SCAN_FROM; `strong`: SCAN2_FROM)."""
     rng = np.random.default_rng(5000 + i)
     dpi = int(rng.choice([120, 150, 200]))
     w_in = float(rng.uniform(4.5, 6.5))
@@ -651,7 +657,11 @@ def build_scan(i: int):
         w_in, h_in = w_in * 1300 / (h_in * dpi), 1300 / dpi
     font = str(FONTS[int(rng.integers(0, len(FONTS)))])
     jpeg_q = int(rng.integers(50, 91)) if i % 3 == 1 else 0
-    angle = float(rng.uniform(0.15, 0.5) * rng.choice([-1, 1])) if i % 3 != 0 else 0.0
+    if strong:
+        angle = float(rng.uniform(0.8, 2.0) * rng.choice([-1, 1]))
+    else:
+        angle = float(rng.uniform(0.15, 0.5) * rng.choice([-1, 1])) if i % 3 != 0 else 0.0
+    step = 10.0 if strong and i % 2 == 1 else 20.0  # gridline spacing (labels stay every 20)
     lw = float(rng.uniform(2.2, 3.5))  # the solid curve, pt
     dlw = lw * float(rng.uniform(0.8, 1.0))  # the dashed curves
     glw = lw * float(rng.uniform(0.6, 1.1))  # grid and frame
@@ -684,7 +694,13 @@ def build_scan(i: int):
         ax.set_xticks(np.arange(xlo, xhi + 1, 20))
         ax.set_yticks(np.arange(0, ytop + 1, 20))
         ax.tick_params(length=0, pad=6)
-        ax.grid(True, color="k", lw=glw, ls="-")
+        if step != 20.0:
+            ax.set_xticks(np.arange(xlo, xhi + 1, step), minor=True)
+            ax.set_yticks(np.arange(0, ytop + 1, step), minor=True)
+            ax.tick_params(which="minor", length=0)
+            ax.grid(True, which="both", color="k", lw=glw, ls="-")
+        else:
+            ax.grid(True, color="k", lw=glw, ls="-")
         ax.set_axisbelow(True)
         ax.set_xlabel(str(rng.choice(["Milliampere-minutes", "Dose", "Exposure (units)"])))
         ax.set_ylabel(str(rng.choice(["Percentage positive reactions", "Response (%)", "Per cent"])))
@@ -732,8 +748,8 @@ def build_scan(i: int):
         def tf(v):
             return px_of(ax.transData.transform(v), H)
 
-        grid_lines = [np.array([[xv, 0], [xv, ytop]]) for xv in np.arange(xlo, xhi + 1, 20)]
-        grid_lines += [np.array([[xlo, yv], [xhi, yv]]) for yv in np.arange(0, ytop + 1, 20)]
+        grid_lines = [np.array([[xv, 0], [xv, ytop]]) for xv in np.arange(xlo, xhi + 1, step)]
+        grid_lines += [np.array([[xlo, yv], [xhi, yv]]) for yv in np.arange(0, ytop + 1, step)]
         grid_lines += [np.array([[xlo, ytop], [xhi, ytop]]), np.array([[xhi, 0], [xhi, ytop]])]
         fit_px = tf(np.column_stack([xs, fit]))
         ci_px = [tf(np.column_stack(c)) for c in cis]
@@ -787,9 +803,12 @@ def build_scan(i: int):
         s["crossing"] = s["kind"] != "scatter" and any(o["kind"] != "scatter" and crosses(s["path"], o["path"]) for o in others)
         s["seed"] = pick_seed(s, others + decor_px, rgb, bg, None, W, H, strict=True)
 
-    tags = ["scenario:scan-grid", "grid", "frame:box", "jpeg" if jpeg_q else "png", "dpi:mid" if dpi <= 150 else "dpi:high", "scan"]
+    tags = ["scenario:scan-rotated" if strong else "scenario:scan-grid", "grid", "frame:box", "jpeg" if jpeg_q else "png",
+            "dpi:mid" if dpi <= 150 else "dpi:high", "scan"]
     if angle:
         tags.append("rotated")
+    if step != 20.0:
+        tags.append("grid:dense")
     out_series = []
     for k_, s in enumerate(series):
         stags = [f"series:{s['kind']}", "color:black", "same-colour", "own-colour-lines", "scan"]
@@ -1823,6 +1842,21 @@ def build_styles(i: int):
     return Image.fromarray(rgb), doc, jpeg_q
 
 
+def write_scan2() -> None:
+    """Write l270-l277 (SCAN2_FROM) only; every other chart's files are left as they are."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    for i in range(SCAN2_FROM, SCAN2_FROM + SCAN2_COUNT):
+        img, doc, q = build_scan(i, strong=True)
+        img = img.convert("L")  # a black-and-white scan: one grey channel
+        name = doc["image"]
+        if q:
+            img.save(OUT / name, quality=q)
+        else:
+            img.save(OUT / name, optimize=True)
+        (OUT / f"l{i:02d}.json").write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+        print(f"{name:8s} {img.width:5d}x{img.height:<5d} {' '.join(doc['tags'])}")
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("l*.*"):
@@ -1850,6 +1884,8 @@ def main() -> int:
     # l200-l229, "new kinds" (curves that are not functions of x, bar charts): generate_kinds.py.
     import generate_kinds
     generate_kinds.write_all()
+    # l270-l277, scans rotated further and ruled more densely (SCAN2_FROM).
+    write_scan2()
     return 0
 
 
