@@ -24,7 +24,9 @@ export type LabelToken =
   | { kind: 'date'; ms: number }
   | { kind: 'year'; year: number }
   | { kind: 'month'; month: number }
-  | { kind: 'day'; day: number };
+  | { kind: 'day'; day: number }
+  /** A time of day (`09:30`): ms since midnight. Dated only by a date printed elsewhere. */
+  | { kind: 'time'; ms: number };
 
 const SUPERSCRIPTS: Record<string, string> = {
   '⁰': '0',
@@ -54,8 +56,46 @@ const SCI = new RegExp(`^(${DECIMAL})[eE]([+-]?\\d+)$`);
 const POW = new RegExp(`^(?:(${DECIMAL})[x×*·])?([+-]?)10\\^?\\(?([+-]?\\d+)\\)?$`);
 const THOUSANDS = /^([+-]?)(\d{1,3}(?:([, ])\d{3})+)(\.\d+)?$/;
 
+/**
+ * SI-style suffixes written straight after the digits of a tick label (`20k`, `1.5M`). Lower-case
+ * `m` is not accepted: it is milli as often as a misread `M`, a factor of 10⁹ apart.
+ */
+const SUFFIX: Record<string, number> = { k: 1e3, K: 1e3, M: 1e6, G: 1e9, B: 1e9 };
+const CURRENCY = /[$€£¥]/;
+
+/** The parts of a label around its number: `$1,000` → currency, `20k` → ×1000, `40%`. */
+export function splitAffixes(text: string): { body: string; multiplier: number; affixed: boolean } {
+  let s = text.trim();
+  let affixed = false;
+  const sign = /^[-−–+]/.exec(s)?.[0] ?? '';
+  let rest = s.slice(sign.length).trimStart();
+  if (CURRENCY.test(rest[0] ?? '')) {
+    rest = rest.slice(1).trimStart();
+    affixed = true;
+  } else if (CURRENCY.test(rest[rest.length - 1] ?? '') && /\d\s?.$/.test(rest)) {
+    rest = rest.slice(0, -1).trimEnd();
+    affixed = true;
+  }
+  let multiplier = 1;
+  const last = rest[rest.length - 1] ?? '';
+  if (last in SUFFIX && /\d$/.test(rest.slice(0, -1))) {
+    multiplier = SUFFIX[last] as number;
+    rest = rest.slice(0, -1);
+    affixed = true;
+  }
+  s = sign + rest;
+  return { body: s, multiplier, affixed };
+}
+
 /** A number written in any of the accepted forms, or null. Never NaN/Infinity. */
 export function parseNumberLabel(text: string): { value: number; power: boolean } | null {
+  const parts = splitAffixes(text);
+  if (parts.affixed) {
+    const inner = parseNumberLabel(parts.body);
+    // Keep the product free of binary noise (1.25 × 1e6).
+    const v = inner ? Number((inner.value * parts.multiplier).toPrecision(15)) : NaN;
+    return inner && Number.isFinite(v) ? { value: v, power: inner.power } : null;
+  }
   let s = normalise(text);
   if (s.endsWith('%')) s = s.slice(0, -1);
   if (s === '') return null;
@@ -140,6 +180,19 @@ export function parseDateToken(text: string): LabelToken | null {
     const day = Number(s);
     return day >= 1 && day <= 31 ? { kind: 'day', day } : null;
   }
+  const time = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (time) {
+    const [h, m, sec] = [Number(time[1]), Number(time[2]), Number(time[3] ?? 0)];
+    return h <= 24 && m < 60 && sec < 60 ? { kind: 'time', ms: ((h * 60 + m) * 60 + sec) * 1000 } : null;
+  }
+  // Quarters: `Q1 2024`, `2024 Q1`, `2024-Q1`, `Q1-2024` → the quarter's first day.
+  const q = /^Q([1-4])[\s-]*(\d{4})$/i.exec(s) ?? /^(\d{4})[\s-]*Q([1-4])$/i.exec(s);
+  if (q) {
+    const quarterFirst = /^Q/i.test(s);
+    const quarter = Number(quarterFirst ? q[1] : q[2]);
+    const year = Number(quarterFirst ? q[2] : q[1]);
+    return year >= 1000 && year <= 2999 ? { kind: 'date', ms: Date.UTC(year, (quarter - 1) * 3, 1) } : null;
+  }
   const d = parseDateTime(s);
   return d.ok ? { kind: 'date', ms: d.ms } : null;
 }
@@ -200,7 +253,8 @@ export function resolveDateLabels(tokens: (LabelToken | null)[]): (number | null
  * taken as equally wide (tabular figures), so a mark's position along the word says how many
  * digits precede it. Text that already has as many marks, or is not plain digits, is unchanged.
  */
-export function restorePoints(text: string, marks: PointMarks): string {
+export function restorePoints(text: string, marks: PointMarks, withUncertain = false): string {
+  if (withUncertain) return restorePoints(text, { start: marks.start, end: marks.end, points: [...marks.points, ...(marks.uncertain ?? [])] });
   if (marks.points.length === 0) return text;
   const sign = /^[-+−]/.exec(text)?.[0] ?? '';
   const body = text.slice(sign.length);

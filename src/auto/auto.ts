@@ -13,7 +13,7 @@
 import { darknessMap } from './darkness.ts';
 import { detectAxesInMap } from './detect.ts';
 import { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
-import { parseAxisNote, parseNumberLabel, restorePoints } from './parseLabel.ts';
+import { parseAxisNote, parseNumberLabel, restorePoints, splitAffixes } from './parseLabel.ts';
 import { crossCheck, suggestAxis, type AutoCalibration, type AxisReading, type OcrLabel } from './suggest.ts';
 import type { AxisDetection, RgbaImage } from './types.ts';
 
@@ -39,12 +39,57 @@ export interface AutoOptions {
 
 const conf = (c: number) => Math.max(0, Math.min(1, c));
 
+const fixSign = (text: string, minus: boolean) => {
+  const t = text.trim();
+  return minus && !/^[-−–]/.test(t) ? `-${t}` : t;
+};
+
+/** The reading with the layout's marks put back, and the other reading where a point is only possible. */
+function withMarks(raw: string, confidence: number, l: FoundLabel, suffix = ''): OcrLabel {
+  const text = restorePoints(fixSign(raw, l.minus), l.marks) + suffix;
+  // A possible point (small text): the other reading, for the axis's other labels to decide.
+  const other = l.marks.uncertain?.length ? restorePoints(fixSign(raw, l.minus), l.marks, true) + suffix : text;
+  return other === text ? { text, confidence } : { text, confidence, alternatives: [other] };
+}
+
+/**
+ * A reading with fewer characters than the label shows dropped one ("20" read as "0", "20k" as
+ * "20"): Tesseract does that at 95 % confidence. Points, commas and the leading minus are not
+ * counted on either side.
+ */
+export function droppedCharacters(o: OcrLabel, l: FoundLabel): boolean {
+  if (l.runs === undefined) return false;
+  const base = (o.text.split('^')[0] ?? '').replace(/[.,\s]/g, '');
+  const chars = l.minus ? base.replace(/^[-−–]/, '') : base;
+  return chars.length < l.runs;
+}
+
+const digitsOf = (s: string) => s.replace(/\D/g, '');
+
+/**
+ * One label's numeric reading after it was also read as free text. The numeric character set
+ * cannot show a currency sign or an SI suffix (`$1,000` comes back as `%1,000`, `20k` as `20`
+ * with confidence 0): those come from the text reading, with the digits both readings agree on.
+ * Otherwise the numeric reading stands unless it dropped a character and the text reading did not.
+ */
+function reconcile(n: OcrLabel, t: OcrLabel, l: FoundLabel): OcrLabel {
+  if (l.base && l.exponent) return n;
+  const parts = splitAffixes(t.text);
+  if (parts.affixed && /^[-−–+]?[\d.,\s]*\d$/.test(parts.body)) {
+    const suffix = parts.multiplier === 1 ? '' : t.text.trim().slice(-1);
+    const dt = digitsOf(parts.body);
+    const dn = digitsOf(n.text);
+    // The numeric pass reads the affix as nothing, or as one more character (`%`, a digit).
+    const agree = dn === dt || (dn.length === dt.length + 1 && (dn.startsWith(dt) || dn.endsWith(dt)));
+    return withMarks(parts.body.replace(/\s+/g, ''), conf(agree ? t.confidence : 0.5 * t.confidence), l, suffix);
+  }
+  if (parseNumberLabel(n.text) !== null && !droppedCharacters(n, l)) return n;
+  const again = withMarks(t.text, conf(t.confidence), l);
+  return parseNumberLabel(again.text) !== null && !droppedCharacters(again, l) ? again : n;
+}
+
 /** Numeric reading of one label: exponent joined, a dropped minus sign restored. */
 async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
-  const fixSign = (text: string, minus: boolean) => {
-    const t = text.trim();
-    return minus && !/^[-−–]/.test(t) ? `-${t}` : t;
-  };
   if (l.base && l.exponent) {
     const [b, e] = await Promise.all([
       ocr.recognize(l.base, { charset: 'numeric', singleChar: false }),
@@ -54,7 +99,7 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
     return { text: `${restorePoints(fixSign(b.text, l.minus), l.marks)}^${exp}`, confidence: conf(Math.min(b.confidence, e.confidence)) };
   }
   const r = await ocr.recognize(l.crop, { charset: 'numeric', singleChar: l.singleChar });
-  return { text: restorePoints(fixSign(r.text, l.minus), l.marks), confidence: conf(r.confidence) };
+  return withMarks(r.text, conf(r.confidence), l);
 }
 
 async function readText(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
@@ -122,11 +167,12 @@ export async function autoCalibrate(img: RgbaImage, ocr: OcrEngine, opts: AutoOp
     let reading: AxisReading = { ...base, numeric, text: null, note: noteRead };
     let s = suggestAxis(reading);
     // Read as text too unless the numeric reading is confident and complete: a label that is not
-    // a number may be a month name, which makes this a date axis.
-    const incomplete = numeric.some((n) => parseNumberLabel(n.text) === null);
+    // a number may be a month name, which makes this a date axis, and one whose reading has fewer
+    // characters than the label shows may have a unit suffix (`20k`) that only text mode can read.
+    const incomplete = numeric.some((n, i) => parseNumberLabel(n.text) === null || droppedCharacters(n, labels.labels[i] as FoundLabel));
     if ((s.level !== 'high' || incomplete) && labels.labels.length >= 2) {
       const text = await Promise.all(labels.labels.map((l) => readText(counted, l)));
-      reading = { ...reading, text };
+      reading = { ...reading, numeric: numeric.map((n, i) => reconcile(n, text[i] as OcrLabel, labels.labels[i] as FoundLabel)), text };
       s = suggestAxis(reading);
     }
     return s;

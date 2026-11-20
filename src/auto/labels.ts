@@ -95,6 +95,13 @@ export interface FoundLabel {
   exponentSingleChar: boolean;
   /** Decimal points / commas seen between the base's digits (OCR often drops them). */
   marks: PointMarks;
+  /**
+   * How many characters the base shows above the baseline zone (digits, letters, signs inside the
+   * number; not points, commas or a leading minus), counted as separate column runs. Touching
+   * characters count once, so a reading may have more characters than this, but one with fewer
+   * dropped something ("20" read as "0", "20k" as "20").
+   */
+  runs?: number;
   /** Label box in image px (for display): centre and size. */
   box: { center: Point; width: number; height: number };
 }
@@ -108,6 +115,12 @@ export interface PointMarks {
   start: number;
   end: number;
   points: { x0: number; x1: number; char: '.' | ',' }[];
+  /**
+   * Places where two digits stand further apart than the font's digit pitch and something faint
+   * sits between them at the baseline, but not cleanly enough to call it a point (at 6 px a point
+   * runs into the foot of the digit before it). The value is then ambiguous: "25" or "2.5".
+   */
+  uncertain?: { x0: number; x1: number; char: '.' | ',' }[];
 }
 
 export interface AxisLabels {
@@ -254,13 +267,20 @@ function words(glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): Labe
     row?.glyphs.push(g);
   }
   rows.sort((a, b) => a.y0 - b.y0);
-  return rows.map((r) => {
-    const height = median(r.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT).map(gh));
+  const placed = new Set(rows.flatMap((r) => r.glyphs));
+  const loose = small.filter((g) => !placed.has(g));
+  const built = rows.map((r) => {
+    const rough = median(r.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT).map(gh));
+    // A minus sign 4 px thick (a large or bold figure) is tall enough to be a "body" glyph, but it
+    // says nothing about the text height.
+    const dash = (g: Glyph) => gw(g) >= 2 * gh(g) && gh(g) <= 0.3 * rough;
+    const height = median(r.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT && !dash(g)).map(gh)) || rough;
     const gap = Math.max(2, 0.5 * height);
     // Y labels are right-aligned at the axis: grow words from the axis side.
     const sorted = [...r.glyphs].sort((a, b) => (fromRight ? b.x1 - a.x1 : a.x0 - b.x0));
     const out: LabelWord[] = [];
-    const bodyHeight = (wd: LabelWord) => Math.max(0, ...wd.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT).map(gh));
+    // (A word that so far is only a minus sign has no height: the digit after it always fits.)
+    const bodyHeight = (wd: LabelWord) => Math.max(0, ...wd.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT && !dash(g)).map(gh));
     for (const g of sorted) {
       const last = out[out.length - 1];
       const dist = last ? (fromRight ? last.x0 - g.x1 - 1 : g.x0 - last.x1 - 1) : Infinity;
@@ -280,14 +300,71 @@ function words(glyphs: Glyph[], maxTextHeight: number, fromRight: boolean): Labe
       }
     }
     out.sort((a, b) => a.x0 - b.x0);
-    // A word must contain a body glyph (stray dots and dashes are not labels).
-    return out.filter((wd) => wd.glyphs.some((g) => gh(g) >= BODY_MIN_HEIGHT));
+    return out;
   });
+  attachRaised(built, loose);
+  // A word must contain a body glyph (stray dots and dashes are not labels).
+  return built.map((row) => row.filter((wd) => wd.glyphs.some((g) => gh(g) >= BODY_MIN_HEIGHT))).filter((row) => row.length > 0);
+}
+
+/**
+ * Exponents set well above their base (`10⁻²` in mathtext: the exponent's foot is level with the
+ * base's head) share no row with it, so the row test leaves them as a word of their own in the
+ * row above, or — at 3 px tall — as loose marks. A smaller group that starts right after a word's
+ * end and stands raised against it (its foot in the upper 70 % of the word or just above it) is
+ * that word's exponent and joins it: at most 0.3 text heights away (further off it is another
+ * word: a tick label beside a letter of the rotated axis title), no taller than 0.9 and no wider
+ * than 1.8 of them. Tick labels have nothing else there: the next label of a row
+ * is further away, and the label above on a Y axis is right-aligned with this one, not beyond it.
+ */
+function attachRaised(rows: LabelWord[][], loose: Glyph[]): void {
+  type Piece = { x0: number; y0: number; x1: number; y1: number; glyphs: Glyph[]; row: LabelWord[] | null; word: LabelWord | null };
+  const pieces: Piece[] = [
+    ...rows.flatMap((row) => row.map((word): Piece => ({ x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1, glyphs: word.glyphs, row, word }))),
+    ...loose.map((g): Piece => ({ x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1, glyphs: [g], row: null, word: null })),
+  ];
+  const taken = new Set<Piece>();
+  for (const row of rows) {
+    for (const base of [...row]) {
+      if (taken.has(pieces.find((q) => q.word === base) as Piece)) continue;
+      const top = base.y0;
+      const bottom = base.y1;
+      const h = bottom - top + 1;
+      if (h < BODY_MIN_HEIGHT) continue;
+      const raised = pieces
+        .filter(
+          (q) =>
+            q.word !== base &&
+            !taken.has(q) &&
+            q.x0 >= base.x1 - 1 &&
+            q.y1 - q.y0 + 1 <= 0.9 * h &&
+            q.x1 - q.x0 + 1 <= 1.8 * h &&
+            q.y1 <= bottom - 0.3 * h &&
+            q.y1 >= top - 0.15 * h &&
+            q.y0 >= top - 0.8 * h,
+        )
+        .sort((a, b) => a.x0 - b.x0);
+      let end = base.x1;
+      for (const q of raised) {
+        if (q.x0 - end - 1 > Math.max(2, 0.3 * h)) break;
+        taken.add(q);
+        end = Math.max(end, q.x1);
+        base.glyphs.push(...q.glyphs);
+        base.x1 = Math.max(base.x1, q.x1);
+        base.y0 = Math.min(base.y0, q.y0);
+        if (q.row && q.word) q.row.splice(q.row.indexOf(q.word), 1);
+      }
+    }
+  }
 }
 
 interface Layout {
   base: Glyph[];
   marks: PointMarks;
+  /** Widths (px) of the digits' column runs: for the axis's digit width. */
+  runWidths: number[];
+  /** Height of the base's digits, px. */
+  bodyHeight: number;
   exponent: Glyph[];
   minus: boolean;
   exponentMinus: boolean;
@@ -304,8 +381,16 @@ const isDash = (g: Glyph, hb: number) => gw(g) >= 2 * gh(g) && gw(g) >= 0.3 * hb
  * a run of columns with ink only near the baseline, at most ~0.4 of the text height wide, with
  * an empty column on each side and taller ink (digits) beyond both.
  */
-function profilePoints(p: Patch, digits: Glyph[], start: number, end: number, baseline: number, hb: number): PointMarks['points'] {
-  if (digits.length < 2 || end - start < 3) return [];
+function profilePoints(
+  p: Patch,
+  digits: Glyph[],
+  start: number,
+  end: number,
+  baseline: number,
+  hb: number,
+  digitWidth: number | null,
+): { points: PointMarks['points']; uncertain: PointMarks['points']; runWidths: number[] } {
+  if (digits.length < 1 || end - start < 3) return { points: [], uncertain: [], runWidths: digits.length ? [end - start + 1] : [] };
   let max = 0;
   for (const g of digits) for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
   const t = 0.5 * max;
@@ -343,10 +428,99 @@ function profilePoints(p: Patch, digits: Glyph[], start: number, end: number, ba
     }
     i = j + 1;
   }
-  return out;
+  // Digits: runs of columns with ink above the baseline zone, at a lower threshold than the
+  // points' (at half the darkest stroke a 7 px "0" falls apart into its two sides).
+  const zone = Math.round(baseline - 0.3 * hb);
+  const weak = Math.max(0.5 * INK_THRESHOLD, 0.12 * max);
+  const column = (i: number) => {
+    let upper = 0;
+    let lower = 0;
+    let lowest = -1;
+    for (let y = top; y <= bottom; y++) {
+      const v = p.dark[y * p.width + start + i] ?? 0;
+      if (y < zone) upper = Math.max(upper, v);
+      else {
+        lower = Math.max(lower, v);
+        if (v >= weak) lowest = y;
+      }
+    }
+    return { i, upper, lower, lowest };
+  };
+  const profile = cols.map((_, i) => column(i));
+  const runs: { a: number; b: number }[] = [];
+  profile.forEach((c) => {
+    if (c.upper < 0.3 * max) return;
+    const last = runs[runs.length - 1];
+    if (last && last.b === c.i - 1) last.b = c.i;
+    else runs.push({ a: c.i, b: c.i });
+  });
+  const runWidths = runs.map((r) => r.b - r.a + 1);
+  const uncertain: PointMarks['points'] = [];
+  // (One component only: the strong profile's "points" there are pieces of a broken digit.)
+  if (digits.length < 2) out.length = 0;
+  if (digitWidth === null || runs.length < 2) return { points: out, uncertain, runWidths };
+
+  // A faint point (grey, 1-2 px: at half the darkest stroke it is not there at all) still pushes
+  // the digits apart, and shows as ink of the gap that stays in the baseline zone.
+  for (let k = 0; k + 1 < runs.length; k++) {
+    const left = runs[k] as { a: number; b: number };
+    const right = runs[k + 1] as { a: number; b: number };
+    if (out.some((m) => m.x0 - start > left.b && m.x1 - start < right.a)) continue;
+    // Two digits that merged into one run (JPEG, 5 px text) have no usable centre.
+    if (left.b - left.a + 1 > MAX_DIGIT_RUN * digitWidth || right.b - right.a + 1 > MAX_DIGIT_RUN * digitWidth) continue;
+    const pitch = ((right.a + right.b) / 2 - (left.a + left.b) / 2) / digitWidth;
+    if (pitch < PITCH_POINT) continue;
+    const gap = profile.slice(left.b + 1, right.a);
+    const low = gap.filter((c) => c.lower >= Math.max(weak, 0.2 * max) && c.upper < 0.5 * c.lower);
+    if (low.length === 0) continue;
+    const markOf = (cs: typeof low) => ({
+      x0: start + Math.min(...cs.map((c) => c.i)),
+      x1: start + Math.max(...cs.map((c) => c.i)),
+      char: (Math.max(...cs.map((c) => c.lowest)) > baseline + 0.1 * hb ? ',' : '.') as '.' | ',',
+    });
+    // Standing clear of both digits — a lighter column between it and each of them — it is a
+    // point: a digit's foot (the serif of a 1, the base of a 2) and its antialiased edge hang on
+    // to the digit.
+    const clear = low.filter((c) => gap.some((d) => d.i < c.i && d.lower <= 0.5 * c.lower) && gap.some((d) => d.i > c.i && d.lower <= 0.5 * c.lower));
+    if (clear.length > 0 && clear.length <= Math.max(1, 0.4 * hb)) out.push(markOf(clear));
+    // In small text a point runs into the digit beside it: possible, not certain. (In larger
+    // text a point is always resolved, and what touches a digit there is its own serif.)
+    else if (clear.length === 0 && hb <= SMALL_TEXT && pitch >= PITCH_MAYBE && low.length <= Math.max(2, 0.4 * hb)) uncertain.push(markOf(low));
+  }
+  out.sort((a, b) => a.x0 - b.x0);
+  // A number has one decimal point: where one was found, the base of the "2" in "0.20" is no other.
+  if (out.length > 0) uncertain.length = 0;
+  return { points: out, uncertain, runWidths };
 }
 
-function layout(word: LabelWord, p: Patch): Layout {
+/**
+ * Digit pitch tests, in units of the axis's digit width (the width of its wide digits' column
+ * runs, 0 and 2–9). Digits are tabular in nearly every font: on the corpus neighbours stand a
+ * median 1.21 widths apart centre to centre (up to 1.6 beside a "1", whose ink is off-centre),
+ * and 1.42–2.0 with a point between them. The pitch alone does not decide; it only rules out a
+ * "point" between digits that stand too close to have one.
+ */
+const PITCH_POINT = 1.3;
+const PITCH_MAYBE = 1.36;
+/** Text up to this tall (px) may hide a point against the neighbouring digit. */
+const SMALL_TEXT = 11.5;
+/** A column run wider than this many digit widths is two digits run together. */
+const MAX_DIGIT_RUN = 1.7;
+
+/** Layouts without a digit width are asked for again and again (per tick, per word): kept. */
+const plainLayouts = new WeakMap<LabelWord, Layout>();
+
+function layout(word: LabelWord, p: Patch, digitWidth: number | null = null): Layout {
+  if (digitWidth !== null) return layoutOf(word, p, digitWidth);
+  let l = plainLayouts.get(word);
+  if (!l) {
+    l = layoutOf(word, p, null);
+    plainLayouts.set(word, l);
+  }
+  return l;
+}
+
+function layoutOf(word: LabelWord, p: Patch, digitWidth: number | null): Layout {
   const gs = [...word.glyphs].sort((a, b) => a.x0 - b.x0);
   const hb = Math.max(...gs.map(gh));
   const tall = gs.filter((g) => gh(g) >= 0.75 * hb);
@@ -388,13 +562,16 @@ function layout(word: LabelWord, p: Patch): Layout {
   };
   // From the column profile, not from components: antialiasing often bridges a point to the
   // next digit, and JPEG breaks digits into small pieces that look like points.
-  const points = profilePoints(p, digits, marks.start, marks.end, baseline, hb);
-  marks.points = points;
+  const found = profilePoints(p, digits, marks.start, marks.end, baseline, hb, digitWidth);
+  marks.points = found.points;
+  if (found.uncertain.length > 0) marks.uncertain = found.uncertain;
   const eTop = exponent.length ? Math.min(...exponent.map((g) => g.y0)) : 0;
   const eBottom = exponent.length ? Math.max(...exponent.filter((g) => !isDash(g, hb)).map((g) => g.y1)) : 0;
   return {
     base,
     marks,
+    runWidths: found.runWidths,
+    bodyHeight: hb,
     exponent,
     minus: hasMinus,
     exponentMinus: exponent.length > 1 && minusAt(exponent, eTop, eBottom),
@@ -679,8 +856,15 @@ function labelsWith(
     }
   }
 
+  // The ink width of the axis's wide digits (0, 2–9): runs between 0.42 and 0.95 text heights
+  // (a "1" is narrower, two merged digits wider).
+  const widths = chosen.flatMap(({ word }) => {
+    const l = layout(word, p);
+    return l.runWidths.filter((w) => w >= 0.42 * l.bodyHeight && w <= 0.95 * l.bodyHeight);
+  });
+  const digitWidth = widths.length >= 2 ? median(widths) : null;
   const found = (word: LabelWord, q: Patch, along: number, tick: number | null, italic = false): FoundLabel => {
-    const l = layout(word, q);
+    const l = layout(word, q, q === p && !italic ? digitWidth : null);
     const bodyH = Math.max(1, l.baseline - l.baseTop + 1);
     const slant = italic ? slantOf(q, word.glyphs, bodyH) : 0;
     // Slanted (italic, hand-lettered) labels are read whole: their uneven glyphs often end above
@@ -706,6 +890,7 @@ function labelsWith(
       singleChar: bodies.length === 1 && !hasExp && word.x1 - word.x0 + 1 <= 0.8 * bodyH,
       exponentSingleChar: expBodies.length === 1,
       marks: l.marks,
+      ...(slant === 0 ? { runs: l.runWidths.length } : {}),
       box: { center, width: word.x1 - word.x0 + 1, height: word.y1 - word.y0 + 1 },
       ...(slant > 0 ? { slanted: true } : {}),
       // Only without ticks: then the band starts at the line, and a word reaching its edge was
