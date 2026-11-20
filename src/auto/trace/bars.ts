@@ -1,7 +1,7 @@
 /**
  * Bars: one click on a bar → a point at the value end of every bar of that series, at the middle
  * of the bar's width ("Find points" for bar charts and histograms; docs/SPEC.md → Auto-trace →
- * Bars). Pure TS, no DOM.
+ * Bars). Pure TS, no DOM. Entry: `findBars`.
  *
  * Where the point goes:
  * - a bar standing on the baseline: its top edge (a horizontal bar: its right end);
@@ -10,38 +10,48 @@
  * - a bar with an error bar: still the bar's own end, never the cap;
  * - an outlined bar: the middle of the outline's stroke (where the value is drawn).
  *
- * Filled bars (`filledBars`). The series' ink is cut into runs along the value axis, column by
- * column for vertical bars (row by row for horizontal ones; both are tried and the larger family
- * wins). Thin ink of another colour inside a run — hatching, an error bar's cap, a curve drawn
- * over the bars — is bridged. Runs of neighbouring columns that overlap form a chain, and a chain
- * is cut into segments whose two ends stay put: rectangles. A column with more ink beyond its end
- * than the chain's usual outline (an error bar's stem, a curve over the bar's top) says nothing
- * about that end and never cuts a segment. Two segments with the same ends on either side of a
- * thin line of other ink (a mean line drawn through a bar) are one bar when only together they
- * have a bar's width. The unit is the commonest width among the segments that share an end with
- * the clicked one: bars are the segments one unit wide, and in a chain of touching bars a segment
- * n units wide is n bars of equal height (a histogram without outlines). They are bars only as a
- * family:
+ * Two ways in, one reading. A click inside a solid SEED_BLOCK-square of the series' colour is on a
+ * fill (filled bars, below); if that finds nothing and the fill has an outline of another colour,
+ * or the click is on a thin stroke of the series (an outline, a hatch line), the bars are read as
+ * outlined cells (`outlinedReadings`): the insides of the outline's walls, each a rectangle, drawn
+ * alike (`sameTexture`) — and those cells are handed to the same reading as solid fills.
  *
- * - the baseline is the coordinate most of them end on; a bar ending there has its value at the
- *   other end, and a bar away from it is a stacked segment when ink runs from it to the baseline
- *   (the segments under it; a legend swatch floats). When the bars share their far end instead
- *   and stand on other ink (the top layer of a 100 % stack), or share no end (an upper layer),
- *   each must sit on ink and has its value at the far end;
+ * Filled bars. The series' ink is cut into runs along the value axis, column by column for
+ * vertical bars (row by row for horizontal ones; both are tried and the larger family wins). Thin
+ * ink of another colour inside a run — hatching, an error bar's cap, a curve drawn over the bars —
+ * is bridged. Runs of neighbouring columns that overlap form a chain, and a chain is cut into
+ * segments whose two ends stay put: rectangles. A column with more ink beyond its end than the
+ * chain's usual outline (an error bar's stem, a curve over the bar's top) says nothing about that
+ * end and never cuts a segment. Two segments with the same ends on either side of a thin line of
+ * other ink (a mean line drawn through a bar) are one bar when only together they have a bar's
+ * width. The unit is the commonest width among the segments that share an end with the clicked
+ * one: bars are the segments one unit wide, and in a chain of touching bars a segment n units wide
+ * is n bars of equal height (a histogram without outlines). They are bars only as a family:
+ *
+ * - the baseline is the coordinate the most bar length ends on (a row of legend swatches lined up
+ *   by chance is short); a bar ending there has its value at the other end, and a bar away from it
+ *   is a stacked segment when ink runs from it to the baseline (the segments under it; a legend
+ *   swatch floats). When the bars share their far end instead and stand on other ink (the top
+ *   layer of a 100 % stack), or share no end (an upper layer), each must sit on ink all the way to
+ *   the plot's edge (never on the edge itself) and has its value at the far end;
  * - bars whose lengths are all alike and small are markers in a row, not bars; a segment with
  *   more of the series' ink attached to its side that is not a bar (a plateau of a thick step
- *   curve between its risers) is not one either.
+ *   curve between its risers) is not one either;
+ * - of one fill colour, only the bars drawn like the clicked one (`alike`: plain, or the same
+ *   hatching — texture is other ink inside the fill, read in blocks so a curve crossing a bar is
+ *   no pattern).
  *
- * Only tried when the click is inside a solid SEED_BLOCK-square of the series' ink (a bar's fill).
  * When the plot box cut the bars (a value end on its edge, or the series' ink going on just past an
  * edge a bar ends on: a box stopping at the last gridline), they are looked for again over the
- * whole image.
+ * whole image — as are bars hanging past a baseline on the box's edge (a box ending at a zero
+ * line), kept only when that look still has every bar of the first.
  *
- * Not found (docs/SPEC.md → Known failures): bars without fill (their outline is a thin stroke,
- * traced as a line), bars told apart only by their hatching, bars of height zero.
+ * Not found (docs/SPEC.md → Known failures): bars of height zero; outlined bars all of one length
+ * (taken for a ruled grid); a thin outline blended into a fill of nearly its colour is read up to
+ * ~2 px short.
  */
 
-import { coverage, dist, greySeries, INK_MIN, maxAlpha, ON_ALPHA, rgbAt, type ColorModel, type Img } from './color.ts';
+import { coverage, dist, greySeries, INK_MIN, maxAlpha, ON_ALPHA, rgbAt, type ColorModel, type Img, type RGB } from './color.ts';
 import { makeRegion, type Region } from './region.ts';
 import type { TracedPoint } from './types.ts';
 
@@ -72,15 +82,37 @@ const SLIVER = 3;
 const MIN_STACKED = 8;
 /** The longest bar of a family is at least this long, px (and a quarter of the bars' width). */
 const MIN_LONGEST = 8;
+/** Bars at least this fraction of the clicked one's length vote for the baseline. */
+const VOTE = 0.2;
 /** Marker-sized bars are bars only as a family of at least this many. */
 const MIN_SMALL_FAMILY = 4;
 /** Bars all of one length up to this are markers in a row. */
 const UNIFORM_MAX = 30;
 /** A family of marker-sized bars none longer than this many unit widths is markers. */
 const COMPACT_BARS = 1.5;
+/** A straight run of ink this long is an outline, a stem or a ruling — never hatching or a dot, px. */
+const WALL_RUN = 7;
+/** Texture ink has the bar's fill within this on both sides, px. */
+const TEXTURE_REACH = 5;
+const DIRS: [number, number][] = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [1, -1],
+];
+/** An outline's ink: coverage of the series' colour at least this (anti-aliased thin strokes). */
+const WALL_ALPHA = 0.35;
+/** Cells of ruled hatching are at most this far across between their rules, px. */
+const RULED_MAX = 24;
+/** Within this of the region's edge, px (a frame's thickness and a pixel). */
+const EDGE_NEAR = 4;
+/** A cell is a bar's inside when other cells take no more than this of its bounding box. */
+const FOREIGN = 0.03;
+/** Bars whose texture is read from fewer pixels than this are compared loosely. */
+const TEXTURE_MIN = 30;
 
 export interface BarsInput {
-  /** The image, for a second look beyond the region (see `filledBars`). */
+  /** The image, for a second look beyond the region (see `findBars`) and the faces of outlined bars. */
   img: Img;
   alpha: Float32Array;
   other: Uint8Array;
@@ -153,6 +185,8 @@ interface Grid {
   occ: Uint8Array;
   alpha: Float32Array;
   mask: Uint8Array;
+  /** Outlined bars: the cell of each pixel; a run never bridges a wall into another cell. */
+  cell: Int32Array | null;
 }
 
 const median = (v: number[]): number => {
@@ -160,8 +194,55 @@ const median = (v: number[]): number => {
   return s.length ? s[Math.floor(s.length / 2)]! : Number.NaN;
 };
 
-function masks(input: BarsInput): { on: Uint8Array; occ: Uint8Array } {
-  const { alpha, other, model } = input;
+/** What the bar finder sees: the bars' own pixels, other ink, and the texture drawn over the bars. */
+interface Masks {
+  on: Uint8Array;
+  occ: Uint8Array;
+  alpha: Float32Array;
+  /** Texture inside the bars (hatching, dots): compared between bars to tell series apart. */
+  tex: Uint8Array;
+  /** Whether a bar's face colour (its pixels outside `tex`) tells series apart too (outlined bars). */
+  face: boolean;
+  /** Outlined bars: the cell of each pixel (see Grid). */
+  cell: Int32Array | null;
+}
+
+/**
+ * Pixels on a straight run of at least WALL_RUN set pixels across (dir 'h') or down (dir 'v'):
+ * an outline, a stem, a gridline — never a diagonal hatch line or a dot.
+ */
+function longRuns(set: Uint8Array, r: Region, out: Uint8Array): void {
+  const w = r.width;
+  for (let y = r.y0; y <= r.y1; y++) {
+    let x = r.x0;
+    while (x <= r.x1) {
+      if (!set[y * w + x]) {
+        x++;
+        continue;
+      }
+      let e = x;
+      while (e + 1 <= r.x1 && set[y * w + e + 1]) e++;
+      if (e - x + 1 >= WALL_RUN) for (let q = x; q <= e; q++) out[y * w + q] = 1;
+      x = e + 1;
+    }
+  }
+  for (let x = r.x0; x <= r.x1; x++) {
+    let y = r.y0;
+    while (y <= r.y1) {
+      if (!set[y * w + x]) {
+        y++;
+        continue;
+      }
+      let e = y;
+      while (e + 1 <= r.y1 && set[(e + 1) * w + x]) e++;
+      if (e - y + 1 >= WALL_RUN) for (let q = y; q <= e; q++) out[q * w + x] = 1;
+      y = e + 1;
+    }
+  }
+}
+
+function masks(input: BarsInput): Masks {
+  const { alpha, other, model, region } = input;
   // A grey series: black continues its colour line (α well above 1) and is another ink.
   const cap = greySeries(model) ? 1 + Math.max(0.35, 0.4 * (maxAlpha(model) - 1)) : Number.POSITIVE_INFINITY;
   const on = new Uint8Array(alpha.length);
@@ -172,10 +253,41 @@ function masks(input: BarsInput): { on: Uint8Array; occ: Uint8Array } {
     // A faint blend of the series' own colour (a bar's anti-aliased edge) is not another ink.
     else if ((other[k] && a <= 0) || a > cap) occ[k] = 1;
   }
-  return { on, occ };
+  // Texture drawn over the fill (hatching, dots, a cross-hatch's crossings): other ink with the
+  // bar's fill close on both sides along some direction, and not on a long straight run (an
+  // outline, an error bar's stem, a zero line). It stays other ink for the reading (bridged inside a
+  // run); it tells bars of one fill colour apart (`alike`).
+  const straight = new Uint8Array(alpha.length);
+  longRuns(occ, region, straight);
+  const tex = new Uint8Array(alpha.length);
+  const w = region.width;
+  const fillAt = (x: number, y: number, dx: number, dy: number): boolean => {
+    for (let t = 1; t <= TEXTURE_REACH; t++) {
+      const qx = x + t * dx;
+      const qy = y + t * dy;
+      if (qx < region.x0 || qx > region.x1 || qy < region.y0 || qy > region.y1) return false;
+      const q = qy * w + qx;
+      if (on[q]) return true;
+      if (!occ[q]) return false;
+    }
+    return false;
+  };
+  for (let y = region.y0; y <= region.y1; y++) {
+    for (let x = region.x0; x <= region.x1; x++) {
+      const k = y * w + x;
+      if (!occ[k] || straight[k] || !region.mask[k]) continue;
+      for (const [dx, dy] of DIRS) {
+        if (fillAt(x, y, dx, dy) && fillAt(x, y, -dx, -dy)) {
+          tex[k] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return { on, occ, alpha, tex, face: false, cell: null };
 }
 
-function gridOf(input: BarsInput, m: { on: Uint8Array; occ: Uint8Array }, vertical: boolean): Grid {
+function gridOf(input: BarsInput, m: Masks, vertical: boolean): Grid {
   const r = input.region;
   return {
     vertical,
@@ -186,8 +298,9 @@ function gridOf(input: BarsInput, m: { on: Uint8Array; occ: Uint8Array }, vertic
     v1: vertical ? r.y1 : r.x1,
     on: m.on,
     occ: m.occ,
-    alpha: input.alpha,
+    alpha: m.alpha,
     mask: r.mask,
+    cell: m.cell,
   };
 }
 
@@ -232,7 +345,7 @@ function runsAt(g: Grid, u: number): Run[] {
       while (b + 1 <= g.v1 && g.on[at(g, u, b + 1)]) b++;
       let e = b + 1;
       while (e <= g.v1 && e - b <= BRIDGE && g.occ[at(g, u, e)]) e++;
-      if (e <= g.v1 && e > b + 1 && e - b - 1 <= BRIDGE && g.on[at(g, u, e)]) {
+      if (e <= g.v1 && e > b + 1 && e - b - 1 <= BRIDGE && g.on[at(g, u, e)] && (!g.cell || g.cell[at(g, u, e)] === g.cell[at(g, u, b)])) {
         b = e;
         continue;
       }
@@ -321,6 +434,9 @@ function segmentsOf(g: Grid): Segment[][] {
       const clearLo: number[] = oddLo(first) ? [] : [posLo(first)];
       const clearHi: number[] = oddHi(first) ? [] : [posHi(first)];
       const short: boolean[] = [oddLo(first) || oddHi(first)];
+      // The fill's own extent, column by column (a stem of its colour lengthens it).
+      const runA: number[] = [first.a];
+      const runB: number[] = [first.b];
       let j = i;
       // The reference is the median of the columns seen in the clear (the first one is a bar's
       // blurred side: twice the tolerance until there are more). A stack's boundary wobbles more
@@ -330,15 +446,33 @@ function segmentsOf(g: Grid): Segment[][] {
       for (let k = i + 1; k < cols.length; k++) {
         const c = cols[k]!;
         if (cut(c)) {
-          // One column that does not fit between two that do is noise (JPEG).
-          const after = cols[k + 1];
-          if (!after || cut(after)) break;
-          short.push(true);
+          // Up to SPLIT columns that do not fit between columns that do are noise (JPEG) or a
+          // stem of the series' own colour standing on the bar (a black error bar on a black
+          // bar): they say nothing about the ends.
+          // A stem: the fill goes on past one end and keeps the other.
+          const stem = (r: Run) => {
+            const a = median(runA);
+            const b = median(runB);
+            return (r.a < a - 1 && Math.abs(r.b - b) <= 1) || (r.b > b + 1 && Math.abs(r.a - a) <= 1);
+          };
+          let back = 0;
+          for (let q = 1; q <= SPLIT && k + q < cols.length; q++) {
+            if (!cut(cols[k + q]!)) {
+              back = q;
+              break;
+            }
+            if (!stem(cols[k + q]!) || !stem(c)) break;
+          }
+          if (!back) break;
+          for (let q = 0; q < back; q++) short.push(true);
+          k += back - 1;
           j = k;
           continue;
         }
         if (!oddLo(c)) clearLo.push(posLo(c));
         if (!oddHi(c)) clearHi.push(posHi(c));
+        runA.push(c.a);
+        runB.push(c.b);
         short.push(oddLo(c) || oddHi(c));
         j = k;
       }
@@ -436,6 +570,8 @@ interface Found {
   bars: Bar[];
   /** Value end of each bar: true = the high end (larger coordinate along the value axis). */
   valueHigh: boolean[];
+  /** The baseline the bars were read from (NaN: stacked segments without one). */
+  base: number;
 }
 
 /** The family of bars the seed's segment belongs to in one orientation, or null. */
@@ -532,18 +668,21 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
     return false;
   };
 
-  // The baseline: the coordinate most bars end on.
+  // The baseline: the coordinate most bars end on. Only bars of some length vote (a fifth of the
+  // clicked one): a row of short pieces lined up by chance — a legend's swatches, the risers of a
+  // thick step curve — does not outvote the bars standing on it.
   const ends = bars.map((b) => b.seg);
+  const voters = ends.filter((s) => s.hi - s.lo >= VOTE * (seedSeg!.hi - seedSeg!.lo));
   let z = Number.NaN;
   let zCount = 0;
-  for (const c of ends.flatMap((s) => [s.lo, s.hi])) {
-    const n = ends.filter((s) => Math.abs(s.lo - c) <= ALIGN || Math.abs(s.hi - c) <= ALIGN).length;
+  for (const c of voters.flatMap((s) => [s.lo, s.hi])) {
+    const n = voters.filter((s) => Math.abs(s.lo - c) <= ALIGN || Math.abs(s.hi - c) <= ALIGN).length;
     if (n > zCount) {
       zCount = n;
       z = c;
     }
   }
-  let based = zCount >= 2 && zCount >= 0.5 * bars.length;
+  let based = zCount >= 2 && zCount >= 0.5 * voters.length;
   if (based) {
     // A shared far end (top; right for horizontal bars) while the other ends sit on ink is the top
     // of a full stack (a 100 % chart), not a baseline — whether or not a gridline touches it.
@@ -553,7 +692,8 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
     if (far.length > 0.5 * onBase.length) based = false;
   }
   // Whether ink (of any colour) runs from the bar's end at `from` to the baseline, but for seams.
-  const stacked = (b: Bar, from: number): boolean => {
+  const stacked = (b: Bar, from: number, to = z): boolean => {
+    const z = to;
     const dir = z > from ? 1 : -1;
     const quarter = widthOf(b.seg) / 4 / Math.max(1, Math.round(widthOf(b.seg) / unit));
     for (const u of [b.centre - quarter, b.centre, b.centre + quarter]) {
@@ -574,6 +714,40 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
     return true;
   };
 
+  // Where the ink a segment sits on ends, walking from its end at `from` away from it (dir ±1): the
+  // first background longer than a seam, in its middle column, or the region's edge.
+  const floorOf = (b: Bar, from: number, dir: number): number => {
+    const u = Math.round(b.centre);
+    let run = 0;
+    let v = Math.round(from) + dir;
+    for (; v >= g.v0 && v <= g.v1; v += dir) {
+      const k = at(g, u, v);
+      if (inside(g, u, v) && !g.on[k] && !g.occ[k] && (g.alpha[k] ?? 0) < 0.25) {
+        if (++run > SEAM) return v - dir * run;
+      } else run = 0;
+    }
+    return v - dir;
+  };
+  // Without a baseline, the stacks of a chart stand on one floor: the commonest place where the
+  // ink under the segments ends. A legend's swatch sits on its frame, with background below.
+  const floorFor = (sit: (s: Segment) => boolean, end: (s: Segment) => number, dir: number): Set<Bar> => {
+    const at0 = bars.filter((b) => sit(b.seg)).map((b) => ({ b, f: floorOf(b, end(b.seg), dir) }));
+    let floor = Number.NaN;
+    let best = 0;
+    for (const { f } of at0) {
+      const n = at0.filter((o) => Math.abs(o.f - f) <= 2).length;
+      if (n > best) {
+        best = n;
+        floor = f;
+      }
+    }
+    return new Set(at0.filter((o) => Math.abs(o.f - floor) <= 2).map((o) => o.b));
+  };
+  // All the stacks stand (or all hang): whichever explains more segments.
+  const low = floorFor((s) => (g.vertical ? s.hiAttached : s.loAttached), (s) => (g.vertical ? s.hi : s.lo), g.vertical ? 1 : -1);
+  const high = floorFor((s) => (g.vertical ? s.loAttached : s.hiAttached), (s) => (g.vertical ? s.lo : s.hi), g.vertical ? -1 : 1);
+  const sitsLow = (b: Bar) => low.size >= high.size && low.has(b);
+  const hangsHigh = (b: Bar) => high.size > low.size && high.has(b);
   const classify = (based: boolean): { out: Bar[]; valueHigh: boolean[] } => {
     const out: Bar[] = [];
     const valueHigh: boolean[] = [];
@@ -595,11 +769,12 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
         }
       } else if (unit < MIN_STACKED) {
         // No baseline, and narrow: the pieces of a line, not stacked segments.
-      } else if (g.vertical ? s.hiAttached : s.loAttached) {
-        // No baseline: stacked segments, sitting on what is below (to the left of) them.
+      } else if (sitsLow(b)) {
+        // No baseline: stacked segments, sitting on what is below (to the left of) them, down to
+        // the floor the other stacks stand on.
         out.push(b);
         valueHigh.push(!g.vertical);
-      } else if (g.vertical ? s.loAttached : s.hiAttached) {
+      } else if (hangsHigh(b)) {
         out.push(b);
         valueHigh.push(g.vertical);
       }
@@ -611,10 +786,14 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
   let { out, valueHigh } = classify(based);
   if (based) {
     const alt = classify(false);
-    if (alt.out.length > out.length) ({ out, valueHigh } = alt);
+    if (alt.out.length > out.length) {
+      ({ out, valueHigh } = alt);
+      based = false;
+    }
   }
   if (!out.some((b) => b.seg === seedSeg)) return null;
-  if (out.length < 2) return lone && Math.min(seedW, seedSeg.hi - seedSeg.lo) >= 2 * MIN_SIDE ? { bars: out, valueHigh } : null;
+  const base = based ? z : Number.NaN;
+  if (out.length < 2) return lone && Math.min(seedW, seedSeg.hi - seedSeg.lo) >= 2 * MIN_SIDE ? { bars: out, valueHigh, base } : null;
   const lengths = out.map((b) => b.seg.hi - b.seg.lo);
   const uniform = Math.max(...lengths) - Math.min(...lengths) <= ALIGN;
   if (uniform && Math.max(...lengths) <= UNIFORM_MAX) return null;
@@ -626,7 +805,7 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
   // Marker-sized rectangles none of which is clearly longer than wide are the fills of markers
   // (circles, squares, black-edged markers on their error bars), not bars: Find points takes them.
   if (small && Math.max(...lengths) <= COMPACT_BARS * unit) return null;
-  return { bars: out, valueHigh };
+  return { bars: out, valueHigh, base };
 }
 
 /** The points of a family, in image coordinates, ordered along the category axis. */
@@ -642,14 +821,506 @@ function pointsOf(g: Grid, f: Found): TracedPoint[] {
     .sort((p, q) => (g.vertical ? p.px - q.px : p.py - q.py));
 }
 
+
+// ---------------------------------------------------------------- texture
+
+interface Texture {
+  /** Pixels read. */
+  n: number;
+  /** Texture pixels among them. */
+  ink: number;
+  /** Median density of the blocks the inside is cut into. */
+  density: number;
+  /** Blocks read (≥ 8 px each). */
+  blocks: number;
+  /** Texture all over: at least 3 blocks, ¾ of them marked — a pattern, not a curve crossing. */
+  patterned: boolean;
+  /** Share of the blocks that are marked. */
+  marked: number;
+  /** For each of DIRS: how often the next pixel that way is texture too (a hatch's angle). */
+  dirs: number[];
+  /** Mean colour of the rest (the face of an outlined bar), or null. */
+  face: RGB | null;
+  /** Outlined bars only: hatched with rules along the axes (cells joined, `outlinedReadings`). */
+  ruled?: boolean;
+}
+
+/** Texture is read in blocks of about this size, px (a hatch's lines are closer than twice it). */
+const TEXTURE_BLOCK = 16;
+/** A short bar over a fill this densely marked all over is hatched (a curve crossing it is thinner). */
+const HATCH_MIN = 0.1;
+/** A block with this much texture is marked. */
+const PATTERN_MIN = 0.03;
+/** Faces further apart than this are different series. */
+const FACE_TOL = 45;
+
+/** The texture inside the rectangle x0…x1 × y0…y1, 2 px in from its sides (an outline's ink stays out). */
+function textureIn(tex: Uint8Array, img: Img, x0: number, y0: number, x1: number, y1: number, face: boolean, keep?: (k: number) => boolean): Texture {
+  const w = img.width;
+  const ax = Math.max(0, Math.ceil(x0) + 2);
+  const bx = Math.min(w - 1, Math.floor(x1) - 2);
+  const ay = Math.max(0, Math.ceil(y0) + 2);
+  const by = Math.min(img.height - 1, Math.floor(y1) - 2);
+  let n = 0;
+  let ink = 0;
+  const pairs = DIRS.map(() => 0);
+  // Density per block of ~TEXTURE_BLOCK px: a curve or a line crossing a bar marks a few blocks, a
+  // pattern all of them — the median block is the pattern's.
+  const nx = Math.max(1, Math.min(8, Math.round((bx - ax + 1) / TEXTURE_BLOCK)));
+  const ny = Math.max(1, Math.min(8, Math.round((by - ay + 1) / TEXTURE_BLOCK)));
+  const blockN = new Array<number>(nx * ny).fill(0);
+  const blockInk = new Array<number>(nx * ny).fill(0);
+  const sum = [0, 0, 0];
+  let fn = 0;
+  for (let y = ay; y <= by; y++) {
+    for (let x = ax; x <= bx; x++) {
+      const k = y * w + x;
+      if (keep && !keep(k)) continue;
+      n++;
+      const b = Math.min(ny - 1, Math.floor(((y - ay) * ny) / (by - ay + 1))) * nx + Math.min(nx - 1, Math.floor(((x - ax) * nx) / (bx - ax + 1)));
+      blockN[b]!++;
+      if (tex[k]) {
+        blockInk[b]!++;
+        ink++;
+        for (let i = 0; i < DIRS.length; i++) {
+          const qx = x + DIRS[i]![0];
+          const qy = y + DIRS[i]![1];
+          if (qx >= ax && qx <= bx && qy >= ay && qy <= by && tex[qy * w + qx]) pairs[i]!++;
+        }
+      } else if (face) {
+        const c = rgbAt(img, k);
+        sum[0]! += c[0];
+        sum[1]! += c[1];
+        sum[2]! += c[2];
+        fn++;
+      }
+    }
+  }
+  const dens = blockN.map((c, b) => (c >= 8 ? blockInk[b]! / c : -1)).filter((d) => d >= 0);
+  return {
+    n,
+    ink,
+    density: dens.length ? median(dens) : n ? ink / n : 0,
+    blocks: dens.length,
+    patterned: dens.length >= 3 && dens.filter((d) => d >= PATTERN_MIN).length >= 0.75 * dens.length,
+    marked: dens.length ? dens.filter((d) => d >= PATTERN_MIN).length / dens.length : 0,
+    dirs: pairs.map((p) => (ink ? p / ink : 0)),
+    face: face && fn ? [sum[0]! / fn, sum[1]! / fn, sum[2]! / fn] : null,
+  };
+}
+
+/** A short bar marked all over with texture that runs on diagonally (hatching or dots). */
+const hatchLike = (t: Texture): boolean => t.marked === 1 && t.density >= HATCH_MIN && Math.max(t.dirs[2]!, t.dirs[3]!) >= 0.5;
+
 /**
- * Filled bars: the value-end points of every bar like the one under the seed, or null when the
- * seed is not on a bar (the caller goes on as before).
+ * Whether two bars are drawn alike: face, and whether, how dense and at what angle they are
+ * patterned. A bar too short to read a pattern from (under 3 blocks) only differs grossly; one
+ * with texture in a few places only (a curve or a line crossing it) is plain.
  */
-export function filledBars(input: BarsInput): TracedPoint[] | null {
-  if (!inBlock(input)) return null;
-  const first = barsIn(input);
-  if (!first || !first.clipped || !input.region.quad) return first?.points ?? null;
+function sameTexture(a: Texture, b: Texture): boolean {
+  if (a.face && b.face && dist(a.face, b.face) > FACE_TOL) return false;
+  if (!!a.ruled !== !!b.ruled) return false;
+  const dd = Math.abs(a.density - b.density);
+  if (Math.min(a.n, b.n) < TEXTURE_MIN) return dd <= 0.3;
+  if (Math.min(a.blocks, b.blocks) < 3) {
+    // Too short to read a pattern from blocks. Over a fill a curve crossing it looks like texture:
+    // it is hatched only when all of it is marked and the marks run on diagonally (hatching, dots
+    // — not a shallow curve). On an outlined bar texture is the series' own ink: read as it is.
+    if (!a.face) {
+      const ta = a.patterned || hatchLike(a);
+      if (ta !== (b.patterned || hatchLike(b))) return false;
+      if (!ta) return true;
+    }
+  } else {
+    if (a.patterned !== b.patterned) return false;
+    if (!a.patterned) return true;
+  }
+  const hi = Math.max(a.density, b.density);
+  if (dd > 0.02 + 0.3 * hi) return false;
+  if (hi < 0.04 || Math.min(a.ink, b.ink) < 12) return true;
+  return a.dirs.every((v, i) => Math.abs(v - b.dirs[i]!) <= 0.3);
+}
+
+// ---------------------------------------------------------------- outlined bars
+
+interface Cell {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  area: number;
+  /** Runs into the region's edge, or too large: the plot's open background. */
+  open: boolean;
+  /** Reaches from one edge of the region to the opposite one along a third (background between the last bar and a frame). */
+  across: boolean;
+}
+
+/** A cell that could be a bar's inside: closed, and not reaching across the plot. */
+const closed = (c: Cell): boolean => !c.open && !c.across && c.x1 - c.x0 + 1 >= MIN_SIDE - 1 && c.y1 - c.y0 + 1 >= MIN_SIDE - 1;
+
+interface Reading {
+  masks: Masks;
+  seeds: { x: number; y: number }[];
+}
+
+/**
+ * Bars drawn as an outline around a face: white (an outlined bar) or hatched / dotted in the
+ * outline's colour (the click is on the series' thin ink: `ink` is the series' colour), or a fill
+ * of another colour (the click is in the fill: `ink` is the outline's colour, and `blocked` —
+ * neither fill nor outline: the background, other colours — closes a cell even where a thin
+ * outline blends into the background). Walls: `ink` on long straight runs (outlines, stems, caps,
+ * rulings), thickened by a pixel so an anti-aliased corner does not leak. The insides of the walls
+ * are cells; a bar is a rectangular cell (no other cell in its bounding box), and its series is
+ * every rectangular cell drawn alike (`sameTexture`: face, density and angle of the hatching).
+ * Those cells, as their whole boxes inside the walls, become the "fill" of the bars; the walls are
+ * other ink around them (an outline: the value is at its middle); cells drawn otherwise are
+ * neither fill nor background (what a stacked segment sits on); a run never bridges a wall from
+ * one cell into another. The filled-bar reading then runs on that. One reading per cell next to
+ * the click (a click on a wall between two bars could mean either). Hatching ruled along the axes
+ * ("++", "--", "||") cuts a bar into a grid of small empty cells: lined-up neighbours join into one
+ * ruled inside, reaching out past the last rule to the outline. Not a bar's: a wall clicked
+ * that is not the cell's own side (a gridline, a flat stretch of a curve), a hatch click in a cell
+ * not patterned all over (a dash or a curve crossing an outlined bar), cells all of one length (a
+ * ruled grid).
+ */
+function outlinedReadings(input: BarsInput, ink: Uint8Array, blocked: Uint8Array | null): Reading[] {
+  const { alpha, other, region, seed, img } = input;
+  const w = region.width;
+  const n = alpha.length;
+  const wall = new Uint8Array(n);
+  longRuns(ink, region, wall);
+  const thick = new Uint8Array(wall);
+  for (let y = region.y0; y <= region.y1; y++) {
+    for (let x = region.x0; x <= region.x1; x++) {
+      const k = y * w + x;
+      if (wall[k]) continue;
+      if ((x > region.x0 && wall[k - 1]) || (x < region.x1 && wall[k + 1]) || (y > region.y0 && wall[k - w]) || (y < region.y1 && wall[k + w])) thick[k] = 1;
+    }
+  }
+  const free = (k: number) => region.mask[k] === 1 && !thick[k] && !blocked?.[k];
+
+  // The cells next to the click: its own, or those on either side of the wall it is on (the
+  // wall pixel nearest the click, and the straight run through it).
+  const sk = seed.y * w + seed.x;
+  const starts: number[] = [];
+  let run: { horizontal: boolean; a: number; b: number } | null = null;
+  if (free(sk)) starts.push(sk);
+  else {
+    let wx = -1;
+    let wy = -1;
+    for (let r = 0; r <= 2 && wx < 0; r++) {
+      for (let dy = -r; dy <= r && wx < 0; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = seed.x + dx;
+          const y = seed.y + dy;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && x >= region.x0 && x <= region.x1 && y >= region.y0 && y <= region.y1 && wall[y * w + x]) {
+            wx = x;
+            wy = y;
+            break;
+          }
+        }
+      }
+    }
+    if (wx < 0) return [];
+    const wk = wy * w + wx;
+    let l = wx;
+    while (l - 1 >= region.x0 && wall[wk - (wx - l) - 1]) l--;
+    let r = wx;
+    while (r + 1 <= region.x1 && wall[wk + (r - wx) + 1]) r++;
+    let t = wy;
+    while (t - 1 >= region.y0 && wall[(t - 1) * w + wx]) t--;
+    let b = wy;
+    while (b + 1 <= region.y1 && wall[(b + 1) * w + wx]) b++;
+    const horizontal = r - l >= b - t;
+    run = horizontal ? { horizontal, a: l, b: r } : { horizontal, a: t, b };
+    for (const d of [-1, 1]) {
+      for (let s = 1; s <= 8; s++) {
+        const x = horizontal ? wx : wx + d * s;
+        const y = horizontal ? wy + d * s : wy;
+        if (x < region.x0 || x > region.x1 || y < region.y0 || y > region.y1) break;
+        if (free(y * w + x)) {
+          starts.push(y * w + x);
+          break;
+        }
+      }
+    }
+  }
+  if (!starts.length) return [];
+
+  const label = new Int32Array(n);
+  const cells: Cell[] = [];
+  const stack: number[] = [];
+  const cap = 0.25 * (region.x1 - region.x0 + 1) * (region.y1 - region.y0 + 1);
+  /** Labels the cell at k0; one larger than `cap` pixels is open (the background). */
+  const flood = (k0: number): void => {
+    const id = cells.length + 1;
+    const c: Cell = { x0: Number.POSITIVE_INFINITY, y0: Number.POSITIVE_INFINITY, x1: -1, y1: -1, area: 0, open: false, across: false };
+    cells.push(c);
+    label[k0] = id;
+    stack.length = 0;
+    stack.push(k0);
+    while (stack.length) {
+      const k = stack.pop()!;
+      const x = k % w;
+      const y = (k - x) / w;
+      c.area++;
+      c.x0 = Math.min(c.x0, x);
+      c.x1 = Math.max(c.x1, x);
+      c.y0 = Math.min(c.y0, y);
+      c.y1 = Math.max(c.y1, y);
+      if (x <= region.x0 || x >= region.x1 || y <= region.y0 || y >= region.y1) c.open = true;
+      if (c.area > cap) c.open = true;
+      const tall = c.y0 <= region.y0 + EDGE_NEAR && c.y1 >= region.y1 - EDGE_NEAR;
+      const wide = c.x0 <= region.x0 + EDGE_NEAR && c.x1 >= region.x1 - EDGE_NEAR;
+      const side = (lo: number, hi: number, r0: number, r1: number) => lo <= r0 + EDGE_NEAR || hi >= r1 - EDGE_NEAR;
+      if ((tall && side(c.x0, c.x1, region.x0, region.x1)) || (wide && side(c.y0, c.y1, region.y0, region.y1))) c.across = true;
+      if (x > region.x0 && !label[k - 1] && free(k - 1)) {
+        label[k - 1] = id;
+        stack.push(k - 1);
+      }
+      if (x < region.x1 && !label[k + 1] && free(k + 1)) {
+        label[k + 1] = id;
+        stack.push(k + 1);
+      }
+      if (y > region.y0 && !label[k - w] && free(k - w)) {
+        label[k - w] = id;
+        stack.push(k - w);
+      }
+      if (y < region.y1 && !label[k + w] && free(k + w)) {
+        label[k + w] = id;
+        stack.push(k + w);
+      }
+    }
+  };
+  for (const k of starts) if (!label[k]) flood(k);
+  if (!starts.some((k) => closed(cells[label[k]! - 1]!))) return [];
+  // Every other cell of the plot.
+  for (let y = region.y0; y <= region.y1; y++) {
+    for (let x = region.x0; x <= region.x1; x++) {
+      const k = y * w + x;
+      if (!label[k] && free(k)) flood(k);
+    }
+  }
+  // The ring the thickening took from a cell goes back to it.
+  const grown = new Int32Array(label);
+  for (let y = region.y0 + 1; y < region.y1; y++) {
+    for (let x = region.x0 + 1; x < region.x1; x++) {
+      const k = y * w + x;
+      if (!thick[k] || wall[k] || !region.mask[k]) continue;
+      const l = label[k - 1] || label[k + 1] || label[k - w] || label[k + w] || 0;
+      if (l) grown[k] = l;
+    }
+  }
+  const texMask = new Uint8Array(n);
+  for (let k = 0; k < n; k++) if (ink[k] && !wall[k]) texMask[k] = 1;
+  const textures = new Map<number, Texture>();
+  const ruled = new Set<number>();
+  const textureOf = (id: number): Texture => {
+    let t = textures.get(id);
+    if (!t) {
+      const c = cells[id - 1]!;
+      t = textureIn(texMask, img, c.x0 - 1, c.y0 - 1, c.x1 + 1, c.y1 + 1, true, (k) => grown[k] === id);
+      if (ruled.has(id)) t.ruled = true;
+      textures.set(id, t);
+    }
+    return t;
+  };
+
+  // Hatching ruled along the axes ("++", "--", "||") cuts a bar into a grid of empty cells, each
+  // walled like a bar. Neighbours across one wall that line up exactly (the same rows, or the same
+  // columns), are at most RULED_MAX across that way and empty, join; four or more joined are one
+  // bar's inside, ruled (`Texture.ruled`: only like ruled bars are its series).
+  const parent = cells.map((_, i) => i + 1);
+  const find = (i: number): number => {
+    while (parent[i - 1] !== i) i = parent[i - 1]!;
+    return i;
+  };
+  const empty = (id: number) => textureOf(id).density < PATTERN_MIN;
+  cells.forEach((c, i) => {
+    if (!closed(c) || !empty(i + 1)) return;
+    for (const across of [true, false]) {
+      if ((across ? c.x1 - c.x0 : c.y1 - c.y0) + 1 > RULED_MAX) continue;
+      // Step over the wall from the middle of the cell's far side.
+      const mx = across ? c.x1 : Math.round((c.x0 + c.x1) / 2);
+      const my = across ? Math.round((c.y0 + c.y1) / 2) : c.y1;
+      for (let t = 1; t <= 6; t++) {
+        const x = across ? mx + t : mx;
+        const y = across ? my : my + t;
+        if (x > region.x1 || y > region.y1) break;
+        const l = label[y * w + x]!;
+        if (!l) continue;
+        const o = cells[l - 1]!;
+        const lined = across ? Math.abs(o.y0 - c.y0) <= 1 && Math.abs(o.y1 - c.y1) <= 1 : Math.abs(o.x0 - c.x0) <= 1 && Math.abs(o.x1 - c.x1) <= 1;
+        if (l !== i + 1 && closed(o) && lined && (across ? o.x1 - o.x0 : o.y1 - o.y0) + 1 <= RULED_MAX && empty(l)) parent[find(l) - 1] = find(i + 1);
+        break;
+      }
+    }
+  });
+  const members = new Map<number, number[]>();
+  for (let id = 1; id <= cells.length; id++) {
+    const r = find(id);
+    const list = members.get(r);
+    if (list) list.push(id);
+    else members.set(r, [id]);
+  }
+  for (const [root, ids] of members) {
+    if (ids.length < 4) continue;
+    const c = cells[root - 1]!;
+    for (const id of ids) {
+      if (id === root) continue;
+      const o = cells[id - 1]!;
+      c.x0 = Math.min(c.x0, o.x0);
+      c.x1 = Math.max(c.x1, o.x1);
+      c.y0 = Math.min(c.y0, o.y0);
+      c.y1 = Math.max(c.y1, o.y1);
+      c.area += o.area;
+      o.open = true;
+    }
+    // The rules between them are inside the bar.
+    const inside = new Set(ids);
+    for (let y = c.y0; y <= c.y1; y++) {
+      for (let x = c.x0; x <= c.x1; x++) {
+        const k = y * w + x;
+        if (inside.has(label[k]!)) label[k] = root;
+        if (inside.has(grown[k]!)) grown[k] = root;
+        if (!label[k] && region.mask[k] && !blocked?.[k]) c.area++;
+      }
+    }
+    // Partial cells next to the outline may be too thin to be cells: each side moves out to just
+    // inside the outermost wall within reach (the outline, past a rule and a sliver).
+    const tiny = (l: number) => l !== 0 && (l === root || cells[l - 1]!.area < 4 * RULED_MAX);
+    const sides: [number, number, number, number][] = [
+      [0, -1, c.x0, c.y0],
+      [0, 1, c.x0, c.y1],
+      [-1, 0, c.x0, c.y0],
+      [1, 0, c.x1, c.y0],
+    ];
+    const moves = sides.map(([dx, dy, ex, ey]) => {
+      const found: number[] = [];
+      for (let f = 0.25; f <= 0.76; f += 0.125) {
+        const x0 = dx ? ex : Math.round(c.x0 + f * (c.x1 - c.x0));
+        const y0 = dy ? ey : Math.round(c.y0 + f * (c.y1 - c.y0));
+        let outer = 0;
+        for (let t = 1; t <= 10; t++) {
+          const x = x0 + dx * t;
+          const y = y0 + dy * t;
+          if (x < region.x0 || x > region.x1 || y < region.y0 || y > region.y1) break;
+          const k = y * w + x;
+          if (wall[k]) {
+            if (!wall[k - dx - dy * w]) outer = t;
+          } else if (!thick[k] && !tiny(label[k]!)) break;
+        }
+        found.push(outer > 2 ? outer - 2 : 0);
+      }
+      return median(found);
+    });
+    c.y0 -= moves[0]!;
+    c.y1 += moves[1]!;
+    c.x0 -= moves[2]!;
+    c.x1 += moves[3]!;
+    ruled.add(root);
+    textures.delete(root);
+  }
+  // A rectangle: its bounding box holds (next to) no other cell — walls inside it, an error bar's
+  // stem and caps, are part of the bar; a round hole's box takes in what lies around the ring.
+  const rect = new Map<number, boolean>();
+  const rectangular = (id: number): boolean => {
+    let r = rect.get(id);
+    if (r === undefined) {
+      const c = cells[id - 1]!;
+      const area = (c.x1 - c.x0 + 1) * (c.y1 - c.y0 + 1);
+      let foreign = 0;
+      if (closed(c) && c.area >= 0.5 * area) {
+        for (let y = c.y0; y <= c.y1; y++) {
+          for (let x = c.x0; x <= c.x1; x++) {
+            const l = label[y * w + x]!;
+            if (l && l !== id) foreign++;
+          }
+        }
+      }
+      r = closed(c) && c.area >= 0.5 * area && foreign <= FOREIGN * area;
+      rect.set(id, r);
+    }
+    return r;
+  };
+  // A click on a wall must be on the cell's own side: the run through it covers most of that side
+  // and does not go on past both its ends (a gridline, a frame line, a flat stretch of a curve
+  // over a bar is no bar's outline).
+  const ownSide = (c: Cell): boolean => {
+    if (!run) return true;
+    const [c0, c1] = run.horizontal ? [c.x0, c.x1] : [c.y0, c.y1];
+    const side = c1 - c0 + 1;
+    const slack = Math.max(6, 0.15 * side);
+    const overlap = Math.min(run.b, c1) - Math.max(run.a, c0) + 1;
+    return overlap >= 0.6 * side && !(run.a < c0 - slack && run.b > c1 + slack);
+  };
+  const seedCells: number[] = [];
+  for (const k of starts) {
+    const id = find(label[k]!);
+    if (rectangular(id) && ownSide(cells[id - 1]!) && !seedCells.includes(id)) seedCells.push(id);
+  }
+  if (!seedCells.length) return [];
+
+  // A click inside a cell on thin ink of the series (not in a fill) is on its hatching: the cell
+  // must be patterned all over (a dash or a curve crossing an outlined bar is not its texture).
+  const hatchClick = !run && !blocked;
+  return seedCells.filter((id) => !hatchClick || textureOf(id).patterned).map((id) => {
+    const mine = textureOf(id);
+    const match = new Set<number>();
+    for (let id2 = 1; id2 <= cells.length; id2++) if (rectangular(id2) && sameTexture(mine, textureOf(id2))) match.add(id2);
+    // A matched cell is its whole bounding box — the rectangle inside the walls (a stem or a cap
+    // reaching into it is inside the bar) — so every column of a bar ends where its walls begin;
+    // the walls and their thickening around it are the outline (the value is at its middle).
+    const on = new Uint8Array(n);
+    const occ = new Uint8Array(n);
+    const a = new Float32Array(n).fill(-1);
+    const box = new Int32Array(n);
+    // The box takes back the pixel the thickening took from it on each side: what is left around
+    // it is the wall itself.
+    cells.forEach((c, i) => {
+      if (!rectangular(i + 1)) return;
+      const mine = match.has(i + 1);
+      for (let y = Math.max(region.y0, c.y0 - 1); y <= Math.min(region.y1, c.y1 + 1); y++) {
+        for (let x = Math.max(region.x0, c.x0 - 1); x <= Math.min(region.x1, c.x1 + 1); x++) {
+          const k = y * w + x;
+          const edge = y < c.y0 || y > c.y1 || x < c.x0 || x > c.x1;
+          if (edge && (wall[k] || box[k])) continue;
+          box[k] = i + 1;
+          on[k] = mine ? 1 : 0;
+          a[k] = mine ? 1 : 0.3;
+        }
+      }
+    });
+    for (let y = region.y0; y <= region.y1; y++) {
+      for (let x = region.x0; x <= region.x1; x++) {
+        const k = y * w + x;
+        if (!region.mask[k] || box[k]) continue;
+        // The wall's ink is the outline; the thickening's pixel beyond it is not (a faint
+        // anti-aliased edge: the outline's middle is the middle of its ink).
+        if (wall[k] || ink[k] || other[k]) {
+          occ[k] = 1;
+          a[k] = 1;
+        } else a[k] = 0;
+      }
+    }
+    // Where the reading starts: the middle of the clicked cell.
+    const c = cells[id - 1]!;
+    const seeds = [{ x: Math.round((c.x0 + c.x1) / 2), y: Math.round((c.y0 + c.y1) / 2) }];
+    return { masks: { on, occ, alpha: a, tex: texMask, face: true, cell: box }, seeds };
+  });
+}
+
+// ---------------------------------------------------------------- finding
+
+/**
+ * Bars: the value-end points of every bar like the one under the seed, or null when the seed is
+ * not on a bar (the caller goes on as before). A click in a solid block of the series' colour reads
+ * filled bars (texture over the fill is part of the fill, and tells series of one fill colour
+ * apart); a click on a thin stroke reads outlined bars (`outlinedReadings`).
+ */
+export function findBars(input: BarsInput): TracedPoint[] | null {
+  const first = barsAt(input);
+  if (!first || !(first.clipped || first.hanging) || !input.region.quad) return first?.points ?? null;
   // The plot box cut the bars (a value end on its edge, or the series' ink going on past an edge
   // a bar ends on — a box stopping at the last gridline): bars do not leave the plot area, the box
   // is wrong. Look again over the whole image.
@@ -663,8 +1334,97 @@ export function filledBars(input: BarsInput): TracedPoint[] | null {
     alpha[k] = a;
     if (a < 0.25 && dist(c, model.bg) >= INK_MIN) other[k] = 1;
   }
-  const again = barsIn({ ...input, alpha, other, region: makeRegion(img.width, img.height, null) });
-  return again && again.points.length >= first.points.length ? again.points : first.points;
+  const again = barsAt({ ...input, alpha, other, region: makeRegion(img.width, img.height, null) });
+  if (!again || again.points.length < first.points.length) return first.points;
+  // Bars hanging past a zero line the box ended at: kept only when the second look still has every
+  // bar of the first (a different reading over the whole image is no confirmation).
+  if (!first.clipped && !first.points.every((p) => again.points.some((q) => Math.hypot(p.px - q.px, p.py - q.py) <= 1.5))) return first.points;
+  return again.points;
+}
+
+type Hit = { points: TracedPoint[]; clipped: boolean; hanging?: boolean };
+
+function barsAt(input: BarsInput): Hit | null {
+  const { alpha, region, img } = input;
+  let ink: Uint8Array;
+  let blocked: Uint8Array | null = null;
+  if (inBlock(input)) {
+    const filled = barsIn(input, masks(input), input.seed, input.lone);
+    if (filled) return filled;
+    // A fill inside an outline of another colour (hatched in it, maybe): the outline's walls.
+    const edge = edgeColour(input);
+    if (!edge) return null;
+    // The outline's ink: at least WALL_ALPHA of the way from the fill to the outline's colour (a
+    // thin outline in a JPEG never reaches its colour), and not background.
+    const fill = input.model.ink;
+    const d: RGB = [edge[0] - fill[0], edge[1] - fill[1], edge[2] - fill[2]];
+    const len2 = Math.max(1e-9, d[0] ** 2 + d[1] ** 2 + d[2] ** 2);
+    ink = new Uint8Array(alpha.length);
+    blocked = new Uint8Array(alpha.length);
+    for (let y = region.y0; y <= region.y1; y++) {
+      for (let x = region.x0; x <= region.x1; x++) {
+        const k = y * region.width + x;
+        if (!region.mask[k]) continue;
+        const c = rgbAt(img, k);
+        const t = ((c[0] - fill[0]) * d[0] + (c[1] - fill[1]) * d[1] + (c[2] - fill[2]) * d[2]) / len2;
+        if (t >= WALL_ALPHA && dist(c, edge) < dist(c, input.model.bg)) ink[k] = 1;
+        // Neither the fill nor the outline's ink: never inside a bar (the background, other
+        // colours) — a thin outline blended into the background closes the cell all the same.
+        else if (dist(c, fill) >= INK_MIN) blocked[k] = 1;
+      }
+    }
+  } else {
+    ink = new Uint8Array(alpha.length);
+    for (let k = 0; k < alpha.length; k++) if (region.mask[k] && alpha[k]! >= WALL_ALPHA) ink[k] = 1;
+  }
+  let best: Hit | null = null;
+  for (const r of outlinedReadings(input, ink, blocked)) {
+    for (const s of r.seeds) {
+      const hit = barsIn(input, r.masks, s, false);
+      if (!hit) continue;
+      if (!best || hit.points.length > best.points.length) best = hit;
+      break;
+    }
+  }
+  return best;
+}
+
+/**
+ * The colour of the outline around the fill the seed is in: walking out of the fill four ways, the
+ * first ink that is neither the fill nor the background, alike at least three ways. Null when
+ * the fill has no outline (it ends on the background or on fills of other colours).
+ */
+function edgeColour({ alpha, region, seed, img, model }: BarsInput): RGB | null {
+  const w = region.width;
+  const found: RGB[] = [];
+  for (const [dx, dy] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    let x = seed.x;
+    let y = seed.y;
+    // Out of the fill: the first pixel that is not its colour (black continues a grey's colour
+    // line, so coverage alone would walk on through a black outline).
+    while (x >= region.x0 && x <= region.x1 && y >= region.y0 && y <= region.y1 && alpha[y * w + x]! >= ON_ALPHA && dist(rgbAt(img, y * w + x), model.ink) < INK_MIN) {
+      x += dx;
+      y += dy;
+    }
+    // The darkest (furthest from the background) of the next 4 px.
+    let best: RGB | null = null;
+    for (let t = 0; t < 4; t++, x += dx, y += dy) {
+      if (x < region.x0 || x > region.x1 || y < region.y0 || y > region.y1) break;
+      const c = rgbAt(img, y * w + x);
+      if (dist(c, model.bg) >= INK_MIN && dist(c, model.ink) >= INK_MIN && (!best || dist(c, model.bg) > dist(best, model.bg))) best = c;
+    }
+    if (best) found.push(best);
+  }
+  // The strongest of them is the outline's colour (the others may be its anti-aliased side or a
+  // thin hatch line of it), when at least three are nearer to it than to the background.
+  const edge = found.reduce<RGB | null>((b, c) => (!b || dist(c, model.bg) > dist(b, model.bg) ? c : b), null);
+  if (!edge) return null;
+  return found.filter((o) => dist(o, edge) < dist(o, model.bg)).length >= 3 ? edge : null;
 }
 
 /** Whether the seed lies in a solid SEED_BLOCK × SEED_BLOCK block of the series' ink (a bar's fill; never a thin line). */
@@ -681,14 +1441,19 @@ function inBlock({ alpha, region, seed }: BarsInput): boolean {
   return false;
 }
 
-function barsIn(input: BarsInput): { points: TracedPoint[]; clipped: boolean } | null {
-  const m = masks(input);
-  const { seed, region } = input;
+function barsIn(input: BarsInput, m: Masks, seed: { x: number; y: number }, lone: boolean): Hit | null {
+  const { region, img, model } = input;
   if (!m.on[seed.y * region.width + seed.x]) return null;
   let best: { g: Grid; f: Found } | null = null;
   for (const vertical of [true, false]) {
     const g = gridOf(input, m, vertical);
-    const f = family(g, segmentsOf(g), vertical ? seed.x : seed.y, vertical ? seed.y : seed.x, input.lone, input.markerMax);
+    let f = family(g, segmentsOf(g), vertical ? seed.x : seed.y, vertical ? seed.y : seed.x, lone, input.markerMax);
+    if (f && !m.face) f = alike(g, f, m, img, vertical ? seed.x : seed.y, vertical ? seed.y : seed.x);
+    if (f && m.face) {
+      // Outlined cells all of one length are a grid ruled in the series' colour, not bars.
+      const lengths = f.bars.map((b) => b.seg.hi - b.seg.lo);
+      if (Math.max(...lengths) - Math.min(...lengths) <= 2 * ALIGN) f = null;
+    }
     // The orientation with more rectangles (touching bars of one height count once).
     const count = (x: Found) => new Set(x.bars.map((b) => b.seg)).size;
     if (f && (!best || count(f) > count(best.f))) best = { g, f };
@@ -698,7 +1463,6 @@ function barsIn(input: BarsInput): { points: TracedPoint[]; clipped: boolean } |
   if (!points.length) return null;
   const { g } = best;
   const atEdge = (v: number) => v <= g.v0 + 1 || v >= g.v1 - 1;
-  const { img, model } = input;
   // The series' ink just past the box's edge, in the bar's middle column.
   const beyond = (centre: number, v: number): boolean => {
     const out = v <= g.v0 + 1 ? Math.round(g.v0) - 2 : Math.round(g.v1) + 2;
@@ -709,5 +1473,46 @@ function barsIn(input: BarsInput): { points: TracedPoint[]; clipped: boolean } |
   const clipped =
     points.some((p) => atEdge(g.vertical ? p.py : p.px)) ||
     best.f.bars.some((b) => [b.seg.lo, b.seg.hi].some((v) => atEdge(v) && beyond(b.centre, v)));
-  return { points, clipped };
+  // A baseline on the box's edge (a box ending at a zero line) with the series' colour just past it
+  // for a bar's length, away from the bars found: bars hanging below the zero line, cut off.
+  const { base } = best.f;
+  let hanging = false;
+  if (Number.isFinite(base) && atEdge(base)) {
+    const dir = base <= g.v0 + 1 ? -1 : 1;
+    const unit = median(best.f.bars.map((b) => widthOf(b.seg)));
+    const centres = best.f.bars.map((b) => b.centre);
+    for (let u = Math.round(g.u0); u <= g.u1 && !hanging; u++) {
+      if (centres.some((c) => Math.abs(c - u) <= unit / 2 + 1)) continue;
+      let run = 0;
+      for (let t = 3; t <= 3 + 2 * unit && run < MIN_SIDE; t++) {
+        const v = Math.round(base) + dir * t;
+        const x = g.vertical ? u : v;
+        const y = g.vertical ? v : u;
+        run = x >= 0 && y >= 0 && x < img.width && y < img.height && coverage(model, rgbAt(img, y * img.width + x)) >= ON_ALPHA ? run + 1 : 0;
+      }
+      hanging = run >= MIN_SIDE;
+    }
+  }
+  return { points, clipped, hanging };
+}
+
+/** The bars of a filled family drawn like the clicked one (the same hatching over the same fill colour). */
+function alike(g: Grid, f: Found, m: Masks, img: Img, seedU: number, seedV: number): Found | null {
+  const per = new Map<Segment, number>();
+  for (const b of f.bars) per.set(b.seg, (per.get(b.seg) ?? 0) + 1);
+  const textures = f.bars.map((b) => {
+    const half = widthOf(b.seg) / per.get(b.seg)! / 2;
+    const u0 = b.centre - half;
+    const u1 = b.centre + half;
+    return g.vertical ? textureIn(m.tex, img, u0, b.seg.lo, u1, b.seg.hi, false) : textureIn(m.tex, img, b.seg.lo, u0, b.seg.hi, u1, false);
+  });
+  const off = (b: Bar) => Math.abs(b.centre - seedU) + (seedV < b.seg.lo - 1 || seedV > b.seg.hi + 1 ? 1e6 : 0);
+  let mine = 0;
+  f.bars.forEach((b, i) => {
+    if (off(b) < off(f.bars[mine]!)) mine = i;
+  });
+  const keep = f.bars.map((_, i) => sameTexture(textures[mine]!, textures[i]!));
+  const bars = f.bars.filter((_, i) => keep[i]);
+  if (!bars.length) return null;
+  return { bars, valueHigh: f.valueHigh.filter((_, i) => keep[i]), base: f.base };
 }
