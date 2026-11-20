@@ -57,6 +57,8 @@ const RULING_STROKE = 0.5;
  * within the walker's own tolerances once the gridline's ink is dropped with the dashes it touches.
  */
 const HEAVY_RULING = 6;
+/** A shape cut out of a small long blob is a marker (not a thick dash) when it is less elongated than this. */
+const MARKER_ELONGATION = 1.8;
 
 const now = (): number => {
   const p = (globalThis as { performance?: { now(): number } }).performance;
@@ -318,13 +320,16 @@ export function traceLine(req: TraceRequest): TraceResult {
 
   // Markers by shape: the clicked marker cut out of its blob (error bars, caps, reference lines and
   // axes attached to it are thinner) and every place that looks the same. In auto mode a large blob
-  // is markers too when a marker shape is cut out of it and found at least three times.
+  // is markers too when a marker shape is cut out of it and found at least three times; so is a
+  // small long one (a marker with its error bar) when the shape cut out of it is compact — a thick
+  // dash is not — and a small one, whatever its style was read as, when the shape is a ring.
   let shape: MarkerTemplate | null = null;
   let found3: TracedPoint[] | null = null;
   if (kind === 'markers') shape = markerTemplate(found, alpha, region, s, markerMax, hole);
-  else if (req.mode === 'auto' && !small && !patterned) {
+  else if (req.mode === 'auto' && (!patterned || small)) {
     shape = markerTemplate(found, alpha, region, s, markerMax, hole);
-    if (shape) {
+    const tried = shape && (shape.shape === 'open' ? small || !patterned : !patterned && !chained && (!small || shape.elongation < MARKER_ELONGATION));
+    if (shape && tried) {
       found3 = findMarkers(found, alpha, other, region, shape);
       if (found3.length >= 3) kind = 'markers';
     }

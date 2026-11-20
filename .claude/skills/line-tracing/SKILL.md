@@ -107,6 +107,17 @@ description: >
    pieces copies can't explain — text, rings, lines — dropped; copies placed greedily). A filled
    template among ≥ 60 small blobs of its colour must be solid inside (`solid` in `findMarkers`):
    a pile of "+" is no diamond.
+   Every template hit is then judged by what the fit does not see (`sameMarker`): colour strength
+   (a lighter/darker shade of the hue is another series) and the *outline* (`outline.ts`: 72
+   sub-pixel radii of the ink, or of an open marker's inside, compared with the clicked marker's;
+   rays hidden under other colours, running into neighbours or along attached strokes say
+   nothing; a stroke crossing a ring's inside is looked past). Several separate disagreeing
+   stretches = another shape; a *rough* fit is kept unless ≥ 2 other failed hits (not legend
+   samples) explain it far better. Small (< 5.5 px), stroke-like ("x", "+") and tiny-hole
+   templates skip the outline. A small marker on its error bar/line (1.5–2.5 px deep) is cut out
+   of it only after the ring test, when clicked on and clearly thicker than the attached strokes.
+   `legendSample` also follows a line handle to the label, ignores ink touching the marker and
+   needs thin-stroked letters (scan dashes are not letters).
 
 ## Debugging a failing trace
 
@@ -122,7 +133,7 @@ description: >
 
 ## Corpus and truth
 
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (140 charts, 375 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (170 charts, 454 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
@@ -135,7 +146,12 @@ description: >
   (300–1000 small black "+"/"x"/dot markers in overlapping clusters, filled diamonds among them,
   grey or coloured curves through the cloud with a corner on the first, percent labels, an
   offset range frame `detectAxes` boxes from where the extended axes would meet, log-log or linear; `build_busy`; marker truth
-  per class, `corners` = the curve's corner) — so earlier ones stay
+  per class, `corners` = the curve's corner), l140–l169 `marker-styles` (`build_marks`, one
+  `MARK_CHARTS` entry per chart: 2–4 marker classes — stars, triangles ×4, pentagons, hexagons,
+  thin diamonds, filled/thin plus and x, … — filled / open / hollow / edged / semi-transparent,
+  4.5–16 px, one colour or similar hues, error bars, on lines, legends, dark / ggplot / seaborn
+  themes, JPEG, low dpi; tags `marker:*`, `fill:*`, `edge:*`, `alpha`, `theme:*`,
+  `similar-hues`, `one-colour-classes`, `legend:samples`, `layout:*`, `size:*`) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -171,5 +187,9 @@ by a dense grid often go unread, a marker touching a curve or gridline traces as
 busy-scatter: a minority of thin markers ("x") among dense piles of dots is over-counted, two grey
 curves of different shades meeting can send the walk along the darker one, corners hidden under a
 marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
-a faint marker. Numbers: docs/SPEC.md → Auto-trace →
+a faint marker;
+marker styles: a filled marker of another class inside two heavily overlapping clicked ones is
+taken, markers half under a close colour (JPEG orange on red) or a semi-transparent one are
+lost, legend samples with run-together labels or drawn with error bars still count. Numbers:
+docs/SPEC.md → Auto-trace →
 Baseline / Known failures.

@@ -2,6 +2,9 @@
  * Marker (scatter) detection. "Find points" (`markerTemplate` + `findMarkers`, below) cuts the
  * clicked marker's shape out of its blob and finds every marker that looks like it; when no shape
  * can be cut out (a marker as thin as its bars), the blob match here is the fallback.
+ * Every place that fits the shape is judged again by colour strength and by its sub-pixel
+ * outline (`sameMarker`, outline.ts): another shade of the hue or another shape of the colour is
+ * another series.
  *
  * Blob match: connected blobs of the series colour, matched against the blob
  * under the seed (the template). Same blob rules as snap-to-marker (src/ui/snap.ts): pixels at
@@ -17,6 +20,7 @@
  */
 
 import { ON_ALPHA } from './color.ts';
+import { agreement, HIDDEN, outline, type Agreement, type Soft } from './outline.ts';
 import type { Region } from './region.ts';
 
 export interface Blob {
@@ -591,6 +595,8 @@ export interface MarkerTemplate {
   open: number;
   /** Pixels of ink in the marker. */
   area: number;
+  /** sqrt of the ratio of its second-moment eigenvalues (1 = round; a dash is long), as `Blob.elongation`. */
+  elongation: number;
 }
 
 /**
@@ -702,6 +708,13 @@ function throughStroke(B: Uint8Array, d: Uint16Array, w: number, h: number, sx: 
   return 2 * onStroke < rim;
 }
 
+/** The smallest inscribed radius (px) of a filled marker cut out of the strokes attached to it. */
+const SMALL_CORE = 1.5;
+/** …unless the cut holds this share of the blob's ink: the blob is the marker, matched as a blob. */
+const SMALL_ALONE = 0.7;
+/** …and when it is at least this much (px) deeper than any stroke more than 2 px from it. */
+const SMALL_MARGIN = 0.75;
+
 /**
  * Cut the clicked marker out of its blob. Filled: the thickest part of the blob under the seed
  * (the seed inside its inscribed circle), opened by a radius between the attached strokes' half
@@ -750,8 +763,14 @@ export function markerTemplate(
   let hole: Uint8Array | null = null;
   let k = 0;
   const D = coreD / 3;
-  if (D >= 2.5 && !clicked) {
-    k = Math.max(2, Math.min(D - 1, 0.4 * D));
+  // A small marker standing alone is matched as a blob (no template); one with strokes attached
+  // (its error bar, the line it sits on: a long or large blob, most of whose ink is not the
+  // marker's) is cut out of them down to an inscribed radius of SMALL_CORE, by an opening just
+  // under it.
+  const blob = found.blobs[label - 1]!;
+  const alone = bw(blob) <= markerMax && bh(blob) <= markerMax && blob.elongation < 2.5;
+  if (D >= (alone ? 2.5 : SMALL_CORE) && !clicked) {
+    k = D >= 2.5 ? Math.max(2, Math.min(D - 1, 0.4 * D)) : Math.max(1, D - 0.75);
     const notE = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) notE[i] = d[i]! >= 3 * k ? 0 : 1;
     const dE = chamfer(notE, w, h, false);
@@ -766,11 +785,35 @@ export function markerTemplate(
         for (const i of c.pixels) notC[i] = 0;
         const dC = chamfer(notC, w, h, false);
         M = new Uint8Array(w * h);
-        for (let i = 0; i < w * h; i++) if (B[i] && dC[i]! <= 3) M[i] = 1;
+        let cut = 0;
+        for (let i = 0; i < w * h; i++) {
+          if (B[i] && dC[i]! <= 3) {
+            M[i] = 1;
+            cut++;
+          }
+        }
+        if (D < 2.5) {
+          // A small cut is a marker only when the click is on it (within half its depth of its
+          // centre) and the strokes around it are
+          // clearly thinner (a thick line is as deep as a small marker, and deeper in spots); a
+          // long blob that is nearly all of it is the marker alone (a JPEG's halo along a bar).
+          const cx = core % w;
+          const cy = (core - cx) / w;
+          let stroke = 0;
+          for (let i = 0; i < w * h; i++) if (B[i] && dC[i]! > 6 && dC[i]! <= 3 * (2 * D + 3)) stroke = Math.max(stroke, d[i]!);
+          if (Math.hypot(cx - sx, cy - sy) > 0.5 * D + 0.25 || D - stroke / 3 < SMALL_MARGIN || cut >= SMALL_ALONE * blob.area) M = null;
+        }
       }
     }
   }
-  if (!M) {
+  // A thick ring's stroke is as deep as a small filled marker: what was cut is then a piece of
+  // the ring, no compact shape, and the marker is the open one around the hole beside the seed.
+  // A small filled cut (under 2.5 px deep) comes last, when no hole beside the seed makes a ring.
+  const filled = M && D >= 2.5 ? finish(M, null) : null;
+  if (filled) return filled;
+  const small = D < 2.5 ? M : null;
+  M = null;
+  {
     // An open marker: the hole the blob encloses next to the seed (4-connected background, so a
     // diagonal step in a thin ring does not leak) — or the hole the click landed in.
     const notB = new Uint8Array(w * h);
@@ -818,8 +861,9 @@ export function markerTemplate(
       for (let i = 0; i < w * h; i++) if (hole[i] || (B[i] && dH[i]! <= 3 * ring)) M[i] = 1;
     }
   }
-  if (!M) return null;
+  return (M ? finish(M, hole) : null) ?? (small ? finish(small, null) : null);
 
+  function finish(M: Uint8Array, hole: Uint8Array | null): MarkerTemplate | null {
   let mx0 = w;
   let my0 = h;
   let mx1 = -1;
@@ -827,6 +871,12 @@ export function markerTemplate(
   let sw = 0;
   let cx = 0;
   let cy = 0;
+  let nM = 0;
+  let mX = 0;
+  let mY = 0;
+  let mXX = 0;
+  let mYY = 0;
+  let mXY = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (!M[y * w + x]) continue;
@@ -838,11 +888,17 @@ export function markerTemplate(
       sw += a;
       cx += a * x;
       cy += a * y;
+      nM++;
+      mX += x;
+      mY += y;
+      mXX += x * x;
+      mYY += y * y;
+      mXY += x * y;
     }
   }
-  const bw = mx1 - mx0 + 1;
-  const bh = my1 - my0 + 1;
-  if (!sw || bw > markerMax || bh > markerMax || bw > 2.5 * bh || bh > 2.5 * bw || mx0 === 0 || my0 === 0 || mx1 === w - 1 || my1 === h - 1) return null;
+  const mw = mx1 - mx0 + 1;
+  const mh = my1 - my0 + 1;
+  if (!sw || mw > markerMax || mh > markerMax || mw > 2.5 * mh || mh > 2.5 * mw || mx0 === 0 || my0 === 0 || mx1 === w - 1 || my1 === h - 1) return null;
   cx /= sw;
   cy /= sw;
   const ax = Math.round(cx);
@@ -855,7 +911,7 @@ export function markerTemplate(
   const on: number[] = [];
   const off: number[] = [];
   const margin: number[] = [];
-  const thin = Math.min(bw, bh) < 6;
+  const thin = Math.min(mw, mh) < 6 || (!hole && k < 2);
   for (let y = Math.max(0, my0 - 4); y <= Math.min(h - 1, my1 + 4); y++) {
     for (let x = Math.max(0, mx0 - 4); x <= Math.min(w - 1, mx1 + 4); x++) {
       const i = y * w + x;
@@ -887,7 +943,13 @@ export function markerTemplate(
   for (let y = Math.max(0, my0 - 1); y <= Math.min(h - 1, my1 + 1); y++) {
     for (let x = Math.max(0, mx0 - 1); x <= Math.min(w - 1, mx1 + 1); x++) if (outM[y * w + x]! <= 4) body.push(x - ax, y - ay);
   }
-  return { shape: hole ? 'open' : 'filled', area, on, off, margin, body, deep, ax: ax + x0, ay: ay + y0, ox: cx - ax, oy: cy - ay, size: Math.max(bw, bh), open: hole ? 0 : k };
+  const vxx = mXX / nM - (mX / nM) ** 2 + 1 / 12;
+  const vyy = mYY / nM - (mY / nM) ** 2 + 1 / 12;
+  const vxy = mXY / nM - (mX / nM) * (mY / nM);
+  const disc = Math.sqrt(Math.max(0, ((vxx + vyy) / 2) ** 2 - (vxx * vyy - vxy * vxy)));
+  const elongation = Math.sqrt(((vxx + vyy) / 2 + disc) / Math.max(1e-6, (vxx + vyy) / 2 - disc));
+  return { shape: hole ? 'open' : 'filled', area, on, off, margin, body, deep, ax: ax + x0, ay: ay + y0, ox: cx - ax, oy: cy - ay, size: Math.max(mw, mh), open: hole ? 0 : k, elongation };
+  }
 }
 
 /**
@@ -917,7 +979,7 @@ const fits = (t: MarkerTemplate, s: { on: number; off: number; margin: number; l
  */
 export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array, region: Region, t: MarkerTemplate): Marker[] {
   const { x0, y0, x1, y1 } = region;
-  const { ink, score } = matcher(alpha, other, region, t);
+  const { ink, score, soft, stripped } = matcher(alpha, other, region, t);
   // Among many small markers of its colour (a busy scatterplot: compact blobs a third of its size or
   // less), a filled marker must be solid inside: background well inside it is a pile of the small
   // ones (overlapping "+" taking a diamond's place).
@@ -948,11 +1010,148 @@ export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array
   const keep: { x: number; y: number; s: number }[] = [];
   const sep = 0.6 * t.size;
   for (const p of hits) if (keep.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= sep)) keep.push(p);
+  const same = sameMarker(alpha, region, t, soft, stripped);
+  const judged = keep.map((p) => ({ p, v: same(p) }));
+  // A place whose outline only roughly agrees (half of it, an arc of 0.3, but several stretches
+  // off) is a crowded marker of the series — unless another place that failed the outline test
+  // explains it far better: a second shape of the colour is in the plot, and this is one of them
+  // (two such places at least, and no legend samples: drawn like the series' markers, on its line).
+  const alternatives = judged
+    .filter((j) => !j.v.ok && j.v.sig)
+    .slice(0, MAX_ALTERNATIVES)
+    .filter((j) => !legendSample(alpha, other, region, { px: j.p.x + t.ox, py: j.p.y + t.oy }, t.size));
+  const kept = judged
+    .filter((j) => {
+      if (j.v.ok) return true;
+      if (!j.v.rough || !j.v.sig) return false;
+      const other = alternatives.filter((o) => {
+        if (o === j) return false;
+        const a = agreement(o.v.sig!, j.v.sig!, j.v.rmax, t.shape === 'open');
+        return a.known >= OUTLINE_KNOWN && a.arc >= ALTERNATIVE_ARC && a.arc >= j.v.arc + ALTERNATIVE_GAIN;
+      });
+      return other.length < ALTERNATIVE_SUPPORT;
+    })
+    .map((j) => j.p);
   const out: Marker[] = [];
   // Two peaks on one marker (part of it under another series) refine to the same centre.
-  for (const m of keep.map((p) => refine(found, alpha, region, t, p))) if (out.every((q) => Math.hypot(q.px - m.px, q.py - m.py) >= 0.3 * t.size)) out.push(m);
-  if (t.shape === 'filled') out.push(...clustered(ink, region, t, keep));
-  return out.filter((m) => !legendSample(alpha, other, region, m, t.size)).sort((p, q) => p.px - q.px || p.py - q.py);
+  for (const m of kept.map((p) => refine(found, alpha, region, t, p))) if (out.every((q) => Math.hypot(q.px - m.px, q.py - m.py) >= 0.3 * t.size)) out.push(m);
+  if (t.shape === 'filled') out.push(...clustered(ink, region, t, kept));
+  // A legend's sample has its label beside it — letters, not more markers of its kind (a row of
+  // markers at one height reads as letters too).
+  const inRow = (m: Marker) => out.some((o) => o !== m && Math.abs(o.py - m.py) <= 0.6 * t.size && Math.abs(o.px - m.px) <= 8.5 * t.size);
+  return out.filter((m) => inRow(m) || !legendSample(alpha, other, region, m, t.size)).sort((p, q) => p.px - q.px || p.py - q.py);
+}
+
+/** A marker's ink is the clicked one's colour when its strength is within these factors of it. */
+const LIGHTER_SERIES = 0.75;
+const DARKER_SERIES = 1.3;
+/** Share of the outline that must agree with the clicked marker's, and the longest unbroken arc of it. */
+const OUTLINE_AGREE = 0.5;
+const OUTLINE_ARC = 0.3;
+/** Disagreeing over this many separate stretches is another shape, unless half of the outline agrees in one arc. */
+const OTHER_SHAPE = 3;
+const OUTLINE_CLEAR = 0.5;
+/** Disagreeing over one stretch only (the marker lies half under another one), this share must still agree. */
+const OUTLINE_HIDDEN = 0.4;
+/**
+ * A rough fit is another shape when the outline of a place that failed agrees with it over an arc
+ * this long, and this much longer than the clicked marker's does. At most this many failed places
+ * are tried as the other shape.
+ */
+const ALTERNATIVE_ARC = 0.7;
+const ALTERNATIVE_GAIN = 0.2;
+const MAX_ALTERNATIVES = 60;
+/** That many such places make the other shape (one may be a legend sample drawn like the series). */
+const ALTERNATIVE_SUPPORT = 2;
+/** A filled marker with less of its outline showing than this (the rest runs into its neighbours) is not judged by it. */
+const OUTLINE_KNOWN = 0.25;
+/** A filled marker's median radius must be at least this (px) for its outline to tell shapes apart. */
+const MIN_OUTLINE = 2.75;
+/** …and at least this share of its longest radius (compact, not stroke-like). */
+const COMPACT = 0.35;
+/** An open marker's inside must be at least this (px) in median radius (a tiny hole between strokes is noise). */
+const MIN_HOLE = 1.6;
+
+/**
+ * Whether a place that fits the template is a marker like the clicked one, by what the fit itself
+ * does not see:
+ * - colour strength. A lighter or darker shade of the series' hue (light blue beside blue, grey
+ *   beside black, red beside orange in a JPEG) lies on the same colour line and counts as partly
+ *   or more than fully covered: its markers fit the shape. Most of a marker's ink must be about as
+ *   strong as the clicked marker's (its lower quartile not much stronger — a semi-transparent
+ *   marker under another one is — and its strongest tenth not much weaker).
+ * - outline (outline.ts). The fit leaves a band of 2 px around a filled shape free, so a square
+ *   fits inside the circle around it and a circle on the square inside it; a tiny ring fits beside
+ *   a bar. The outline — of the ink for a filled shape, of the inside for an open one — must agree
+ *   with the clicked marker's over half of the directions and an unbroken arc of 0.3, at the best
+ *   centre within 1 px; where it disagrees over three or more separate stretches (another shape:
+ *   a square's corners) half of it must agree in one arc; where over one stretch only (a marker
+ *   half under another one), 0.4 is enough. A filled marker whose outline mostly runs into its
+ *   neighbours, or too small for an outline (under 5.5 px), is not judged by it.
+ */
+function sameMarker(alpha: Float32Array, region: Region, t: MarkerTemplate, soft: Soft, stripped: Soft | null) {
+  const { width: W, x0, y0, x1, y1 } = region;
+  const strength = (x: number, y: number): number[] => {
+    const v: number[] = [];
+    for (let i = 0; i < t.on.length; i += 2) {
+      const xx = x + t.on[i]!;
+      const yy = y + t.on[i + 1]!;
+      if (xx < x0 || yy < y0 || xx > x1 || yy > y1) continue;
+      const a = alpha[yy * W + xx] ?? -1;
+      if (a >= 0.25) v.push(a);
+    }
+    return v.sort((p, q) => p - q);
+  };
+  const q = (v: number[], f: number) => v[Math.min(v.length - 1, Math.floor(f * v.length))] ?? 0;
+  const s0 = q(strength(t.ax, t.ay), 0.5);
+  const open = t.shape === 'open';
+  const rmax = 0.8 * t.size + 2;
+  const sig0 = outline(soft, t.ax + t.ox, t.ay + t.oy, rmax, open);
+  // The clicked marker's own outline must be one: closed on most sides, and not too small to tell
+  // shapes apart (a filled marker under 5.5 px).
+  const closed = [...sig0].map(Math.abs).filter((r) => r > 0 && r < rmax).sort((a, b) => a - b);
+  // A stroke-like shape (a thin "x" or "+": the radii between its arms a pixel or two) has an
+  // outline that a scan's uneven ink or a JPEG changes more than any other shape would.
+  const median = closed[closed.length >> 1] ?? 0;
+  const useOutline =
+    closed.length >= 0.6 * sig0.length && (open ? median >= MIN_HOLE : median >= MIN_OUTLINE && median >= COMPACT * closed[closed.length - 1]!);
+  const beyond = open ? new Float32Array(sig0.length) : null;
+  return (p: { x: number; y: number }): { ok: boolean; rough: boolean; lo: number; hi: number; sig: Float32Array | null; rmax: number } & Agreement => {
+    const v = strength(p.x, p.y);
+    const lo = s0 > 0 && v.length ? q(v, 0.25) / s0 : 1;
+    const hi = s0 > 0 && v.length ? q(v, 0.9) / s0 : 1;
+    let best: Agreement = { agree: 1, arc: 1, short: 0, sectors: 0, known: 0 };
+    let sig: Float32Array | null = null;
+    const colour = lo <= DARKER_SERIES && hi >= LIGHTER_SERIES;
+    if (useOutline && colour) {
+      best = { agree: 0, arc: -1, short: 1, sectors: 9, known: 0 };
+      // Centres on rings of 0, ½ and (only when the fit is still poor) 1 px around the anchor.
+      search: for (const ring of OFFSETS) {
+        if (ring !== OFFSETS[0] && ring !== OFFSETS[1] && best.arc >= 0.7) break;
+        for (const [e, d] of ring) {
+          const cx = p.x + t.ox + e;
+          const cy = p.y + t.oy + d;
+          const c = outline(soft, cx, cy, rmax, open, beyond);
+          let a = agreement(sig0, c, rmax, open, null, open ? beyond : null);
+          // The strokes attached to a filled marker are looked at only when a ray runs long.
+          if (stripped && a.agree < 1) a = agreement(sig0, c, rmax, open, outline(stripped, cx, cy, rmax, open), null);
+          const s = a.known < OUTLINE_KNOWN ? 0 : a.arc + a.agree;
+          if (s > best.arc + best.agree || best.arc < 0) {
+            best = a;
+            sig = c;
+          }
+          if (a.known >= OUTLINE_KNOWN && a.arc >= 0.95) break search;
+        }
+      }
+    }
+    const shaped =
+      !useOutline ||
+      (!open && best.known < OUTLINE_KNOWN) ||
+      (best.agree >= OUTLINE_AGREE && best.arc >= OUTLINE_ARC && !(best.sectors >= OTHER_SHAPE && best.arc < OUTLINE_CLEAR)) ||
+      (best.sectors <= 1 && best.agree >= OUTLINE_HIDDEN);
+    const rough = colour && !shaped && best.agree >= OUTLINE_AGREE && best.arc >= OUTLINE_ARC;
+    return { ok: colour && shaped, rough, lo, hi, sig, rmax, ...best };
+  };
 }
 
 /**
@@ -1048,9 +1247,23 @@ function clustered(ink: (x: number, y: number) => number, region: Region, t: Mar
 /**
  * A legend's sample marker: a word right beside it at its height — at least three letter-sized
  * pieces of ink (any colour; at most 1.5 marker sizes wide, at least a third of one high) a little
- * apart, starting within two marker sizes of its edge. An error bar is one long piece, a cap or a
- * neighbouring marker one or two, the dashes of a dashed line are a line width high.
+ * apart, starting within two marker sizes of its edge — or of the end of the piece of line the
+ * sample sits on (one thin piece touching it, half a size to four sizes long). An error bar is one
+ * long piece, a cap or a neighbouring marker one or two, the dashes of a dashed line are a line
+ * width high, the dashes of a thick (scanned) line thicker than letter strokes; other ink touching
+ * the marker on that side (a curve it sits on) is no legend.
  */
+/** Centre offsets tried for the outline, ring by ring (px). */
+const OFFSETS: [number, number][][] = [
+  [[0, 0]],
+  [-0.5, 0, 0.5].flatMap((d) => [-0.5, 0, 0.5].map((e): [number, number] => [e, d])).filter(([e, d]) => e || d),
+  [-1, -0.5, 0, 0.5, 1].flatMap((d) => [-1, -0.5, 0, 0.5, 1].map((e): [number, number] => [e, d])).filter(([e, d]) => Math.abs(e) === 1 || Math.abs(d) === 1),
+];
+
+/** A letter's strokes are at most this share of the marker's size deep (half their width; 4.5 px at least). */
+const LETTER_STROKE = 0.15;
+const LETTER_MIN = 4.5;
+
 export function legendSample(alpha: Float32Array, other: Uint8Array, region: Region, m: { px: number; py: number }, size: number): boolean {
   const { width: W, x0, x1, y0, y1 } = region;
   const top = Math.max(y0, Math.round(m.py - 0.6 * size));
@@ -1069,14 +1282,29 @@ export function legendSample(alpha: Float32Array, other: Uint8Array, region: Reg
     }
     return a < 0 ? null : [a, b];
   };
+  const isInk = (x: number, y: number) => x >= x0 && x <= x1 && y >= top && y <= bottom && ((alpha[y * W + x] ?? -1) >= ON_ALPHA || !!other[y * W + x]);
+  /** A piece's stroke half-width, px: the deepest of its ink (chamfer depth within the band). */
+  const depth = (xa: number, xb: number): number => {
+    const lo = Math.min(xa, xb);
+    const w = Math.abs(xb - xa) + 1;
+    const h = bottom - top + 1;
+    const B = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) B[y * w + x] = isInk(lo + x, top + y) ? 1 : 0;
+    const d = chamfer(B, w, h);
+    let best = 0;
+    for (let i = 0; i < w * h; i++) best = Math.max(best, d[i]!);
+    return best / 3;
+  };
   for (const dir of [1, -1]) {
     const start = Math.round(m.px + dir * (0.5 * size + 1));
-    // Pieces: [first, last column offset, top row, bottom row].
+    // Pieces: [first, last column offset, top row, bottom row], and the first piece's column heights.
     const runs: [number, number, number, number][] = [];
     let run: [number, number, number, number] | null = null;
+    const heights: number[] = [];
     for (let i = 0; i <= 8 * size; i++) {
       const c = inkCol(start + dir * i);
       if (c) {
+        if (!runs.length) heights.push(c[1] - c[0] + 1);
         if (run) {
           run[1] = i;
           run[2] = Math.min(run[2], c[0]);
@@ -1089,11 +1317,22 @@ export function legendSample(alpha: Float32Array, other: Uint8Array, region: Reg
     }
     if (run) runs.push(run);
     if (!runs.length || runs[0]![0] > 2 * size) continue;
+    // The sample of a series drawn with a line sits on a piece of it: one thin run first (thin in
+    // most of its columns: the marker's own edge may reach into it).
+    heights.sort((a, b) => a - b);
+    const thinHandle = (heights[heights.length >> 1] ?? 0) < Math.max(3, size / 3);
+    const len0 = runs[0]![1] - runs[0]![0] + 1;
+    const handle = runs[0]![0] <= 2 && thinHandle && len0 >= 0.5 * size && len0 <= 4 * size ? 1 : 0;
+    // Other ink touching the marker's edge: it sits on a curve or a bar, not in a legend.
+    if (!handle && runs[0]![0] <= 1) continue;
     let letters = 0;
-    for (let j = 0; j < runs.length; j++) {
+    for (let j = handle; j < runs.length; j++) {
       const [a, b, t, u] = runs[j]!;
       if (b - a + 1 > 1.5 * size || u - t + 1 < Math.max(3, size / 3)) break;
-      if (j > 0 && a - runs[j - 1]![1] - 1 > 0.6 * size) break;
+      if (j > handle && a - runs[j - 1]![1] - 1 > 0.6 * size) break;
+      if (j === handle && handle && a - runs[0]![1] - 1 > 2 * size) break;
+      // Letters are thin-stroked; a thick piece is a dash or a marker.
+      if (depth(start + dir * a, start + dir * b) > Math.max(LETTER_MIN, LETTER_STROKE * size)) break;
       letters++;
     }
     if (letters >= 3) return true;
@@ -1139,6 +1378,23 @@ export function matcher(alpha: Float32Array, other: Uint8Array, region: Region, 
     if (v !== 0 || t.shape !== 'open') return v;
     return ink(x - 1, y) === 1 || ink(x + 1, y) === 1 || ink(x, y - 1) === 1 || ink(x, y + 1) === 1 ? 1 : 0;
   };
+  // Coverage for the outline (outline.ts): the series' ink; hidden under ink of another colour
+  // (a marker's black edge, a series drawn over it); unknown outside the plot. `stripped`: the
+  // same without the thin strokes attached to a filled marker (gone in the opened image).
+  const soft: Soft = (x, y) => {
+    if (x < x0 || y < y0 || x > x1 || y > y1) return NaN;
+    const k = y * W + x;
+    if (!region.mask[k]) return NaN;
+    const a = alpha[k] ?? -1;
+    if (a < 0) return other[k] ? HIDDEN : 0;
+    return a < 1 ? a : 1;
+  };
+  const stripped: Soft | null = opened
+    ? (x, y) => {
+        const v = soft(x, y);
+        return v >= ON_ALPHA && !opened[(y - y0) * w + x - x0] ? 0 : v;
+      }
+    : null;
   const nOn = t.on.length / 2;
   const nOff = t.off.length / 2;
   const nMargin = t.margin.length / 2;
@@ -1189,7 +1445,7 @@ export function matcher(alpha: Float32Array, other: Uint8Array, region: Region, 
     const share = (hit: number, known: number, n: number) => (n ? (hit + 0.5 * (n - known)) / n : 1);
     return { on: share(onHit, onKnown, nOn), off: share(offHit, offKnown, nOff), margin: share(marginHit, marginKnown, nMargin), lopsided };
   };
-  return { ink, score };
+  return { ink, score, soft, stripped };
 }
 
 /**

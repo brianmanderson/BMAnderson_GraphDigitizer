@@ -9,6 +9,7 @@ import { traceLine, type TraceRequest, type TraceResult } from './index.ts';
 import { makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { findRulings } from './rulings.ts';
+import { agreement, outline } from './outline.ts';
 import type { PathPoint } from './curve.ts';
 
 type RGB = [number, number, number];
@@ -778,6 +779,120 @@ describe('traceLine: find points (markers by shape)', () => {
     // Between a filled marker's vertical bar and its cap: background that is not enclosed.
     const r = traceLine(c.request({ x: F[0]!.x + 2, y: F[0]!.y - 19 }, { mode: 'markers' }));
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('traceLine: find points across marker styles', () => {
+  const LIGHT_BLUE: RGB = [107, 174, 214];
+  const C = [
+    { x: 80, y: 60 },
+    { x: 170, y: 150 },
+    { x: 250, y: 70 },
+    { x: 320, y: 210 },
+    { x: 120, y: 220 },
+  ];
+  const S = [
+    { x: 110, y: 120 },
+    { x: 210, y: 220 },
+    { x: 290, y: 130 },
+    { x: 60, y: 170 },
+    { x: 200, y: 40 },
+  ];
+  const near = (r: TraceResult, set: P[], tol = 1) => set.every((q) => r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < tol)) && r.path.length === set.length;
+
+  it('tells filled circles from filled squares of one colour and size by their outline', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    C.forEach((p) => c.disc(p, 12, BLUE));
+    S.forEach((p) => c.square(p, 11, BLUE));
+    for (const mode of ['markers', 'auto'] as const) {
+      expect(near(traceLine(c.request(C[1]!, { mode })), C)).toBe(true);
+      expect(near(traceLine(c.request(S[2]!, { mode })), S)).toBe(true);
+    }
+  });
+
+  it('tells a light shade of a hue from the full colour (two blues)', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    C.forEach((p) => c.disc(p, 12, BLUE));
+    S.forEach((p) => c.disc(p, 12, LIGHT_BLUE));
+    expect(near(traceLine(c.request(C[0]!, { mode: 'markers' })), C)).toBe(true);
+    expect(near(traceLine(c.request(S[0]!, { mode: 'markers' })), S)).toBe(true);
+  });
+
+  it('finds black-edged coloured markers on black error bars from a click on the fill', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    for (const p of C) {
+      c.stroke([{ x: p.x, y: p.y - 18 }, { x: p.x, y: p.y + 18 }], 1.4, BLACK);
+      c.stroke([{ x: p.x - 4, y: p.y - 18 }, { x: p.x + 4, y: p.y - 18 }], 1.4, BLACK);
+      c.stroke([{ x: p.x - 4, y: p.y + 18 }, { x: p.x + 4, y: p.y + 18 }], 1.4, BLACK);
+      c.disc(p, 13, BLACK);
+      c.disc(p, 10, GREEN);
+    }
+    const r = traceLine(c.request(C[2]!));
+    expect(r.kind).toBe('markers');
+    expect(near(r, C)).toBe(true);
+  });
+
+  it('cuts a small marker out of the error bar it sits on (auto mode)', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    for (const p of C) {
+      c.stroke([{ x: p.x, y: p.y - 16 }, { x: p.x, y: p.y + 16 }], 1, RED);
+      c.disc(p, 5.5, RED);
+    }
+    const r = traceLine(c.request(C[3]!));
+    expect(r.kind).toBe('markers');
+    expect(near(r, C)).toBe(true);
+  });
+
+  it('still traces a thick line as a curve, not as a small marker cut out of it', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    c.stroke(sine(50, 0.3), 4, BLUE);
+    const r = traceLine(c.request({ x: 200, y: 140 + 50 * Math.sin(150 / 45 + 0.3) }));
+    expect(r.kind).toBe('curve');
+  });
+
+  it('keeps markers of the clicked class that overlap each other', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    // Pairs of circles drawn a little over each other (a cluster: rays of each outline run into
+    // the other), and one standing alone (clicked).
+    const pairs = [...C, ...C.map((p) => ({ x: p.x + 10, y: p.y + 4 }))];
+    const lone = { x: 340, y: 60 };
+    [...pairs, lone].forEach((p) => c.disc(p, 12, BLUE));
+    S.forEach((p) => c.square(p, 11, BLUE));
+    const r = traceLine(c.request(lone, { mode: 'markers' }));
+    for (const q of [...pairs, lone]) expect(r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < 2)).toBe(true);
+    for (const q of S) expect(r.path.some((p) => Math.hypot(p.px - q.x, p.py - q.y) < 2)).toBe(false);
+  });
+
+  it('drops a legend sample drawn on a piece of its line', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    C.forEach((p) => c.disc(p, 9, RED));
+    // Legend: the sample on a line handle, then a word.
+    c.stroke([{ x: 260, y: 30 }, { x: 290, y: 30 }], 1.5, RED);
+    c.disc({ x: 275, y: 30 }, 9, RED);
+    for (let k = 0; k < 5; k++) c.square({ x: 300 + 8 * k, y: 30 }, 6, BLACK);
+    const r = traceLine(c.request(C[1]!, { mode: 'markers' }));
+    expect(near(r, C)).toBe(true);
+  });
+});
+
+describe('marker outlines', () => {
+  const circle = (r: number) => (x: number, y: number) => (Math.hypot(x - 20, y - 20) <= r ? 1 : 0);
+  const square = (h: number) => (x: number, y: number) => (Math.abs(x - 20) <= h && Math.abs(y - 20) <= h ? 1 : 0);
+
+  it('agrees with itself off the pixel grid and tells a circle from a square of one size', () => {
+    const t = outline(circle(6), 20, 20, 12, false);
+    const same = agreement(t, outline(circle(6), 20.4, 19.7, 12, false), 12, false);
+    expect(same.agree).toBeGreaterThan(0.9);
+    const sq = agreement(t, outline(square(5.5), 20, 20, 12, false), 12, false);
+    expect(sq.arc).toBeLessThan(0.5);
+    expect(sq.sectors).toBeGreaterThanOrEqual(3);
   });
 });
 

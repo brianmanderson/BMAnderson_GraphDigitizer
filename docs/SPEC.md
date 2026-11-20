@@ -911,10 +911,50 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   third of its area or less) must also be solid: ≤ 5 % background among its pixels 2 px or more
   inside its edge (a pile of "+" with pockets in it is no diamond). Outside busy plots the
   earlier rules are unchanged.
+  *Marker styles* (2026-11-19, find-points session): every place that fits the template is
+  judged again by what the fit does not see (`sameMarker` in `markers.ts`, outlines in
+  `outline.ts`). *Colour strength*: a lighter or darker shade of the series' hue lies on its
+  colour line (light blue beside blue, grey beside black, orange beside red in a JPEG) and fits
+  the shape; the lower quartile of the place's ink strength must be ≤ 1.3× the clicked marker's
+  median and its 90th percentile ≥ 0.75× of it. *Outline*: radii from the centre along 72 rays to
+  where the coverage crosses ½ (sub-pixel, so independent of the pixel grid) — of the ink for a
+  filled template, of the inside for an open one — compared with the clicked marker's, at the
+  best centre among 0, ±½ px (±1 px only when the fit is still poor). A ray agrees within
+  max(0.5 px, 8 %) of the template's radius there or at the next ray, plus 0.3 × how fast the
+  template's radius changes there (tips). A ray says nothing when it is unknown, when it ends at
+  ink of another colour (a black edge, a series drawn over the marker: hidden, not missing), when
+  a filled shape's ray runs 1.5× past the template's (into a neighbour or along a bar; two rays
+  either side of such a stretch graze it), or when it is too long only by the thin strokes
+  attached to the marker (checked on the opened image). Inside an open marker, a ray that meets a
+  stroke ≤ 0.3 rmax thick and then ink at the template's radius agrees (a line through a ring);
+  a centre on such a stroke starts each ray where the stroke ends. A place passes when half the
+  rays that say something agree and an unbroken arc of 0.3 does, unless it disagrees over ≥ 3
+  separate stretches (another shape: a square's corners round a circle) with an arc < ½; or when
+  it disagrees over one stretch only and 0.4 agrees (half under another marker). A place that
+  only fails the stretch test (*rough*) is kept unless at least two other failed places (not
+  legend samples) explain it far better (their outline agrees with it over an arc ≥ 0.7 and ≥ 0.2
+  longer): a second shape of the colour is then in the plot. A filled marker whose outline runs
+  into its neighbours on more than ¾ of its rays, one under 5.5 px (median radius < 2.75 px), a
+  stroke-like one (median radius < 0.35 × its longest: thin "x", "+") and an open one whose
+  inside is under 1.6 px in median radius are not judged by outline. *Small markers on strokes*:
+  a seed blob that is long or large (a marker with its error bar or on its line) whose thickest
+  part is only 1.5–2.5 px deep is cut out of it by an opening just under that depth — but only
+  when no ring encloses a hole by the seed (that open shape comes first), the click is within
+  half the depth of the cut's centre, the strokes 2 to 2D + 3 px from the cut are ≥ 0.75 px less
+  deep (a thick line is as deep as a small marker, deeper in spots) and the cut holds < 70 % of
+  the blob. *Legend samples*: a sample on a piece of its line — a first thin piece (median column
+  height < max(3 px, ⅓ size), ½ to 4 sizes long) — is followed to the word after it (≤ 2 sizes
+  further); other ink touching the marker's edge on one side means it sits on a curve, not in a
+  legend; letter pieces must be thin-stroked (chamfer depth ≤ max(4.5 px, 0.15 size): a scan's
+  thick dashes are no letters); markers in a row of found ones at one height are never legend
+  samples.
 - **Auto mode**: markers when the seed's blob is at most max(30 px, 6 % of the plot's short
   side), roughly round (second-moment elongation < 2.5), not part of a regular chain and not read
   as dashed, dotted or dash-dot; or when the seed's blob is larger (a marker joined to its error
-  bars) but a marker template is cut out of it and found at least three times; else curve. An
+  bars) but a marker template is cut out of it and found at least three times — also, since
+  2026-11-19, a small but long seed blob (a small marker with its error bar) when the shape cut out
+  of it is compact (elongation < 1.8; a thick dash is not), and a small blob read as dashed or
+  dotted when the shape cut out of it is a ring; else curve. An
   open template is not cut from a pocket of background beside a thick line walled off by thinner
   lines of its colour (gridlines, bar outlines): when the seed's stroke — the ink at least ¾ as
   deep as at the seed, widened back to its edges — leaves the template window and borders less
@@ -1218,6 +1258,51 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   read as a dull grey-blue, so the walk follows other ink either way) stops after 6 points instead
   of running 76 wrong ones (coverage 12.1 → 0.9 %; busy-scatter p95 28.1 → 1.9 px only because
   its wrong points no longer count); the other 53 busy-scatter traces are unchanged.
+
+- **Marker styles (2026-11-19; 476 traces)**: appended `marker-styles` charts l140–l169 (30 charts,
+  79 marker classes, each a scatter series with exact centres; `build_marks`): stars, triangles in
+  four directions, pentagons, hexagons, thin diamonds, filled plus / x, thin x and +, circles,
+  squares, diamonds; filled, open, hollow, black- / white-edged, semi-transparent and overlapping;
+  4.5–16 px; classes of one colour or of similar hues; x / y error bars with and without caps (own
+  colour or black); scatter or on a connecting line; legends with sample markers; light grids,
+  `dark_background`, `ggplot` and `seaborn-v0_8-darkgrid`; JPEG and 72–96 dpi. Honest baseline
+  first (earlier traces unchanged): marker-styles kind 91.1 %, recall 87.4 %, precision 89.1 %,
+  wrong group 8.0 %. Then the methods above (*Marker styles*, auto mode for small markers on
+  strokes). Before → after, kind / recall / precision / wrong group: marker-styles 91.1 → 96.2,
+  87.4 → 91.0, 89.1 → 96.4, 8.0 → 0.9 %; similar hues precision 61.1 → 95.2 %, wrong group
+  36.4 → 1.0 %; one-colour classes 79.0 → 89.5, 76.9 → 90.0, 79.7 → 91.3, 16.2 → 4.6 %; legend
+  samples kind 85 → 100 %, precision 78.1 → 89.6 %; on lines kind 80 → 90 %; dark theme kind
+  87.5 → 100 %; black-edged 83.3 → 100 % kind, recall 78.4 → 96.1 %. On the earlier corpus:
+  `fill:open` 66.7 → 76.2 / 44.3 → 55.2 / 45.6 → 55.2 %; triangles 50 → 100 / 47.8 → 91.3 %;
+  squares wrong group 25.6 → 11.2 %; find-points scenario 70.8 → 87.5 / 58.8 → 71.5 / 57.2 →
+  66.6 / 17.5 → 7.5 %; real find-points figures precision 54.0 → 86.8 %, wrong group 30.2 → 0 %
+  (recall 75.6 → 73.3 %, below); scans 29.1 → 30.2 / 26.7 → 29.2 %. Overall (476 traces): kind
+  94.5 → 96.2 %, marker recall 76.8 → 77.8 %, precision 83.9 → 85.3 %, wrong group 10.3 → 9.0 %;
+  curves unchanged (no curve trace moves); time per marker trace unchanged (~380 ms mean).
+  49 traces change: 34 strictly better; 11 trade one or two true markers for many fewer false
+  ones or go from curve to markers (`l95/s1` 12/14 of 19 → 10/14 of 11, the red series of the
+  angle-response figure 10/13 of 23 → 9/13 of 10, `l118/s3` 4/6 of 7 → 3/6 of 4); 4 are worse
+  by one or two markers, accepted: `l87/s0` loses 2 circles crowded by squares and error bars,
+  `l153/s1` a semi-transparent triangle mostly under another (its ink 1.4× as strong: the
+  colour-strength test), `l88/s0` gains a legend sample drawn with its error bars (the word
+  beyond them is out of reach), `l126/s4` keeps 2 junk hits the old legend test dropped by
+  chance. Gated rows that dip for these: `edge:black` / `marker:triangle-down` precision
+  95.2 → 94.2 / 100 → 98.0 % (a legend sample whose label's letters run together, `l148/s2`,
+  which was a curve before), real `find-points` / `line-markers` recall (one red marker half
+  under an orange one: the JPEG orange counts as the red's ink, so its outline is wrong), `ticks:in`
+  precision 92.1 → 92.0 %, `marker:x` precision 48.1 → 48.0 %. Methods tried and rejected:
+  scale-normalised outlines for open markers (to absorb a scan's uneven ring stroke) — let rings
+  of another class through without rescuing scan rings; counting run-together letters after a
+  legend handle by width — took real markers with error bars for legend samples; a 3-px minimum
+  legend handle — a speck or cap became a handle; treating rays along a stroke inside a ring as
+  unknown and a wider crossing limit — wrong-class rings passed; letter stroke by min(horizontal,
+  vertical) run — an L-junction of a letter reads as thick. **Known failures** of this scenario:
+  a filled marker of another class that fits inside two heavily overlapping markers of the
+  clicked colour is taken for one of them (its outline runs into them on every side); a marker
+  half or more under another of a close colour (JPEG orange on red) or under a semi-transparent
+  one is lost; legend samples whose label letters touch (small text at low dpi) or that are drawn
+  with error bars are still counted; thin "x" in scans and among dots are over-counted as before
+  (x precision 48 %); scan rings crossed by a thick curve at a shallow angle are lost.
 
 ## Auto-trace — UI
 
