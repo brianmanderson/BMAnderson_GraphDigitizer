@@ -407,8 +407,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
 - **Module**: `src/auto/` — pure TS, no DOM (checked by `tsconfig.core.json` and ESLint like
   `src/core`), so Phase 5 can run it in a Web Worker. `detectAxes({ width, height, data })` takes
   RGBA bytes and returns the skew angle, the X/Y axis lines (sub-pixel offset, ends, contrast,
-  thickness, confidence, `position`: X `bottom`/`top`, Y `left`/`right`), the plot box (four
-  corners; whether the edges opposite the axes are drawn frame lines), per-axis tick sets and the
+  thickness, confidence, `position`: X `bottom`/`top`, Y `left`/`right`; optional `virtual: true`
+  when no line is drawn and the axis is a panel's or grid's edge), the plot box (four
+  corners; whether the edges opposite the axes are drawn frame lines), per-axis tick sets
+  (optional `source: 'gridlines'` when the positions are gridlines) and the
   strongest line candidates. Phase 5 consumes it (Auto-calibration).
 - **Pipeline**: adaptive darkness (pixel darker than the local mean over ~1/40 of the short side;
   ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
@@ -421,7 +423,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   horizontal × vertical candidates that meet with the plot on one side of each (L corner or
   cross; bottom-left by default, top/right under the rule below) or, in a range frame, would meet
   if extended (rule below), ranked by strength, extent and tick evidence → plot box to the far
-  axis ends or a frame line of similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
+  axis ends or a frame line of similar darkness → a filled panel or a grid replaces a missing or
+  bogus pair, and gridlines stand in for missing tick marks (Charts without axis lines, below;
+  dark themes are read as their negative first). This is the prompt's "projection profiles + Hough fallback": the Hough only
   estimates the angle; profiles run in the rotated frame. OpenCV.js was not needed.
 - **Axes at the top or right** (decided 2026-11-09, motivated by an Excel survival curve whose
   dose axis runs along the top, labels above it: a "Γ" frame that got no plot box before). Each
@@ -484,8 +488,105 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   declined). No earlier chart's result changed; overall (95 images) axes 95.8 %, box 95.8 %,
   major-tick recall 88.7 %, calibration correct 63.2 % (the unlabelled charts move the shared
   categories).
-- **Corpus** (`bench/axes/`): 84 matplotlib charts from `generate.py` (seeded; Python 3.12 +
-  matplotlib 3.10; output committed, ~4.5 MB) — c76–c83 (range frames: both spines moved 3–16 pt
+- **Charts without axis lines; other tools' styles** (decided 2026-11-19, styled corpus c84–c119
+  below). Many styles draw no dark axis line with tick marks: ggplot2 / seaborn (grey panel,
+  white gridlines), plotly (faint gridlines, nothing else), fivethirtyeight, Excel (gridlines and
+  an X line only), dark themes. The rules:
+  - *Polarity*: an image whose border and bulk are dark (both medians < 128) and that has more
+    pixels lighter than the border than darker is read as its negative (`darkness.ts`;
+    `DarknessMap.inverted`), so every later step still looks for dark ink. A light chart with
+    dark bars, or a white panel on a dark page, keeps its polarity.
+  - *Filled panel* (`panel.ts`): the largest rectangle of one flat grey level ≠ the page's
+    (≥ 6 levels apart, ≥ 10 % of the image, spanning ≥ 30 % each way, leaving ≥ 3 % free at its
+    left and below for labels); each edge is the outermost position ≥ 15 % of the rows/columns
+    reach, spread over ≥ 70 % of the edge (so bars standing on it, gridlines and data don't
+    matter); sub-pixel from the boundary pixels' coverage. It decides the axes when there is no
+    pair, or when both pair lines lie on the panel without being its edges (ggplot's white
+    gridlines and data had made pairs); a pair that encloses a shaded region or sits on the
+    panel's edges (a frame) stays.
+  - *Gridlines* (`grid.ts`) are found on the grey image as ridges, not on the darkness map (a
+    plotly gridline is 16 levels from white; a white gridline on grey is lighter, not darker):
+    per row of a region, the ridge height that ≥ 20 % of positions reach (so data, bars and
+    labels hiding most of it don't matter), ≥ 5 levels (more on a noisy scan: 3× a typical row
+    + 2); pixels count along it only within ½–3× its level (a dark label stroke centred on a light
+    gridline does not extend it); offset and mass from the mean cross-profile. A *grid* is ≥ 3
+    evenly spaced lines (1–2 steps apart) of one family, polarity and colour sharing their ends;
+    its ends are the plot's edges (snapped to a crossing line running there). It decides the
+    axes when there is no pair, or when a pair line is one of the grid's own lines inside it (a
+    crossing of two gridlines looks like a ticked corner); against a pair only a grid of both
+    families counts. A single clearly stronger line spanning the grid inside it (≥ 1.4× the
+    gridlines) is an axis line through the plot (Excel's X axis at 0) when nothing is written
+    beyond the grid's edge on that side.
+  - *Virtual axes*: from a panel or grid, an axis is the found line along that edge if there is
+    one (Excel's X line, a whitegrid frame), else the edge itself with `DetectedAxis.virtual:
+    true`, `thickness` 0 and the step's contrast. Ticks on a virtual axis are only marks pointing
+    away from the plot, which may start a few px beyond the edge (matplotlib's ggplot style paints
+    a white border over the panel's edge). An axis is at the top/right there when the pair had it
+    on the panel's edge, or when a line is drawn along that edge only and nothing is written
+    beyond the default one (a Γ over a grid, `l114` in bench:lines).
+  - *Gridlines as tick positions*: an axis on which no tick marks were found takes its positions
+    from the gridlines crossing the plot box from edge to edge (`TickSet.source: 'gridlines'`,
+    `side: 'inside'`, each tick's `length` = the plot's extent). The tick-pattern rules apply
+    unchanged (≥ 3 evenly spaced majors, or 2 with minors; thinner lines between them, < 70 % of
+    the second-strongest's mass, are minor gridlines). This is not "inventing" ticks: a gridline is
+    a drawn mark at a tick value. The plot's own edges are never ticks (a frame often stands a step
+    beyond the last label), except for a grid of one family, whose outermost lines are all that is
+    known. An axis with neither tick marks nor gridlines still gets `ticks: []`, confidence 0.
+    Consumers (`labels.ts`) see ordinary major ticks; `source` lets them treat them differently.
+  - *Default corner with ticks all round*: an axis moved to the top/right is refused when the
+    frame line opposite it (at the other end of the crossing axis, spanning the plot, ≥ 30 % as
+    dark) carries a tick pattern too — a MATLAB/bmh box with inward ticks on four sides had gone
+    top-right because a 1-px line on a pixel row looked "stronger" than its antialiased twin. Of
+    several frame-line candidates at an axis's far end, the nearest is the frame.
+  - *Short log minors*: when neither side of an axis has a pattern, it is scanned again with a
+    1-px floor (normally 2: less is a line's own wobble) and that result is kept only if it is a
+    log pattern — ≥ 2 decade ticks, ≥ 6 minors, ≥ 90 % of them at log10(2…9). Two-decade log axes
+    at low DPI show minors only 1–1.5 px past the line (c33, c44, c61, c105: 0 → 51 of 65 minors).
+  - *Twin Y axes, insets, several panels* — what the right answer is: the left Y axis (the right
+    one is ignored, no box change); the main axes, never an inset; of several panels the first in
+    reading order among equal ones, else the largest (the truth is labelled so). The detector
+    takes the strongest pair, which on c112–c118 is that one; it does not yet reason about panels
+    explicitly, so a multi-panel figure whose second panel has the stronger axes would give that
+    panel — consistent, but a figure with a different right answer would be a confident wrong
+    pick (none in the corpus).
+  Results (honest corpus baseline → now, 131 images): axes 82.8 → 98.1 %, box 83.2 → 97.7 %,
+  major-tick recall 85.3 → 94.3 %, minor 67.1 → 72.6 %, precision 97.9 → 99.2 %, bare 13 → 0;
+  gridline recall (majors found from gridlines on axes whose only marks are gridlines) 88.8 %;
+  calibration correct 58.4 → 74.8 % of axes, 0 wrong, images calibrated end to end
+  44.3 → 61.1 % (with the axes-labels decimal-point fixes below). Per
+  style: ggplot 0 → 100 % axes and box (the three old ggplot charts c11, c35, c59: 0 → 100 %,
+  ticks 17/17), seaborn darkgrid/whitegrid, plotly (all three), dark themes, Excel 0 → 100 %
+  axes; MATLAB 62.5 → 100 % (c104 box with inward ticks on four sides, c119 histogram), bmh
+  50 → 100 %; `kind:bar` tick recall 64.9 → 74.6 %; `log-few-decades` minors 45.7 → 82.9 %.
+  bench:lines: `l114` (a Γ over a grid) now gets its box (coverage of s1 0.96 → 1.0);
+  `angle-response-chea` (Excel, X axis through the middle) gets the exact box (corner error
+  110 → 0.1 px; tracing with the hand-labelled box gives identical results), which brings the
+  50°/60° markers into the region: one more marker found over the three series (26 → 27 of 37),
+  one fewer for the blue series, three more wrong-group markers — Find points' grouping on the
+  correct region, accepted as a trade-off. **Known failures**: nothing marks the plot area beyond
+  the outermost gridlines when the axis range is padded (c94, c101: box ends at the last
+  gridline, 12–15 px short); fivethirtyeight paints its 3-pt spines in the background colour,
+  hiding the zero gridline and the gridlines' ends (c96 X axis 64 px off, c95 2.5 px); a right log
+  Y axis whose minors are shorter than its thick spine (c69); ticks hidden behind bars or
+  sticking out < 2 px past a thick axis (c31, c48, c56). Finding c97's left Y axis (bmh, 96 dpi)
+  first exposed a label-finding bug, now fixed in `labels.ts` / `suggest.ts` (session
+  axes-labels): its 1-px decimal points were lost and "0.8" was read as "8", a confident ×10. A
+  point between two digits now joins them unless a real stroke stands above the baseline zone,
+  and a word with a same-baseline piece left beside it is `FoundLabel.partial` and given no
+  value (like `clipped`); c97's Y is now right (high, 0.10 %).
+- **Corpus** (`bench/axes/`): 120 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~5.5 MB) — c84–c119 (`build_styled`, appended last: the
+  looks of other tools via style sheets and rcParams — ggplot2 with and without ticks and minor
+  gridlines, seaborn darkgrid/whitegrid/ticks, plotly default/white/dark, fivethirtyeight, bmh,
+  dark_background, Excel modern (line, column) and 2003, MATLAB (box, inward ticks on four sides,
+  semilogy, histogram hiding its X ticks), Prism (thick L, bold), Origin, coloured figure
+  backgrounds, twin Y, insets, two/three panels, log axes with two decade ticks; line/scatter/bar,
+  PNG/JPEG, 72–200 dpi, two rotated; tags `styled`, `style:<name>`, `panel-fill`, `dark`,
+  `gridlines-only`, `no-tickmarks`, `figure-bg`, `twin-y`, `inset`, `multi-panel`,
+  `bars-hide-ticks`, `log-few-decades`, `frame:none`/`frame:x-only`; an axis without a drawn line
+  is the plot area's edge with `lineDrawn: false`; per axis `gridlines: true` when its tick
+  positions are drawn as gridlines; bars labelled with calendar years are a date axis; the
+  self-check reads dark themes as their negative) were appended after c76–c83 (range frames: both spines moved 3–16 pt
   outward and trimmed to the first and last major tick, linear and log-log with log minors, tick
   labels drawn or hidden, crisp/antialiased, JPEG, two rotated; tags `frame:range`,
   `range-frame`, `ticklabels`/`no-ticklabels`; box truth = the rectangle from where the extended
@@ -508,7 +609,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   2 px of the true line at both ends; a plot box when every corner is within 4 px; ticks match
   within 2 px along the axis (4 px across); tick recall counts major ticks on axes with tick
   marks, precision all reported ticks there; `bare` counts ticks reported on axes without tick
-  marks (must stay 0). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
+  marks (must stay 0) — except gridline-sourced ticks (`TickSet.source: 'gridlines'`) that match a
+  labelled tick, which are drawn marks; unmatched ones still count. `grid-R` (gated) is the share
+  of major ticks found from gridlines on axes whose only position marks are gridlines (truth
+  `gridlines: true`, `tickMarks: false`). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
   `-- --summary <path>` also writes every row of this table and the calibration table as
   `<path>.csv` and `<path>.json` (`bench/summary.ts`: the console's numbers unrounded, ratios in
   percent, a unit per column; the CSV has one header over the union of both tables' columns).

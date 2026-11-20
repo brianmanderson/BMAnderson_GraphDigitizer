@@ -82,12 +82,13 @@ function row(name: string, m: Metrics): string {
     pct(m.minorRecall),
     pct(m.tickPrecision),
     String(m.falseTicksOnBareAxes).padStart(5),
+    pct(m.gridRecall ?? null),
     m.meanMs.toFixed(0).padStart(5),
   ].join(' ');
 }
 
 const HEADER =
-  'category               n   axes   x-axis y-axis  err  box    tick-R minor-R tick-P  bare  ms';
+  'category               n   axes   x-axis y-axis  err  box    tick-R minor-R tick-P  bare grid-R  ms';
 
 function calibRow(name: string, m: CalibMetrics): string {
   return [
@@ -119,9 +120,10 @@ const DETECTION_COLUMNS: SummaryColumn[] = [
   { key: 'minorRecall', label: 'minor tick recall', unit: '%' },
   { key: 'tickPrecision', label: 'tick precision', unit: '%' },
   { key: 'falseTicksOnBareAxes', label: 'ticks on bare axes', unit: 'count' },
+  { key: 'gridRecall', label: 'gridline tick recall', unit: '%' },
   { key: 'meanMs', label: 'detection time per image', unit: 'ms' },
 ];
-const DETECTION_PERCENT = new Set(['axesFound', 'xFound', 'yFound', 'boxFound', 'tickRecall', 'minorRecall', 'tickPrecision']);
+const DETECTION_PERCENT = new Set(['axesFound', 'xFound', 'yFound', 'boxFound', 'tickRecall', 'minorRecall', 'tickPrecision', 'gridRecall']);
 
 const CALIB_COLUMNS: SummaryColumn[] = [
   { key: 'images', label: 'images', unit: 'count' },
@@ -162,7 +164,12 @@ function summaryOf(report: Report, tags: string[]): Summary {
 }
 
 function tickSummary(a: ImageScore['x']): string {
-  if (!a.tickMarks) return `bare:${a.detected}`;
+  // "bare:N" = false ticks on an axis without tick marks; gridline-sourced ticks there are listed
+  // as "grid:matched/true majors" (and minors), their unmatched ones counted in N.
+  if (!a.tickMarks) {
+    const grid = a.fromGridlines ? ` grid:${a.gridMatchedMajor}/${a.truthAllMajor}M${a.gridMatchedMinor ? ` ${a.gridMatchedMinor}m` : ''}` : '';
+    return `bare:${a.falseOnBare}${grid}`;
+  }
   return `${a.matchedMajor}/${a.truthMajor}M ${a.matchedMinor}/${a.truthMinor}m ${a.detectedMatched}/${a.detected}det`;
 }
 
@@ -255,7 +262,7 @@ async function main(): Promise<number> {
   for (const tag of tags) console.log(calibRow(tag, report.calibCategories?.[tag] as CalibMetrics));
   console.log(`\n${scores.length} images in ${((performance.now() - started) / 1000).toFixed(1)} s (incl. decoding and OCR)`);
   console.log(
-    `axes: found = line within 2 px; box: all corners within 4 px; tick-R/minor-R/tick-P: tick recall/precision (2 px along the axis); bare: ticks reported on axes without tick marks`,
+    `axes: found = line within 2 px; box: all corners within 4 px; tick-R/minor-R/tick-P: tick recall/precision (2 px along the axis); bare: ticks reported on axes without tick marks, other than gridline-sourced ticks at a true tick position; grid-R: major ticks found from gridlines on axes whose only position marks are gridlines`,
   );
   console.log(
     `calib: axes with a medium/high suggestion; declined: axes with none, left to the user (calib + declined = 100%; neither is gated); correct: scale right and every held-out tick within ${100 * VALUE_TOL}% of the axis range (correct + wrong = calib); wrong/w-high: suggested at medium-or-high/high confidence but not correct (should be 0); scale: inferred scale right; err%: median held-out error of correct axes; auto: images calibrated end to end; known: largest error at knownValues (real figures); ms: label finding + OCR per image`,
