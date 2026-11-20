@@ -990,6 +990,13 @@ function labelsFor(
   // black axis title beyond them) — both only at tick marks. Its glyphs only, so a black gridline or a curve of another hue
   // is no part of them. Otherwise neutral wins: a coloured number-at-risk table under black tick
   // labels matches the same ticks with ink like theirs, further from the axis.
+  // Faint labels (light grey, small, JPEG) beside dark ink (black ticks, a black axis title): the
+  // band's threshold, set by the dark ink, breaks their strokes into fragments. Read again at the
+  // lowest ink threshold when that finds more labels, at tick marks.
+  if (tickMode === 'ticks' && primary.labels.length < majors.length) {
+    const faint = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, null, true);
+    if (faint.labels.length >= 2 && faint.labels.length > primary.labels.length) primary = faint;
+  }
   for (const hue of HUES.get(viaTicks) ?? []) {
     let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, hue);
     if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, hue);
@@ -1181,6 +1188,8 @@ function labelsWith(
   crossing: LineCandidate[],
   /** A colour class's hue (`colourClasses`): only its glyphs are label text; null = neutral ink. */
   hue: number | null = null,
+  /** Use the lowest ink threshold (INK_THRESHOLD) instead of the band's adaptive one. */
+  faint = false,
 ): AxisLabels {
   const ink: Ink = hue === null ? NEUTRAL : ofHue(hue);
   const { width: W, height: H } = map;
@@ -1211,7 +1220,7 @@ function labelsWith(
     const u0 = flipped ? line.offset + d0 : line.offset - d0 - depth;
     p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
-  const all = components(p, inkThreshold(p, hue));
+  const all = components(p, faint ? INK_THRESHOLD : inkThreshold(p, hue));
   // The band's colour classes; in the neutral pass, a glyph of one of them is no neutral ink even
   // when its mean colour, diluted by its antialiased edge, falls under MAX_LABEL_CHROMA (a muted
   // purple label splits into "neutral" digits and coloured exponents otherwise).
