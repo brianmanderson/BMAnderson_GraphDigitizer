@@ -18,6 +18,18 @@
  * kind: whether 'auto' chose the expected kind.
  * style: whether a curve's reported line style (TraceResult.style) is its true style ('unknown'
  * counts as wrong); over curve series with a known style.
+ *
+ * Paths (series tagged `series:path`: loops, spirals, curves that fold back — not functions of x,
+ * so "columns covered" says little; these come on top of the metrics above, which stay as they are):
+ * - path coverage: the share of the true path's length (sampled every 1 px) within COVER_PX of the
+ *   traced path, taken as a polyline in the order returned.
+ * - path precision: the share of the traced polyline's length within COVER_PX of the true path. A
+ *   path whose points are out of drawing order cuts across the figure and loses precision; a trace
+ *   with fewer than two path points has none (it counts in coverage, as 0).
+ * - points order: min(L, T) / max(L, T), L the length of the polyline through the suggested
+ *   `points` in the order returned and T the true path's length — 1 when the points follow the
+ *   whole path in order (chords are a little shorter than arcs: a perfect 25-point spiral scores a
+ *   few % under 1), low when they cover part of it or zigzag between its branches.
  */
 
 import type { TraceResult } from '../../src/auto/index.ts';
@@ -47,7 +59,18 @@ export interface TraceScore {
   style: { truth: string; got: string } | null;
   /** The same errors in data units / % of axis range (figures with calibrated axes); else null. */
   values: ValueErrors | null;
+  /** Series tagged `series:path`: path-length coverage and precision, and the points' order score. */
+  path?: { coverage: number; precision: number | null; order: number };
 }
+
+/** Tag of the series the path-length metrics apply to. */
+export const PATH_TAG = 'series:path';
+
+const length = (poly: P[]): number => {
+  let L = 0;
+  for (let i = 0; i + 1 < poly.length; i++) L += Math.hypot(poly[i + 1]!.x - poly[i]!.x, poly[i + 1]!.y - poly[i]!.y);
+  return L;
+};
 
 function segDist(p: P, a: P, b: P): number {
   const dx = b.x - a.x;
@@ -75,6 +98,22 @@ function sample(poly: P[]): P[] {
     for (let j = 1; j <= k; j++) out.push({ x: a.x + ((b.x - a.x) * j) / k, y: a.y + ((b.y - a.y) * j) / k });
   }
   return out;
+}
+
+/** Share of polyline `a` (sampled every 1 px) within `tol` of polyline `b`. */
+function within(a: P[], b: P[], tol: number): number {
+  const samples = sample(a);
+  return samples.filter((q) => polyDist(q, b) <= tol).length / samples.length;
+}
+
+function pathScore(truth: P[], path: P[], points: P[]): NonNullable<TraceScore['path']> {
+  const T = length(truth);
+  const L = length(points);
+  return {
+    coverage: path.length ? within(truth, path, COVER_PX) : 0,
+    precision: path.length > 1 ? within(path, truth, COVER_PX) : null,
+    order: points.length > 1 && T > 0 && L > 0 ? Math.min(L, T) / Math.max(L, T) : 0,
+  };
 }
 
 /** Geometry of another series, for the wrong-series test. */
@@ -176,6 +215,7 @@ export function scoreTrace(chart: string, chartTags: string[], s: SeriesTruth, o
     }
   }
   score.wrong = scored.length > 0 && strays > WRONG_FRACTION * scored.length;
+  if (s.tags.includes(PATH_TAG) && s.pieces[0]) score.path = pathScore(s.pieces[0], path, r.points.map((p) => ({ x: p.px, y: p.py })));
 
   // Step corners kept in the suggested points (the nearest one within CORNER_PX).
   for (const c of s.corners) {
@@ -211,6 +251,10 @@ export interface Metrics {
   /** Curves whose reported line style is right. */
   styleAccuracy: number | null;
   meanMs: number;
+  /** `series:path` traces only (absent without any): see the header. */
+  pathCoverage?: number;
+  pathPrecision?: number;
+  pointsOrder?: number;
 }
 
 const quantile = (sorted: number[], q: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]! : null);
@@ -225,7 +269,12 @@ export function aggregate(scores: TraceScore[]): Metrics {
   const mFound = marks.reduce((n, s) => n + s.markers.found, 0);
   const mMatched = marks.reduce((n, s) => n + s.markers.matched, 0);
   const styled = curves.filter((s) => s.style);
+  const paths = scores.map((s) => s.path).filter((p) => p !== undefined);
+  const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
+  const precise = paths.map((p) => p.precision).filter((p) => p !== null);
   return {
+    ...(paths.length ? { pathCoverage: mean(paths.map((p) => p.coverage)), pointsOrder: mean(paths.map((p) => p.order)) } : {}),
+    ...(precise.length ? { pathPrecision: mean(precise) } : {}),
     traces: scores.length,
     kindAccuracy: scores.length ? scores.filter((s) => s.kind === s.expected).length / scores.length : null,
     coverage: cov.length ? cov.reduce((a, b) => a + b, 0) / cov.length : null,
@@ -253,4 +302,7 @@ export const GATED: { key: keyof Metrics; higherIsBetter: boolean }[] = [
   { key: 'markerPrecision', higherIsBetter: true },
   { key: 'styleAccuracy', higherIsBetter: true },
   { key: 'wrongGroupRate', higherIsBetter: false },
+  { key: 'pathCoverage', higherIsBetter: true },
+  { key: 'pathPrecision', higherIsBetter: true },
+  { key: 'pointsOrder', higherIsBetter: true },
 ];

@@ -6,6 +6,10 @@
  * markers?: [[x,y]…], corners?: [[x,y]…], style, lineWidthPx, markerSizePx, data, pixels }]` — `path`
  * is the drawn polyline (lines, steps), `markers` the marker centres (scatter, lines with markers),
  * `corners` the step corners, `style` the line style ('solid', 'dashed', 'dotted', 'dashdot').
+ * A series tagged `series:path` (generate_kinds.py: loops, spirals, curves with overhangs) is a
+ * `line` whose `path` is in drawing order and need not be a function of x; score.ts adds the
+ * path-length metrics for it. `kind: 'bars'` (bar charts) is loaded as a scatter series whose
+ * markers are the bars' value ends, matched within 2 px (`markerSizePx` 0).
  *
  * Real figures (bench/lines/real/manifest.json → label JSON shared with fixtures/real/): only
  * hand-labelled plateaus exist, as `knownValues: [{ series?, x: [x0, x1], y, py? }]` with x in data
@@ -75,7 +79,7 @@ const pts = (v: unknown): P[] => (Array.isArray(v) ? (v as [number, number][]).m
 function synthetic(path: string): ChartTruth {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Json;
   const series = (raw.series as Json[]).map((s): SeriesTruth => {
-    const kind = s.kind as SeriesTruth['kind'];
+    const kind: SeriesTruth['kind'] = s.kind === 'bars' ? 'scatter' : (s.kind as SeriesTruth['kind']);
     const markers = pts(s.markers);
     const seed = s.seed as [number, number];
     return {

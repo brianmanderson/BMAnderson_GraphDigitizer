@@ -92,13 +92,16 @@ description: >
    *riding* — following the stroke of another colour it went under (≤ max(10, 4t + 4) px tall,
    must run the series' way after 6 columns, else its columns are open gap again; ridden centres
    become path points via `ColumnEntry.hidden`) — or *noisy* — a measured signal (`noisySeries`:
-   slope MAD ≥ 0.6 px and ≥ 2 reversals over 12 columns) looked for around its last level within
+   slope MAD ≥ 0.6 px and ≥ 3 reversals over 12 columns) looked for around its last level within
    a random walk's reach, gaps never hidden. Both only as retries: as first choices they broke
    straight chords, steep lines and polylines under markers.
    Fill edges (`curve.ts → traceAreaEdge`, before the style read in `index.ts`): a click inside a
    fill tall and wide enough (≥ max(16 px, 4 % H), ≥ max(64 px, 25 % W) through its middle)
    follows its upper edge (lower when clicked within 12 % of it): a stacked-area layer without an
-   outline.
+   outline. The bar finder (`bars.ts`) runs first and keeps a click on bars, unless in auto mode the
+   fill's edge is not `flatTopped` (pieces between > 1.5-px steps drift > 2 px: a smooth layer).
+   The fold follower (`follow.ts`) takes over only when what it adds has the walk's strength
+   (`strengthAlong`, within 1.15×): shades of one hue meeting at a common start.
 5. Dash hopping (`dashes.ts → hopDashes`, dashed / dash-dot): from each end of the walk, the next
    piece ahead on the walk's course (size, alignment, no series-colour ink between), walked alone
    and primed with the line's direction; repeated to the real end. `traceColumns(…, only)` is the
@@ -127,6 +130,34 @@ description: >
    pieces copies can't explain — text, rings, lines — dropped; copies placed greedily). A filled
    template among ≥ 60 small blobs of its colour must be solid inside (`solid` in `findMarkers`):
    a pile of "+" is no diamond.
+10. Bars (`bars.ts → filledBars`, 2026-11-19; not in curve mode; before `excludeEdgeLines`, so a
+    row of bars on the bottom edge is no frame line): the series' ink cut into runs along the value
+    axis (both orientations tried; thin other ink inside a run — hatching, caps, a curve — bridged),
+    chained across columns, cut into rectangles whose ends stay put (columns with more ink beyond
+    an end than the chain's usual outline never cut; one odd column between two that fit is
+    noise; slivers beside a rectangle are its blurred side). Unit = commonest width among the
+    segments sharing an end with the clicked one; a touching chain n units wide is n bars. Family:
+    baseline = the end most bars share (unless it is their far end and the other ends sit on ink: a
+    100 % stack's top, gridline or not), else stacked segments sitting on ink; a baseline must explain at least as
+    many bars as the stacked reading. Not bars: lengths all alike and ≤ 30 px, longest bar
+    < max(8 px, ¼ width), fewer than 4 marker-sized ones, a bar with non-bar ink of its colour on
+    its side or touching pieces that share no end (a thick line's flat stretches). Box cut the
+    bars (a value end on its edge, or series ink just past an edge a bar ends on) → looked at
+    again over the whole image. Returns `kind: 'markers'`, one
+    point per bar at its value end's middle.
+11. Doubling back (`follow.ts`, 2026-11-19): `followStroke` walks the stroke as a path (ring of
+    ~1.5 line widths → arcs of ink; straightest unwalked arc; centred on the cross-section;
+    walked ink marked; straight on across crossings, occluders ≤ 60 px or along another series
+    drawn over it; sharp turns from the stroke's tip; at a dead end, back along its own path to
+    an unwalked tangential branch — a loop's merged tip). Used only where `takesOver` says so:
+    closed (back at its start, heading out) or folding back in x by > max(markerMax, 6 widths,
+    4 % of the box) without having retraced itself, passing through ≥ ½ of the column walk's
+    points, ≥ 1.25× its length, ≤ 6 % of steps through ink wider than the stroke (a line through
+    filled markers). Run only on fold evidence (`mayDoubleBack`: a jump, a walk end short of the
+    box's left/right edge, own ink behind an end), at most once per trace; in auto mode a closed
+    loop through the seed overrides a marker shape found ≥ 3 times.
+    Order: open from its left end; closed from its leftmost point, clockwise, first point
+    repeated at the end. Points: `pickPoints` (ends, cusps, then largest deviation).
 
 ## Debugging a failing trace
 
@@ -142,6 +173,12 @@ description: >
 
 ## Corpus and truth
 
+- `bench/lines/generate_kinds.py` (called by `generate.py`'s main, or alone: rewrites only its
+  own files) → l200–l229 "new kinds": `series:path` lines (path in drawing order, not functions
+  of x: loops, folds, spirals, parametric; `corners` = tips/cusps/step corners) and
+  `kind: "bars"` series (loaded as scatter; `markers` = value ends; tags `bars:*`, `histogram`).
+  `score.ts` adds `pathCoverage` / `pathPrecision` / `pointsOrder` (gated) for `series:path` only
+  — absent from every other category, so earlier entries gain no key.
 - `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (170 charts, 484 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
@@ -203,5 +240,12 @@ among dashed gridlines of their colour are misread / follow the grid, dotted KM 
 ticks read as dash-dot; a JPEG dashed line touching a thick related-hue curve can switch to it
 (`l31/s3`). Scans: keeping a walk off a gridline it only touches (no far-end exit from a run
 that is mostly ruling) fixes `l121/s0` but costs steep curves crossing horizontal gridlines —
-rejected, see SPEC. Numbers: docs/SPEC.md → Auto-trace → Line-chart styles / Baseline / Known
-failures.
+rejected, see SPEC.
+New kinds (l200–l229): a P–E loop whose tips are one merged line leaves its tips
+out (the walk stops where the branches merge), a curve folding back that the walk retraces is left
+to the column walk (an open path is never trusted after retracing), stress–strain cycles in one
+black stroke (crossings at every reload) are not followed, a P–E ellipse among another loop is
+taken for markers, a minor loop inside a same-colour major loop follows the major one; outlined
+and hatched-only bars (white fill) are not found, cross-hatched grey bars read as markers, a
+spine drawn at zero cuts the plot box (bars below it lost unless the box is right). Numbers: docs/SPEC.md → Auto-trace →
+Line-chart styles / Baseline / Known failures.

@@ -151,7 +151,7 @@ const SLOPE_LOOKBACK = 30;
 /** A series is noisy when its column-to-column slopes scatter by more than this about their median, px. */
 const NOISY_ROUGH = 0.6;
 /** Reversals of direction (by at least NOISY_ROUGH px per column) among its last NOISY_MIN slopes. */
-const NOISY_REVERSALS = 2;
+const NOISY_REVERSALS = 3;
 /** Columns of history needed to call a series noisy. */
 const NOISY_MIN = 12;
 /** How far a noisy series may have wandered after g columns out of sight: NOISY_REACH × its jump per column × √g. */
@@ -970,4 +970,41 @@ export function traceAreaEdge(alpha: Float32Array, region: Region, seed: { x: nu
     else out.unshift(...side.reverse());
   }
   return out.length >= 2 ? out : null;
+}
+
+/** Steps of a fill's edge larger than this separate bars, px. */
+const BAR_STEP = 1.5;
+/** A bar's top drifts by at most this from end to end (JPEG wobble, a sub-pixel tilt), px. */
+const BAR_DRIFT = 2;
+
+/**
+ * Whether a fill's edge (`traceAreaEdge`) is flat-topped — bars or a histogram — rather than a
+ * smooth curve (a stacked-area layer). The edge is cut at steps of more than BAR_STEP px (between
+ * bars); every piece of a bar chart is one bar's top, level from end to end within BAR_DRIFT px,
+ * whatever it wobbles in between. A smooth edge drifts far within a piece — also where it borders
+ * another fill without an anti-aliased blend and comes out as a staircase of 1-px steps.
+ */
+export function flatTopped(edge: PathPoint[]): boolean {
+  let start = 0;
+  for (let i = 1; i <= edge.length; i++) {
+    if (i < edge.length && Math.abs(edge[i]!.py - edge[i - 1]!.py) <= BAR_STEP) continue;
+    if (i - start >= 3 && Math.abs(edge[i - 1]!.py - edge[start]!.py) > BAR_DRIFT) return false;
+    start = i;
+  }
+  return edge.length > 0;
+}
+
+/** Median of the strongest coverage within `r` px of each point (the series' strength along a path). */
+export function strengthAlong(points: { px: number; py: number }[], alpha: Float32Array, region: Region, r: number): number {
+  const { width: w, x0, x1, y0, y1 } = region;
+  const peaks: number[] = [];
+  for (const p of points) {
+    const x = Math.round(p.px);
+    const y = Math.round(p.py);
+    if (x < x0 || x > x1) continue;
+    let best = -1;
+    for (let yy = Math.max(y0, y - r); yy <= Math.min(y1, y + r); yy++) best = Math.max(best, alpha[yy * w + x] ?? -1);
+    if (best >= ON_ALPHA) peaks.push(Math.min(1.5, best));
+  }
+  return median(peaks);
 }
