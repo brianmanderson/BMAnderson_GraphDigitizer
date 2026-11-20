@@ -193,8 +193,9 @@ function gapBetween(ctx: Ctx, a: number[], b: number[]): Gap {
     if (l && l !== la && l !== lb) crossing = true;
   }
   if (hidden >= Math.max(3, 0.5 * (n - 1)) || darker > 0) return { gap: -1, ka: pa, kb: pb };
-  // Nothing but a ruling (and its fringe) between them: one stroke the ruling's removal cut.
-  if (ruled > 0 && open === 0) return { gap: 0, ka: pa, kb: pb, cut: true };
+  // Nothing but a ruling (and its fringe, and a pixel or two of its edge a rotated scan leaves
+  // outside the mask) between them: one stroke the ruling's removal cut.
+  if (ruled > 0 && open <= Math.min(2, ruled / 2)) return { gap: 0, ka: pa, kb: pb, cut: true };
   return { gap: Math.max(0, d - 1), ka: pa, kb: pb, crossing };
 }
 

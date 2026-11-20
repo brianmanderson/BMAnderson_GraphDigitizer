@@ -54,6 +54,11 @@ export interface FollowInput {
   maxHiddenGap: number;
   /** Ink the path may cross but not run along (rulings.ts), image-sized, or undefined. */
   blocked?: Uint8Array | undefined;
+  /**
+   * Longest stretch of background the walk jumps straight on, px (default 1.5 line widths): a
+   * dashed series' gaps.
+   */
+  openGap?: number;
 }
 
 export interface Followed {
@@ -119,6 +124,10 @@ const JOIN_RINGS = 2.4;
 const FAINT = 0.75;
 /** Largest share of a path's steps through ink wider than its stroke for it to replace the column walk. */
 const MAX_FAT = 0.06;
+/** A dashed curve's followed path is cut where it turns more than this, degrees (withFollowed). */
+const SHARP_TURN = 50;
+/** A walk's point within this of the followed path is kept as it is (withFollowed), px. */
+const CLOSE = 1.5;
 /** Steps the walk may take (a guard, far beyond any real path). */
 const MAX_STEPS = 60000;
 
@@ -158,7 +167,7 @@ class Walker {
     this.step = Math.max(1.5, 0.5 * this.r);
     this.maxHidden = input.maxHiddenGap;
     this.maxJump = Math.min(MAX_JUMP, input.maxHiddenGap);
-    this.openGap = Math.max(3, 1.5 * t);
+    this.openGap = input.openGap ?? Math.max(3, 1.5 * t);
     this.retraceLimit = 0.4 * Math.max(input.region.x1 - input.region.x0, input.region.y1 - input.region.y0);
   }
 
@@ -837,6 +846,269 @@ export function mayDoubleBack(walked: { px: number; py: number }[], alpha: Float
     if (behind >= Math.max(3, reach / 2)) return true;
   }
   return false;
+}
+
+/**
+ * A solid curve in a figure ruled in its own colour (rulings.ts): the column walk crosses a
+ * gridline as a hidden gap and may come out of it on another series (where curves converge on a
+ * gridline, a marker sits on the crossing); the followed path crosses it straight on, the way it
+ * was heading. The followed path is taken where it runs as a function of x from the seed — up to
+ * where it first turns back in x by more than a stroke (round a marker's ring, into an "x"'s arm:
+ * it stopped following the curve there) — and the walk's path beyond each of its ends, where the
+ * walk passes through that end (the two followed the same curve up to there). Null when the
+ * followed path holds less of the curve than the walk (it never got going).
+ * `walked` and the result run left to right.
+ */
+export function withFollowed(
+  walked: PathPoint[],
+  f: Followed,
+  seed: { x: number; y: number },
+  thickness: number,
+  /** Widest stretch without a point that either path is taken across (a dashed line's gap), px. */
+  bridge: number,
+  /** The course both followed is fitted over this many px before they part, and compared over `look` px after. */
+  span: number,
+  look: number,
+  /** A solid curve: the followed path also fills the stretches the walk bridged (a dashed one keeps only its ink). */
+  solid: boolean,
+): PathPoint[] | null {
+  const path = f.path;
+  if (path.length < 3 || walked.length < 2) return null;
+  const slack = Math.max(2, thickness);
+  // The path cut into stretches that run one way in x (a turn back by more than the slack starts
+  // the next one, at the turning point): a curl round a marker's ring, into an "x"'s arm, back
+  // along the curve itself from its end. The longest stretch through the seed is the curve.
+  const stretches: [number, number][] = [];
+  let begin = 0;
+  let sense = 0;
+  let turn = 0;
+  for (let i = 1; i < path.length; i++) {
+    const dx = path[i]!.px - path[turn]!.px;
+    if (!sense) {
+      if (Math.abs(dx) > slack) sense = Math.sign(dx);
+      if (sense) turn = i;
+      continue;
+    }
+    if (sense * dx > 0) turn = i;
+    else if (sense * dx < -slack) {
+      stretches.push([begin, turn]);
+      begin = turn;
+      sense = -sense;
+      turn = i;
+    }
+  }
+  stretches.push([begin, sense ? turn : path.length - 1]);
+  // A short turn back between two stretches running the same way is a curl round a marker on the
+  // curve, which then goes on: one stretch (the curl's points are dropped below, behind the run).
+  const curl = 8 * thickness + 8;
+  for (let i = 1; i + 1 < stretches.length; i++) {
+    const back = stretches[i]!;
+    if (Math.abs(path[back[1]]!.px - path[back[0]]!.px) > curl) continue;
+    stretches.splice(i - 1, 3, [stretches[i - 1]![0], stretches[i + 1]![1]]);
+    i--;
+  }
+  const near = Math.max(slack, thickness) + 1;
+  let pick: [number, number] | null = null;
+  for (const st of stretches) {
+    const through = path.slice(st[0], st[1] + 1).some((p) => Math.hypot(p.px - seed.x, p.py - seed.y) <= near);
+    const len = Math.abs(path[st[1]]!.px - path[st[0]]!.px);
+    if (through && (!pick || len > Math.abs(path[pick[1]]!.px - path[pick[0]]!.px))) pick = st;
+  }
+  if (!pick) return null;
+  let [from, to] = pick;
+  if (!solid) {
+    // A dashed curve does not turn sharply: where the followed path does (out from the seed), it
+    // has gone along something else — an "x" marker's arm — and is cut there.
+    const chord = 2 * thickness + 4;
+    let at = from;
+    for (let i = from; i <= to; i++) if (Math.hypot(path[i]!.px - seed.x, path[i]!.py - seed.y) < Math.hypot(path[at]!.px - seed.x, path[at]!.py - seed.y)) at = i;
+    /** Index `chord` px of path away from i (step ±1), or -1. */
+    const away = (i: number, step: 1 | -1): number => {
+      for (let j = i + step; j >= from && j <= to; j += step) if (Math.hypot(path[j]!.px - path[i]!.px, path[j]!.py - path[i]!.py) >= chord) return j;
+      return -1;
+    };
+    const sharp = (i: number): boolean => {
+      const a = away(i, -1);
+      const b = away(i, 1);
+      if (a < 0 || b < 0) return false;
+      const u = norm(path[i]!.px - path[a]!.px, path[i]!.py - path[a]!.py);
+      const v = norm(path[b]!.px - path[i]!.px, path[b]!.py - path[i]!.py);
+      return u.x * v.x + u.y * v.y < Math.cos(rad(SHARP_TURN));
+    };
+    for (let i = at; i <= to; i++) {
+      if (sharp(i)) {
+        to = i;
+        break;
+      }
+    }
+    for (let i = at; i >= from; i--) {
+      if (sharp(i)) {
+        from = i;
+        break;
+      }
+    }
+  }
+  const core: PathPoint[] = [];
+  for (const p of path.slice(from, to + 1).sort((p, q) => p.px - q.px)) if (!core.length || p.px > core[core.length - 1]!.px) core.push(p);
+  if (core.length < 2) return null;
+  const sorted = walked.filter((p, i, arr) => i === 0 || p.px > arr[i - 1]!.px);
+  /** y of a path (sorted by x) at x, interpolated across at most `bridge` px, or NaN. */
+  const yAt = (pts: PathPoint[], x: number): number => {
+    let lo = 0;
+    let hi = pts.length - 1;
+    if (x < pts[0]!.px || x > pts[hi]!.px) return Number.NaN;
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (pts[m]!.px <= x) lo = m;
+      else hi = m;
+    }
+    const p = pts[lo]!;
+    const q = pts[hi]!;
+    if (Math.abs(p.px - x) < 0.5) return p.py;
+    if (Math.abs(q.px - x) < 0.5) return q.py;
+    if (q.px - p.px > bridge) return Number.NaN;
+    return q.px === p.px ? p.py : p.py + ((q.py - p.py) * (x - p.px)) / (q.px - p.px);
+  };
+  const sx = Math.round(seed.x);
+  const out: PathPoint[] = [];
+  // A lasting disagreement, not one odd point (a marker's centroid kept as a corner).
+  const lasting = Math.max(4, 2 * thickness);
+  for (const side of [-1, 1] as const) {
+    const ends = [core[0]!.px, core[core.length - 1]!.px, sorted[0]!.px, sorted[sorted.length - 1]!.px];
+    const limit = side > 0 ? Math.max(...ends) : Math.min(...ends);
+    /** Columns taken, from which path; `agree`: both had the curve there. */
+    const taken: { x: number; y: number; from: PathPoint[]; agree?: boolean }[] = [];
+    /** The path that won a disagreement that never closed again: the only one from there on. */
+    let only: PathPoint[] | null = null;
+    /** The path that won the disagreement under way, until the two meet again. */
+    let winner: PathPoint[] | null = null;
+    /** Whether the last column both had agreed (a path going on alone after the other ended continues it). */
+    let agreed = true;
+    for (let x = side < 0 ? sx - 1 : sx; side * (x - limit) <= 0; x += side) {
+      const yf = yAt(core, x);
+      const yw = yAt(sorted, x);
+      if (only) {
+        const y = yAt(only, x);
+        if (!Number.isNaN(y)) taken.push({ x, y, from: only });
+        continue;
+      }
+      if (Number.isNaN(yf) || Number.isNaN(yw)) {
+        // One alone (or neither: a gap in both): it goes on from where the two agreed.
+        const alone = Number.isNaN(yf) ? (Number.isNaN(yw) ? null : sorted) : core;
+        if (alone && (agreed || alone === winner)) taken.push({ x, y: alone === core ? yf : yw, from: alone });
+        continue;
+      }
+      if (Math.abs(yf - yw) <= slack) {
+        winner = null;
+        agreed = true;
+        taken.push({ x, y: yw, from: sorted, agree: true });
+        continue;
+      }
+      if (!winner) {
+        // Is it lasting? Then the one that keeps to the course so far (its curvature) wins.
+        let n = 0;
+        for (let k = 0; k < lasting; k++) {
+          const a = yAt(core, x + side * k);
+          const b2 = yAt(sorted, x + side * k);
+          if (Math.abs(a - b2) > slack) n++;
+        }
+        if (n < lasting) {
+          taken.push({ x, y: yw, from: sorted, agree: true });
+          continue;
+        }
+        // The course so far: what was taken on this side, and the followed path behind it (across
+        // the seed too: near the seed one side alone may hold a dash or two).
+        const recent = [...taken.filter((p) => Math.abs(p.x - x) <= span), ...core.filter((p) => side * (p.px - x) < 0 && Math.abs(p.px - x) <= span).map((p) => ({ x: p.px, y: p.py }))];
+        // A curve's bend is known only from a stretch as long as the one it is extrapolated over.
+        const known = recent.length ? Math.max(...recent.map((p) => Math.abs(p.x - x))) : 0;
+        const fit = quadratic(recent.map((p) => p.x - x), recent.map((p) => p.y), known >= look ? 2 : 1);
+        // How far each strays from the course over the disagreement (up to `look` px), and whether they meet again.
+        let offF = 0;
+        let offW = 0;
+        let nF = 0;
+        let nW = 0;
+        let meet = false;
+        for (let k = 0; k <= look; k++) {
+          const xx = x + side * k;
+          const a = yAt(core, xx);
+          const b2 = yAt(sorted, xx);
+          if (k >= lasting && Math.abs(a - b2) <= slack) {
+            meet = true;
+            break;
+          }
+          if (!fit) continue;
+          if (!Number.isNaN(a)) {
+            offF += Math.abs(a - fit(xx - x));
+            nF++;
+          }
+          if (!Number.isNaN(b2)) {
+            offW += Math.abs(b2 - fit(xx - x));
+            nW++;
+          }
+        }
+        const mF = nF >= 3 ? offF / nF : Infinity;
+        const mW = nW >= 3 ? offW / nW : Infinity;
+        // The followed path unless the walk keeps clearly closer to the course.
+        winner = mW < 0.5 * mF ? sorted : core;
+        // The columns just before, where the two had begun to part, go with the winner too.
+        for (let j = taken.length - 1; j >= 0 && taken[j]!.agree; j--) {
+          const t = taken[j]!;
+          const a = yAt(core, t.x);
+          const b2 = yAt(sorted, t.x);
+          if (!(Math.abs(a - b2) > CLOSE)) break;
+          taken[j] = { x: t.x, y: winner === core ? a : b2, from: winner };
+        }
+        agreed = false;
+        if (!meet) only = winner;
+      }
+      taken.push({ x, y: winner === core ? yf : yw, from: winner });
+    }
+    // Each column from the path it was taken from: that path's own points there.
+    for (const p of taken) {
+      // The walk's own points where it agrees closely (its centroids are the more exact); where it
+      // only agrees within the stroke (a run merged with a marker), the followed path.
+      const yf = yAt(core, p.x);
+      let own = p.from === sorted ? walked.filter((q) => Math.round(q.px) === p.x) : core.filter((q) => Math.round(q.px) === p.x).map((q) => ({ ...q, corner: false }));
+      if (p.agree && !Number.isNaN(yf) && own.some((q) => Math.abs(q.py - yf) > CLOSE)) own = [{ px: p.x, py: yf, confidence: 0.8, corner: false }];
+      if (own.length) out.push(...own);
+      // A stretch only the followed path holds: a point in every column (its own are a step apart);
+      // so where a solid curve's walk bridged a hidden stretch the followed path went through.
+      else if (p.from === core) out.push({ px: p.x, py: p.y, confidence: 0.8, corner: false });
+      else if (solid && p.agree && !Number.isNaN(yf)) out.push({ px: p.x, py: yf, confidence: 0.8, corner: false });
+    }
+  }
+  const merged = out.sort((p, q) => p.px - q.px).filter((p, i, a) => i === 0 || p !== a[i - 1]);
+  return merged.length >= 2 ? merged : null;
+}
+
+/** Least-squares quadratic (or line: `maxDeg` 1, or fewer than six points) through the points, or null. */
+function quadratic(xs: number[], ys: number[], maxDeg: 1 | 2 = 2): ((x: number) => number) | null {
+  const n = xs.length;
+  if (n < 3) return null;
+  const deg = n >= 6 ? maxDeg : 1;
+  // Normal equations, solved by Gaussian elimination.
+  const m = deg + 1;
+  const A = Array.from({ length: m }, () => new Array<number>(m + 1).fill(0));
+  for (let i = 0; i < n; i++) {
+    const pw = [1, xs[i]!, xs[i]! * xs[i]!];
+    for (let r = 0; r < m; r++) {
+      for (let c = 0; c < m; c++) A[r]![c]! += pw[r]! * pw[c]!;
+      A[r]![m]! += pw[r]! * ys[i]!;
+    }
+  }
+  for (let c = 0; c < m; c++) {
+    let piv = c;
+    for (let r = c + 1; r < m; r++) if (Math.abs(A[r]![c]!) > Math.abs(A[piv]![c]!)) piv = r;
+    [A[c], A[piv]] = [A[piv]!, A[c]!];
+    if (Math.abs(A[c]![c]!) < 1e-9) return null;
+    for (let r = 0; r < m; r++) {
+      if (r === c) continue;
+      const k = A[r]![c]! / A[c]![c]!;
+      for (let q = c; q <= m; q++) A[r]![q]! -= k * A[c]![q]!;
+    }
+  }
+  const coef = A.map((row, i) => row[m]! / row[i]!);
+  return (x: number) => coef[0]! + coef[1]! * x + (deg === 2 ? coef[2]! * x * x : 0);
 }
 
 /** Suggested points of a followed path (see the header). */

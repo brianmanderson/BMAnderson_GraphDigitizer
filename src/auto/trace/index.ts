@@ -35,7 +35,7 @@ import { filledBars } from './bars.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
-import { followStroke, mayDoubleBack, pickPoints, takesOver } from './follow.ts';
+import { followStroke, mayDoubleBack, pickPoints, takesOver, withFollowed } from './follow.ts';
 import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
@@ -59,6 +59,14 @@ const RULING_STROKE = 0.5;
  * within the walker's own tolerances once the gridline's ink is dropped with the dashes it touches.
  */
 const HEAVY_RULING = 6;
+/**
+ * …and, to be cut out before a dashed series is walked, at least this many px: a thinner one (an
+ * anti-aliased 1–2 px gridline) leaves a dash touching it readable, and a series running along it
+ * would go with it.
+ */
+const DASH_RULING = 3;
+/** Widest crossing of a ruling filled in under a patterned walk, px (a heavy scanned ruling and its fringe). */
+const ACROSS_RULING = 24;
 /** A shape cut out of a small long blob is a marker (not a thick dash) when it is less elongated than this. */
 const MARKER_ELONGATION = 1.8;
 /** Ink this many times stronger or weaker than the series' own is another shade of its hue. */
@@ -203,6 +211,29 @@ function chainPath(found: Blobs, chain: Blob[], alpha: Float32Array, width: numb
   return out.sort((p, q) => p.px - q.px);
 }
 
+/**
+ * Points across the rulings a path crossed: between two neighbouring points at most a ruling's
+ * width apart in x whose straight join runs over ruling only, one point per column.
+ */
+function acrossRulings(path: PathPoint[], ruling: Uint8Array, w: number): PathPoint[] {
+  const out: PathPoint[] = [];
+  for (let i = 0; i < path.length; i++) {
+    const a = path[i]!;
+    out.push(a);
+    const b = path[i + 1];
+    if (!b || b.px - a.px < 2 || b.px - a.px > ACROSS_RULING) continue;
+    const fill: PathPoint[] = [];
+    let ok = true;
+    for (let x = Math.floor(a.px) + 1; x < b.px && ok; x++) {
+      const y = a.py + ((b.py - a.py) * (x - a.px)) / (b.px - a.px);
+      ok = ruling[Math.round(y) * w + x] === 1;
+      fill.push({ px: x, py: y, confidence: 0.6, corner: false });
+    }
+    if (ok) out.push(...fill);
+  }
+  return out;
+}
+
 export function traceLine(req: TraceRequest): TraceResult {
   const t0 = now();
   const result = (r: Omit<TraceResult, 'timings'>): TraceResult => ({ ...r, timings: { totalMs: now() - t0 } });
@@ -295,12 +326,15 @@ export function traceLine(req: TraceRequest): TraceResult {
   // keeps it as ink (it crosses rulings as it crosses any line of its colour, curve.ts) but may
   // never walk on one (`rulingInk`): taken out, it would leave slivers of the curve at every
   // crossing and the arms of a marker sitting on one to follow.
-  // A series read as dashed is taken as it is (rulings are crossed as before), and so is a marker
-  // standing clear of them; one read as dotted or dash-dot may be dashes the rulings chopped
-  // short, and is read again without them.
+  // A series read as dashed keeps that reading (its rulings are cut out further down, before the
+  // walk), and a marker standing clear of them is taken as it is; one read as dotted or dash-dot
+  // may be dashes the rulings chopped short, and is read again without them.
   const patterned0 = sig.style === 'dotted' || sig.style === 'dash-dot';
   const marker0 = !patterned0 && blobWidth(template) <= markerMax && blobHeight(template) <= markerMax && template.elongation < 2.5;
-  const rulings = sig.style === 'dashed' || marker0 ? null : findRulings(alpha, region, s);
+  // Rulings are found for a dashed series too (its follower crosses them, below), but it is read
+  // and walked with them in place.
+  const ruled = marker0 ? null : findRulings(alpha, region, s);
+  const rulings = sig.style === 'dashed' ? null : ruled;
   let ruling = rulings?.mask(Math.max(MIN_RULING, RULING_STROKE * Math.max(rulings.stroke, sig.thickness), patterned0 ? HEAVY_RULING : 0)) ?? undefined;
   let rulingInk: Uint8Array | undefined;
   if (ruling) {
@@ -316,7 +350,38 @@ export function traceLine(req: TraceRequest): TraceResult {
     const template2 = l ? found2.blobs[l - 1] : undefined;
     const sig2 = template2 ? classifyStyle({ found: found2, alpha, other, region, ruling, darker }, template2, markerMax) : null;
     const marker2 = !!template2 && blobWidth(template2) <= markerMax && blobHeight(template2) <= markerMax && template2.elongation < 2.5;
-    if (template2 && sig2 && (sig2.style === 'dashed' || sig2.style === 'dotted' || sig2.style === 'dash-dot' || marker2)) {
+    const patterned2 = !!sig2 && (sig2.style === 'dashed' || sig2.style === 'dotted' || sig2.style === 'dash-dot');
+    // A marker sitting on a gridline, cut in pieces by taking the gridline out, can chain with the
+    // dashes around it: when what is left at the seed is marker-sized but reads as a pattern, the
+    // marker's shape is looked for on the map as it was (cut out of the gridline's blob, the way a
+    // marker with error bars is) — found three times or more, the series is those markers.
+    if (req.mode === 'auto' && marker2 && patterned2) {
+      // As cut (a marker beside a dash), then with the gridlines through it back (a marker on one).
+      const shape2 = markerTemplate(found2, alpha, region, s, markerMax, hole);
+      const hits2 = shape2 && (shape2.shape === 'open' || shape2.elongation < MARKER_ELONGATION) ? findMarkers(found2, alpha, other, region, shape2) : [];
+      if (hits2.length >= 3) return result({ ok: true, kind: 'markers', style: 'unknown', color, path: hits2, points: hits2.map((p) => ({ ...p })) });
+      const cut = alpha.slice();
+      const cutOther = other.slice();
+      // Only the gridlines through the marker go back: rows and columns of its box (a gridline cut
+      // its pieces apart along there), widened by a stroke and a gridline's width.
+      const m = Math.max(4, Math.ceil(2 * sig2!.thickness));
+      for (let i = 0; i < saved.length; i += 3) {
+        const k = saved[i]!;
+        const x = k % w;
+        const y = (k - x) / w;
+        if ((y >= template2!.y0 - m && y <= template2!.y1 + m) || (x >= template2!.x0 - m && x <= template2!.x1 + m)) {
+          alpha[k] = saved[i + 1]!;
+          other[k] = saved[i + 2]!;
+        }
+      }
+      const found0 = findBlobs(alpha, region);
+      const shape0 = markerTemplate(found0, alpha, region, s, markerMax, hole);
+      const hits = shape0 && (shape0.shape === 'open' || shape0.elongation < MARKER_ELONGATION) ? findMarkers(found0, alpha, other, region, shape0) : [];
+      if (hits.length >= 3) return result({ ok: true, kind: 'markers', style: 'unknown', color, path: hits, points: hits.map((p) => ({ ...p })) });
+      alpha.set(cut);
+      other.set(cutOther);
+    }
+    if (template2 && sig2 && (patterned2 || marker2)) {
       found = found2;
       template = template2;
       sig = sig2;
@@ -327,6 +392,24 @@ export function traceLine(req: TraceRequest): TraceResult {
       }
       rulingInk = ruling;
       ruling = undefined;
+    }
+  }
+  // A series read as dashed in a figure ruled in its colour: the style stands as read, but the
+  // rulings are taken out before the style constraint and the walk — a dash touching a gridline is
+  // one blob with the whole grid, which the constraint drops (much longer than a dash) and the
+  // walk cannot leave.
+  if (!ruling && !rulingInk && sig.style === 'dashed' && ruled) {
+    const mask = ruled.mask(Math.max(DASH_RULING, RULING_STROKE * Math.max(ruled.stroke, sig.thickness)));
+    if (mask && !mask[s.y * w + s.x]) {
+      for (let k = 0; k < alpha.length; k++) {
+        if (!mask[k]) continue;
+        alpha[k] = -1;
+        other[k] = 1;
+      }
+      found = findBlobs(alpha, region);
+      const l = found.labels[s.y * w + s.x] ?? 0;
+      if (l) template = found.blobs[l - 1]!;
+      ruling = mask;
     }
   }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
@@ -481,6 +564,23 @@ export function traceLine(req: TraceRequest): TraceResult {
       const spurs = sig.style === 'solid' && dropped;
       let centre = columnsToPath(e, alpha, w, spurs);
       if (steps(centre)) centre = levelCorners(withStepCorners(centre, filledCorners, thickness), thickness, maps, cornerJoin);
+      // A solid curve in a figure ruled in its own colour: the followed path where it holds the
+      // curve better than the walk (follow.ts → withFollowed).
+      if (rulingInk && sig.style === 'solid') {
+        const f = follow();
+        const merged = f ? withFollowed(centre, f, s, thickness, Math.max(6, 3 * thickness), Math.max(60, 12 * thickness), Math.max(60, 12 * thickness), true) : null;
+        if (merged) centre = merged;
+      } else if (sig.style === 'dashed' || sig.style === 'dash-dot') {
+        // A dashed curve in a figure ruled in its own colour: followed across its gaps (follow.ts).
+        const blocked = ruling ?? ruled?.mask(Math.max(MIN_RULING, RULING_STROKE * Math.max(ruled.stroke, sig.thickness)));
+        const f = blocked ? followStroke({ alpha, other, region, seed: s, maxHiddenGap: defaultMaxHiddenGap(region), blocked, openGap: 1.5 * sig.gap + 2 * sig.thickness }) : null;
+        const period = sig.maxOn + sig.gap;
+        const merged = f ? withFollowed(centre, f, s, thickness, sig.gap + 2 * thickness + 2, Math.max(60, 3 * period), Math.max(60, 3 * period), false) : null;
+        if (merged) centre = merged;
+      }
+      // Where a patterned walk crossed a ruling taken out of the map, the stroke under it is the
+      // series hidden by it (a dash the ruling cut): its columns there, on the straight between.
+      if (ruling && patterned) centre = acrossRulings(centre, ruling, w);
       traced = extendHiddenEnds(insertHiddenKinks(centre, thickness, maps), thickness, maps);
     }
   }

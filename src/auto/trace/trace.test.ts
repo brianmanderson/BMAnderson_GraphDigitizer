@@ -10,6 +10,7 @@ import { makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { findRulings } from './rulings.ts';
 import { agreement, outline } from './outline.ts';
+import { withFollowed } from './follow.ts';
 import type { PathPoint } from './curve.ts';
 
 type RGB = [number, number, number];
@@ -1018,6 +1019,55 @@ describe('findRulings', () => {
     const own = findRulings(alphaOf(grid), region(grid), { x: 30, y: 100 })!.mask(2)!;
     expect(own[100 * grid.width + 30]).toBe(0);
     expect(own[160 * grid.width + 30]).toBe(1);
+  });
+
+  it('finds a tilted gridline that curves converge on (a skewed scan)', () => {
+    // A grid rotated by 1.5°, and curves of the grid's colour running into one gridline at shallow
+    // angles and along it for a stretch, with markers sitting on it: its bands are thick or shifted
+    // in many strips, but it is one straight line.
+    const tilt = Math.tan((1.5 * Math.PI) / 180);
+    const c = new Canvas(400, 280);
+    const gl = (y0: number) => (x: number) => y0 + tilt * (x - 200);
+    for (const y0 of [40, 100, 160, 220]) c.stroke([{ x: 5, y: gl(y0)(5) }, { x: 395, y: gl(y0)(395) }], 5, BLACK);
+    for (const x0 of [60, 140, 260, 340]) c.stroke([{ x: x0 - tilt * (5 - 140), y: 5 }, { x: x0 - tilt * (275 - 140), y: 275 }], 5, BLACK);
+    const on = gl(160);
+    for (const dy of [-6, 6, -12]) {
+      const curve = Array.from({ length: 391 }, (_, i) => {
+        const x = 5 + i;
+        const off = Math.abs(x - 210) < 60 ? dy * 0.15 : dy * (0.15 + (Math.abs(x - 210) - 60) / 25);
+        return { x, y: on(x) + Math.max(-90, Math.min(90, off)) };
+      });
+      c.stroke(curve, 3, BLACK);
+    }
+    for (const x of [170, 205, 240]) c.stroke([{ x: x - 6, y: on(x) - 6 }, { x: x + 6, y: on(x) + 6 }], 3, BLACK);
+    const r = findRulings(alphaOf(c), makeRegion(c.width, c.height, null), { x: 100, y: Math.round(gl(40)(100) + 30) })!;
+    const mask = r.mask(3)!;
+    for (const x of [20, 120, 300, 380]) expect(mask[Math.round(on(x)) * c.width + x]).toBe(1);
+    expect(mask[Math.round(on(120) - 30) * c.width + 120]).toBe(0);
+  });
+});
+
+describe('withFollowed', () => {
+  const line = (x0: number, x1: number, y: (x: number) => number, step = 1): PathPoint[] =>
+    Array.from({ length: Math.floor((x1 - x0) / step) + 1 }, (_, i) => ({ px: x0 + i * step, py: y(x0 + i * step), confidence: 0.9, corner: false }));
+  const curve = (x: number) => 100 + 0.002 * (x - 50) ** 2;
+  const followed = (path: PathPoint[]) => ({ path, closed: false, retraced: false, thickness: 3, backTravel: 0, fat: 0, length: path.length });
+
+  it('keeps to the course where the walk leaves for another series', () => {
+    // The walk jumps 25 px down at x = 200 and goes on there; the followed path keeps the curve.
+    const walked = [...line(50, 199, curve), ...line(200, 350, (x) => curve(x) + 25)];
+    const out = withFollowed(walked, followed(line(50, 350, curve, 2)), { x: 120, y: curve(120) }, 3, 9, 60, 60, true)!;
+    expect(Math.max(...out.map((p) => Math.abs(p.py - curve(p.px))))).toBeLessThan(1.5);
+    expect(out[out.length - 1]!.px).toBeGreaterThanOrEqual(348);
+  });
+
+  it('keeps the walk where the followed path turns off along a marker', () => {
+    // The followed path leaves along an "x" marker's arm at x = 250; the walk goes on along the curve.
+    const walked = line(50, 350, curve);
+    const arm = [...line(50, 249, curve, 2), ...line(250, 280, (x) => curve(250) - (x - 250))];
+    const out = withFollowed(walked, followed(arm), { x: 120, y: curve(120) }, 3, 9, 60, 60, true)!;
+    expect(Math.max(...out.map((p) => Math.abs(p.py - curve(p.px))))).toBeLessThan(1.5);
+    expect(out[out.length - 1]!.px).toBeGreaterThanOrEqual(349);
   });
 });
 
