@@ -92,6 +92,8 @@ export interface FoundLabel {
   /** When the word ends in a raised exponent: the base and exponent cut separately. */
   base: RgbaImage | null;
   exponent: RgbaImage | null;
+  /** The exponent cut again at a smaller upscale, for a second reading when the first is empty. */
+  exponentSmall?: RgbaImage;
   /** A minus sign was seen in front of the digits (of the base, and of the exponent). */
   minus: boolean;
   exponentMinus: boolean;
@@ -156,6 +158,11 @@ export interface AxisLabels {
 const BODY_MIN_HEIGHT = 4;
 /** Text is upscaled so its body height is about this many px before OCR. */
 const OCR_TEXT_HEIGHT = 28;
+/**
+ * A second crop of a raised exponent, upscaled less: a lone exponent digit 2–4 px tall that comes
+ * back empty at OCR_TEXT_HEIGHT is often read at this height (see SPEC → Exponents).
+ */
+const EXP_REREAD_HEIGHT = 16;
 
 function makePatch(map: DarknessMap, img: RgbaImage, frame: Frame, u0: number, w0: number, width: number, height: number): Patch {
   const w = Math.max(1, Math.round(width));
@@ -726,7 +733,7 @@ function slantOf(p: Patch, glyphs: Glyph[], bodyHeight: number): number {
  * `slant` > 0 shears italic text upright (rows shift left in proportion to their height above
  * the box's bottom).
  */
-function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0, exclude: Glyph[] = []): RgbaImage {
+function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0, exclude: Glyph[] = [], textHeight = OCR_TEXT_HEIGHT): RgbaImage {
   const x0 = Math.min(...glyphs.map((g) => g.x0)) - 1;
   const x1 = Math.max(...glyphs.map((g) => g.x1)) + 1;
   const y0 = Math.min(...glyphs.map((g) => g.y0)) - 1;
@@ -753,7 +760,7 @@ function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0, exclude: 
       }
     }
   }
-  const scale = Math.min(10, Math.max(1, OCR_TEXT_HEIGHT / Math.max(1, bodyHeight)));
+  const scale = Math.min(10, Math.max(1, textHeight / Math.max(1, bodyHeight)));
   const margin = Math.round(0.5 * OCR_TEXT_HEIGHT);
   // Upright x = x + slant·(y − y1): the box's bottom row stays put, its top moves left.
   const xu0 = x0 - slant * (y1 - y0);
@@ -1010,6 +1017,7 @@ function rotatedLabels(
       crop: cut(q, pick.glyphs, bodyH),
       base: hasExp ? cut(q, l.base, bodyH, 0, l.exponent) : null,
       exponent: hasExp ? cut(q, expGlyphs, expH, 0, [...l.base, ...specks]) : null,
+      ...(hasExp ? { exponentSmall: cut(q, expGlyphs, expH, 0, [...l.base, ...specks], EXP_REREAD_HEIGHT) } : {}),
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       singleChar: bodies.length === 1 && !hasExp && pick.x1 - pick.x0 + 1 <= 0.8 * bodyH,
@@ -1201,6 +1209,7 @@ function labelsWith(
       crop: cut(q, word.glyphs, bodyH, slant),
       base: hasExp ? cut(q, l.base, bodyH, slant, l.exponent) : null,
       exponent: hasExp ? cut(q, expGlyphs, expH, slant, [...l.base, ...specks]) : null,
+      ...(hasExp ? { exponentSmall: cut(q, expGlyphs, expH, slant, [...l.base, ...specks], EXP_REREAD_HEIGHT) } : {}),
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       // One glyph no wider than it is tall (two touching digits make one wide component).
