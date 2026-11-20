@@ -86,7 +86,8 @@ family — the inputs Phase 5's OCR and scale inference need.
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
   writes `synthetic/cNN.{png,jpg,json}` — 120 seeded charts (c60–c69, axes at the top/right,
   c70–c75, old scans with hand-lettered labels and a heavy grid, c76–c83, range frames, and
-  c84–c119, other tools' styles — `build_styled`, table `STYLED` — were appended; new charts go at
+  c84–c119, other tools' styles — `build_styled`, table `STYLED` — and c120–c167, label variety —
+  `build_labels`, table `LABEL_VARIETY` — were appended; new charts go at
   the end so earlier ones stay byte-identical — check `git status` after regenerating). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.

@@ -38,13 +38,15 @@ description: >
 ## Pipeline map
 
 - `labels.ts` — `findLabels(map, rgba, detection)`: band patch in the skew frame → components
-  (adaptive threshold; blobs, colourful glyphs and huge ones dropped) → rows → words → matched to
+  (adaptive threshold; blobs, colourful glyphs and huge ones dropped — then each colour class of the
+  band, and a faint pass at the lowest threshold, may replace that result) → rows → words → matched to
   major ticks (or label centres without ticks) → `FoundLabel` with crops (28 px body height),
   exponent split, minus/point marks; plus the axis `note`.
 - `auto.ts` — `autoCalibrate`: pass 1 numeric OCR (exponent joined as `base^exp`, marks
   restored), pass 2 text OCR if not confident or a label didn't parse; note read both ways.
 - `suggest.ts` — `suggestAxis`: consensus fit for linear/log10/date, unread `10^` exponents
-  inferred only on exact decades, refs = widest confident agreeing pair, 1-D cross-check, levels;
+  inferred only on exact decades, the log lattice (`logLattice`/`latticeFit`: slope from the minor
+  ticks when < 3 labels agree), refs = widest confident agreeing pair, 1-D cross-check, levels;
   `crossCheck`: engine `calibrate` + 2-D residuals. Thresholds and reasons are in SPEC →
   Auto-calibration.
 - `pool.ts` — PSM 7 → 6 (→ 10 for single chars) when a read is empty; parameters re-sent only on
@@ -64,6 +66,16 @@ description: >
   number starting with `10` (`102` for 10⁻²): that is the confident-wrong trap. A word that split
   (a lost point) must never leave a trusted digit behind: `FoundLabel.partial` labels give no
   value, like `clipped` ones — never drop the guard to win an axis.
+- Colours, faint labels, log exponents (c156–c167, SPEC → Auto-calibration → Label colours):
+  coloured labels are a *colour class* of the band (core chroma ≥ 80, clustered by hue), matched
+  like the neutral ink and taken only when it beats it (more labels; or, at ticks, half as many
+  with twice the ink or clearly nearer the axis). Dropping coloured glyphs without that left
+  their colourless fringes to be matched: confidently wrong (c165). A faint pass at threshold 24
+  runs when fewer labels than majors were found. Exponent crops mask the other part's ink; a
+  16 px re-read is a *guess*. The log lattice (`logLattice`: decade length and direction from the
+  minors) lets two agreeing decade labels calibrate (medium): keep its guards — one label read
+  outright, no confident contrary reading, slope sign from the minors — a single read exponent
+  is never enough.
 - Tools that paid off (scratch scripts, outside the repo): an OCR lab that reads every label with
   a `label` in the truth under crop/OCR variants and scores them (1 288 labels, ~25 s); a per-gap
   dump of digit pitch and gap ink against the true text (how the point thresholds were set).
@@ -86,13 +98,21 @@ can pick another WASM core, so a small change on a new machine is not necessaril
 investigate per image (`Changed vs baseline` lines) before updating. Update the baseline
 (`-- --update`) only for an explained improvement or trade-off, in the same commit.
 
-## Known failures (2026-11-19, merged with the styled corpus: 79.9 % of 334 axes correct, 0 wrong)
+## Known failures (2026-11-20, round two: 84.1 % of 358 axes correct, 0 wrong)
 
-Label variety: categorical and time-only axes (declined by design), times on a concise date axis
-(the date is only in the offset text), years on a second label line, offset notes over labels that
-lost their points (c136), coloured labels (c151), `m×10ⁿ` read as `10ⁿ` (c134), log
-exponents 2–4 px tall (c13, c14, c44, c45). Rejected (SPEC lists the numbers): OCR crop
-preprocessing, exponent-crop preprocessing, height-ratio exponent tests, glyph-shape-only rotation.
+Declined (57 axes): dates without a year, times, categories (by design); range frames without tick
+labels; hand-lettered scans; log axes with one exponent read and the other unread or its base
+misread (c06, c14, c25, c37, c44 y, c45, c52 y, c57, c62, c30 x), a muted purple that forms no
+colour class (c158); tiny/low-DPI labels that lose points (c164 y, c24, c27, c55, c148, c167 y);
+offset notes (c03, c34, c63, c136); `m×10ⁿ` read as `10ⁿ` (c134); years on a second label line
+(c130). Rejected (SPEC lists the numbers): OCR crop preprocessing, exponent-crop preprocessing,
+height-ratio exponent tests, glyph-shape-only rotation, seeding colour classes below chroma 80,
+14/18 px exponent re-reads.
+
+### Round one (2026-11-19, merged with the styled corpus: 79.9 % of 334 axes correct, 0 wrong)
+
+Coloured labels (c151) and log exponents 2–4 px tall (c13, c14, c44, c45) were declined; c151 and
+c13 are read since round two.
 
 ### Earlier (Phase 5 baseline: 65 % of axes correct, 0 wrong)
 
