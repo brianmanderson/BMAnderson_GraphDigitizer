@@ -370,9 +370,11 @@ export function fitAxis(r: AxisReading): AxisFit {
   const tol = tolerance(alongs, r.labels.mode);
   const note = r.note && r.note.confidence > 0 ? parseAxisNote(r.note.text) : null;
   const unreadNote = r.note && !note ? r.note.text : null;
-  // A label cut off at the axis ("60" read as "6") is shown as read but gives no value: a few of
-  // them can agree on a scale that is off by a factor of ten.
-  const usable = (ts: OcrLabel[]) => ts.map((t, i) => (r.labels.labels[i]?.clipped ? { text: '', confidence: 0 } : t));
+  // A label cut off at the axis ("60" read as "6"), or one with more of its text left beside it
+  // ("8" of "0.8"), is shown as read but gives no value: a few of them can agree on a scale that
+  // is off by a factor of ten.
+  const usable = (ts: OcrLabel[]) =>
+    ts.map((t, i) => (r.labels.labels[i]?.clipped || r.labels.labels[i]?.partial ? { text: '', confidence: 0 } : t));
   const num = numericFit(alongs, usable(r.numeric), tol, r.logHint, note);
   const best: AxisFit = { ...num, texts: r.numeric, reason: null, unreadNote, note };
   if (r.text) {
@@ -466,11 +468,14 @@ export function suggestAxis(r: AxisReading): AxisSuggestion {
   }
   const readable = fit ? fit.values.filter((v) => v !== null).length : 0;
   const clipped = r.labels.labels.filter((l) => l.clipped).length;
+  const partial = r.labels.labels.filter((l) => l.partial).length;
   if (!fit || fit.inliers.length < 3) {
     return fallback(
       readable < 3
         ? `Only ${readable} of ${labels.length} labels could be read as values` +
-            (clipped > 0 ? ` (${clipped} touch the axis line and may be cut off, so their readings are not used).` : '.')
+            (clipped > 0 ? ` (${clipped} touch the axis line and may be cut off, so their readings are not used).` : '') +
+            (partial > 0 ? ` (${partial} have more text beside them that was not read with them, so their readings are not used).` : '') +
+            (clipped + partial === 0 ? '.' : '')
         : `The labels read do not agree with each other (best: ${fit?.inliers.length ?? 0} of ${readable}).`,
     );
   }

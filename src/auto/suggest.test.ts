@@ -245,3 +245,14 @@ describe('suggestAxis with ambiguous readings and times of day', () => {
     expect(s.message).toMatch(/times of day/);
   });
 });
+
+describe('suggestAxis with pieces of labels', () => {
+  it('gives labels marked as pieces no value (five "8 6 4 2 0" pieces of "0.8 … 0.0" never agree on ×10)', () => {
+    const r = reading('y', [30, 70, 110, 150, 190], ['8', '6', '4', '2', '0']);
+    r.labels.labels.forEach((l) => (l.partial = true));
+    const s = suggestAxis(r);
+    expect(s.status).not.toBe('calibrated');
+    expect(s.labels.every((l) => l.value === null)).toBe(true);
+    expect(s.message).toMatch(/more text beside them/);
+  });
+});
