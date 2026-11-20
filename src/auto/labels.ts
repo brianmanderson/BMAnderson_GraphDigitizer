@@ -308,10 +308,18 @@ const ofHue =
     return c.chroma >= CLASS_MIN_CHROMA && hueDistance(c.hue, hue) <= CLASS_HUE_TOLERANCE;
   };
 
-/** Ink threshold for text in this patch: a fraction of its darkest strokes, never below INK. */
-function inkThreshold(p: Patch): number {
+/**
+ * Ink threshold for text in this patch: a fraction of its darkest strokes, never below INK. For a
+ * colour class (`hue`), of that colour's strokes only: an orange label is far lighter than the
+ * black ticks and title beside it, and at their threshold its thin strokes fall apart.
+ */
+function inkThreshold(p: Patch, hue: number | null = null): number {
   const vals: number[] = [];
-  for (const v of p.dark) if (v >= INK_THRESHOLD) vals.push(v);
+  p.dark.forEach((v, k) => {
+    if (v < INK_THRESHOLD) return;
+    if (hue !== null && ((p.chroma[k] ?? 0) < CLASS_MIN_CHROMA || hueDistance(p.hue[k] ?? 0, hue) > CLASS_HUE_TOLERANCE)) return;
+    vals.push(v);
+  });
   if (vals.length < 10) return INK_THRESHOLD;
   vals.sort((a, b) => a - b);
   const p98 = vals[Math.floor(0.98 * (vals.length - 1))] as number;
@@ -983,8 +991,8 @@ function labelsFor(
   // is no part of them. Otherwise neutral wins: a coloured number-at-risk table under black tick
   // labels matches the same ticks with ink like theirs, further from the axis.
   for (const hue of HUES.get(viaTicks) ?? []) {
-    let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, ofHue(hue));
-    if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, ofHue(hue));
+    let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, hue);
+    if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, hue);
     const n = alt.labels.length;
     const m = primary.labels.length;
     const half = alt.mode === 'ticks' && n >= 0.5 * m;
@@ -1171,8 +1179,10 @@ function labelsWith(
   mode: AxisLabels['mode'],
   majors: { t: DetectedAxis['ticks']['ticks'][number]; i: number }[],
   crossing: LineCandidate[],
-  ink: Ink = NEUTRAL,
+  /** A colour class's hue (`colourClasses`): only its glyphs are label text; null = neutral ink. */
+  hue: number | null = null,
 ): AxisLabels {
+  const ink: Ink = hue === null ? NEUTRAL : ofHue(hue);
   const { width: W, height: H } = map;
   const line: AxisGeometry = ax.line;
   // The labels' side: below a bottom X axis / above a top one; left of a left Y axis / right of
@@ -1201,7 +1211,7 @@ function labelsWith(
     const u0 = flipped ? line.offset + d0 : line.offset - d0 - depth;
     p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
-  const all = components(p, inkThreshold(p));
+  const all = components(p, inkThreshold(p, hue));
   // The band's colour classes; in the neutral pass, a glyph of one of them is no neutral ink even
   // when its mean colour, diluted by its antialiased edge, falls under MAX_LABEL_CHROMA (a muted
   // purple label splits into "neutral" digits and coloured exponents otherwise).
