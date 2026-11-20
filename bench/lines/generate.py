@@ -1127,6 +1127,9 @@ def main() -> int:
         kinds = " ".join(s["kind"] + ("+m" if s.get("marker") and s["kind"] == "line" else "") for s in doc["series"])
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} {' '.join(doc['tags'])} | {kinds}")
     print(f"{COUNT} charts, {traces} series, {total / 1e6:.2f} MB of images")
+    # l200-l229, "new kinds" (curves that are not functions of x, bar charts): generate_kinds.py.
+    import generate_kinds
+    generate_kinds.write_all()
     return 0
 
 

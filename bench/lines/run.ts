@@ -49,6 +49,8 @@ interface TraceReport {
   points: number;
   /** Reported line style, '' when not a curve with a known style ('!' marks a wrong one). */
   style: string;
+  /** `series:path` traces only: path coverage / path precision / points order (score.ts). */
+  path?: string;
 }
 
 interface Report {
@@ -65,7 +67,7 @@ const units = (v: number | null) => (v === null ? '–' : String(Number(v.toPrec
 /** A % of axis range. */
 const pctRange = (v: number | null) => (v === null ? '–' : v.toFixed(3)).padStart(7);
 
-const HEADER = 'category                 n   kind   cover  med-px p95-px wrong  corner  mk-R   mk-P  mk-grp  style    ms';
+const HEADER = 'category                 n   kind   cover  med-px p95-px wrong  corner  mk-R   mk-P  mk-grp  style  p-cov  p-prec p-order    ms';
 
 function row(name: string, m: Metrics): string {
   return [
@@ -81,6 +83,9 @@ function row(name: string, m: Metrics): string {
     pct(m.markerPrecision),
     pct(m.wrongGroupRate),
     pct(m.styleAccuracy),
+    pct(m.pathCoverage ?? null),
+    pct(m.pathPrecision ?? null),
+    pct(m.pointsOrder ?? null),
     m.meanMs.toFixed(0).padStart(5),
   ].join(' ');
 }
@@ -118,6 +123,7 @@ function report1(s: TraceScore): TraceReport {
     markers: s.expected === 'markers' ? `${s.markers.matched}/${s.markers.truth} of ${s.markers.found}${s.markers.wrongGroup ? `, ${s.markers.wrongGroup} wrong group` : ''}` : '',
     points: s.points,
     style: s.style ? `${s.style.got}${s.style.got === s.style.truth ? '' : '!'}` : '',
+    ...(s.path ? { path: `${round(s.path.coverage)}/${round(s.path.precision) ?? '-'}/${round(s.path.order)}` } : {}),
   };
 }
 
@@ -157,9 +163,12 @@ const TRACING_COLUMNS: SummaryColumn[] = [
   { key: 'markerPrecision', label: 'marker precision', unit: '%' },
   { key: 'wrongGroupRate', label: 'wrong group', unit: '%' },
   { key: 'styleAccuracy', label: 'style accuracy', unit: '%' },
+  { key: 'pathCoverage', label: 'path coverage', unit: '%' },
+  { key: 'pathPrecision', label: 'path precision', unit: '%' },
+  { key: 'pointsOrder', label: 'points order', unit: '%' },
   { key: 'meanMs', label: 'time per trace', unit: 'ms' },
 ];
-const PERCENT_KEYS = new Set(['kindAccuracy', 'coverage', 'wrongRate', 'cornerRecall', 'markerRecall', 'markerPrecision', 'wrongGroupRate', 'styleAccuracy']);
+const PERCENT_KEYS = new Set(['kindAccuracy', 'coverage', 'wrongRate', 'cornerRecall', 'markerRecall', 'markerPrecision', 'wrongGroupRate', 'styleAccuracy', 'pathCoverage', 'pathPrecision', 'pointsOrder']);
 
 const VALUE_COLUMNS: SummaryColumn[] = [
   { key: 'what', label: 'what', unit: '' },
@@ -180,7 +189,7 @@ function summaryOf(report: Report, tags: string[], values: [string, ValueWhat, V
     columns: TRACING_COLUMNS,
     rows: [['OVERALL', report.overall] as const, ...tags.map((t) => [t, report.categories[t]!] as const)].map(([category, m]) => ({
       category,
-      values: Object.fromEntries(TRACING_COLUMNS.map((c) => [c.key, PERCENT_KEYS.has(c.key) ? asPercent(m[c.key as keyof Metrics] as number | null) : m[c.key as keyof Metrics]])),
+      values: Object.fromEntries(TRACING_COLUMNS.map((c) => [c.key, PERCENT_KEYS.has(c.key) ? asPercent((m[c.key as keyof Metrics] ?? null) as number | null) : (m[c.key as keyof Metrics] ?? null)])),
     })),
   };
   const valueTable: SummaryTable = {
@@ -222,7 +231,7 @@ function main(): number {
         const t = report1(score);
         const v = score.values && score.values.points.length ? valueStats(score.values.points) : null;
         console.log(
-          `${`${chart.id}/${s.id}`.padEnd(26)} ${s.kind.padEnd(7)} → ${r.kind.padEnd(7)} cover ${pct(t.coverage)} err ${px(t.medianError)}${t.wrong ? ' WRONG' : ''} ${t.corners ? `corners ${t.corners}` : ''}${t.markers ? `markers ${t.markers}` : ''}${t.style ? ` style ${t.style}` : ''} pts ${t.points} ${r.timings.totalMs.toFixed(0)}ms${v ? ` Δy ${units(v.yMedian).trim()} (${pctRange(v.yPctMedian).trim()}% of range)` : ''}${r.message ? ` "${r.message}"` : ''}`,
+          `${`${chart.id}/${s.id}`.padEnd(26)} ${s.kind.padEnd(7)} → ${r.kind.padEnd(7)} cover ${pct(t.coverage)} err ${px(t.medianError)}${t.wrong ? ' WRONG' : ''} ${t.corners ? `corners ${t.corners}` : ''}${t.markers ? `markers ${t.markers}` : ''}${t.style ? ` style ${t.style}` : ''}${t.path ? ` path cov/prec/order ${t.path}` : ''} pts ${t.points} ${r.timings.totalMs.toFixed(0)}ms${v ? ` Δy ${units(v.yMedian).trim()} (${pctRange(v.yPctMedian).trim()}% of range)` : ''}${r.message ? ` "${r.message}"` : ''}`,
         );
       }
     }
@@ -244,7 +253,7 @@ function main(): number {
   }
   console.log(`\n${scores.length} traces on ${charts.length} images in ${((performance.now() - started) / 1000).toFixed(1)} s (incl. decoding and detection)`);
   console.log(
-    `kind: auto chose curve/markers right; cover: % of the true x-range traced within ${COVER_PX} px; med/p95-px: centreline error of traced points; wrong: traces that follow another series; corner: step corners within ${CORNER_PX} px of a suggested point; mk-R/mk-P: marker recall/precision; mk-grp: found markers of another series (wrong group); style: curves whose line style is reported right; ms: per trace (not gated)`,
+    `p-cov/p-prec/p-order (series:path only): % of the true path's length traced, % of the traced path on it, how well the suggested points follow it in order; kind: auto chose curve/markers right; cover: % of the true x-range traced within ${COVER_PX} px; med/p95-px: centreline error of traced points; wrong: traces that follow another series; corner: step corners within ${CORNER_PX} px of a suggested point; mk-R/mk-P: marker recall/precision; mk-grp: found markers of another series (wrong group); style: curves whose line style is reported right; ms: per trace (not gated)`,
   );
   if (values.length) {
     console.log(
@@ -271,7 +280,7 @@ function main(): number {
 function strip(r: Report): Report {
   const m = (x: Metrics): Metrics => {
     const out = { ...x, meanMs: 0 };
-    for (const { key } of GATED) (out[key] as number | null) = round(x[key] as number | null);
+    for (const { key } of GATED) if (x[key] !== undefined) (out[key] as number | null) = round(x[key] as number | null);
     return out;
   };
   return {
@@ -289,7 +298,7 @@ function compare(base: Report, now: Report): number {
       const bv = b[key] as number | null;
       const nv = n[key] as number | null;
       if (bv === null || bv === undefined) continue;
-      if (nv === null) {
+      if (nv === null || nv === undefined) {
         problems.push(`${name}: ${key} missing (baseline ${bv})`);
         continue;
       }
