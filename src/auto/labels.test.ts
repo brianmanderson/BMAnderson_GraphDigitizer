@@ -198,7 +198,15 @@ describe('findLabels on old-scan look-alikes (synthetic c70, c75: hand-lettered 
   };
 
   it('puts labels that sit on a gridline exactly on it, and keeps the others at their centres', () => {
-    const f = labelsOf('bench/axes/synthetic/c70.jpg');
+    // The labels-only path: without the tick positions detectAxes now reads off c70's gridlines
+    // (TickSet.source 'gridlines'), as for an old scan whose gridlines are not found.
+    const img = load('bench/axes/synthetic/c70.jpg');
+    const map = darknessMap(img);
+    const det = detectAxesInMap(map);
+    for (const ax of [det.xAxis, det.yAxis]) {
+      if (ax?.ticks.source === 'gridlines') ax.ticks = { ticks: [], spacing: null, pattern: null, side: null, confidence: 0, rejected: [] };
+    }
+    const f = findLabels(map, img, det);
     const truth = truthPx('c70');
     expect(f.x.mode).toBe('labels-only');
     expect(f.x.labels).toHaveLength(truth.x.length);
@@ -210,7 +218,15 @@ describe('findLabels on old-scan look-alikes (synthetic c70, c75: hand-lettered 
   });
 
   it('flags labels written against the frame as possibly cut off', () => {
-    const f = labelsOf('bench/axes/synthetic/c70.jpg');
+    // The labels-only path: without the tick positions detectAxes now reads off c70's gridlines
+    // (TickSet.source 'gridlines'), as for an old scan whose gridlines are not found.
+    const img = load('bench/axes/synthetic/c70.jpg');
+    const map = darknessMap(img);
+    const det = detectAxesInMap(map);
+    for (const ax of [det.xAxis, det.yAxis]) {
+      if (ax?.ticks.source === 'gridlines') ax.ticks = { ticks: [], spacing: null, pattern: null, side: null, confidence: 0, rejected: [] };
+    }
+    const f = findLabels(map, img, det);
     expect(f.y.mode).toBe('labels-only');
     expect(f.y.labels.filter((l) => l.clipped).length).toBeGreaterThan(f.y.labels.length / 2);
     expect(f.x.labels.some((l) => l.clipped)).toBe(false);

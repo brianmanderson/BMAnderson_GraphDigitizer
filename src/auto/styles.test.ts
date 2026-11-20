@@ -5,6 +5,8 @@
  * are drawn here with exact geometry; `npm run bench:axes` measures the styled corpus (c84–c119).
  */
 
+import { readFileSync } from 'node:fs';
+import jpeg from 'jpeg-js';
 import { describe, expect, it } from 'vitest';
 import { darknessMap, isDarkTheme, toGray } from './darkness.ts';
 import { detectAxes } from './detect.ts';
@@ -244,5 +246,34 @@ describe('short log minors', () => {
     expect(t?.pattern).toBe('log');
     expect(t?.ticks.filter((k) => k.kind === 'major').length).toBe(2);
     expect(t?.ticks.filter((k) => k.kind === 'minor').length).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe('gridlines as tick positions on an old-scan look-alike (synthetic c70: heavy grid, no tick marks)', () => {
+  it('takes both axes\' positions from the gridlines, each at a labelled tick, none at the frame', () => {
+    const buf = readFileSync(new URL('../../bench/axes/synthetic/c70.jpg', import.meta.url));
+    const j = jpeg.decode(buf, { useTArray: true, formatAsRGBA: true });
+    const det = detectAxes({ width: j.width, height: j.height, data: j.data });
+    const truth = JSON.parse(readFileSync(new URL('../../bench/axes/synthetic/c70.json', import.meta.url), 'utf8')) as {
+      xAxis: { ticks: { px: number; py: number }[] };
+      yAxis: { ticks: { px: number; py: number }[] };
+    };
+    for (const [ax, at] of [
+      [det.xAxis, truth.xAxis.ticks.map((t) => ({ x: t.px, y: t.py }))],
+      [det.yAxis, truth.yAxis.ticks.map((t) => ({ x: t.px, y: t.py }))],
+    ] as const) {
+      expect(ax?.virtual).toBeUndefined(); // the frame is drawn: the axis is that line
+      expect(ax?.ticks.source).toBe('gridlines');
+      expect(ax?.ticks.side).toBe('inside');
+      const ticks = ax?.ticks.ticks ?? [];
+      // The heavy grid runs through every second label.
+      expect(ticks.length).toBeGreaterThanOrEqual(3);
+      for (const t of ticks) {
+        expect(Math.min(...at.map((p) => Math.hypot(p.x - t.point.x, p.y - t.point.y)))).toBeLessThan(1.5);
+      }
+      // No tick at either end of the axis: the frame lines are not gridlines.
+      const ends = [ax?.line.start ?? 0, ax?.line.end ?? 0];
+      for (const t of ticks) for (const e of ends) expect(Math.abs(t.along - e)).toBeGreaterThan(5);
+    }
   });
 });
