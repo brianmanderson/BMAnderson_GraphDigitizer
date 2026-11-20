@@ -42,7 +42,15 @@ l128-l139 busy scatterplots ("busy-scatter": 300-1000 small black "+", "x" or do
 dense, overlapping clusters with rows of equal y, 25-80 filled diamonds among them, one to three
 grey or coloured iso-probability curves through the cloud - the first a steep straight stretch
 meeting the curve at a 25-40 degree corner - "1%"/"3%"/"5%" labels at their starts, an offset
-range frame, log-log or linear; build_busy).
+range frame, log-log or linear; build_busy), l140-l169 marker styles ("marker-styles": two to
+four marker classes per chart with exact per-class centres - stars, triangles in four directions,
+pentagons, hexagons, thin diamonds, filled plus / x, thin x and +, circles, squares, diamonds; filled,
+open (white inside), hollow (the line shows through), black- or white-edged, semi-transparent and
+overlapping; 4.5-16 px; classes of one colour or of similar hues; x / y error bars with and without
+caps, in the marker's colour or black; pure scatter or on a connecting line; legends with sample
+markers inside the plot; light gridlines, the dark_background, ggplot and seaborn-darkgrid style
+sheets; JPEG and 72-96 dpi; every class is a scatter series seeded on one of its markers;
+build_marks).
 
 Seeds: a pixel on the series, as a user would click it: on visible ink of that series (checked in
 the rendered image: coverage >= 0.6 by the series colour, and no ink of another colour - gridline,
@@ -68,7 +76,7 @@ from matplotlib.ticker import FuncFormatter  # noqa: E402
 from PIL import Image  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
-COUNT = 140
+COUNT = 170
 
 FONTS = ["DejaVu Sans", "DejaVu Serif", "Arial", "Times New Roman", "Calibri", "Verdana", "Segoe UI"]
 DPIS = [72, 96, 100, 120, 150, 200]
@@ -101,6 +109,9 @@ SCAN_FROM = 116
 # build_busy.
 BUSY_FROM = 128
 BUSY_VARIANTS = ["log-log", "linear"]
+# Charts from MARKS_FROM on (l140-l169): marker styles for "Find points" - one entry of MARK_CHARTS
+# per chart. Built by build_marks.
+MARKS_FROM = 140
 PALETTE = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"]
 MARKERS = ["o", "s", "^", "D", "v", "x", "+"]
 STYLES = {"dashed": "--", "dotted": ":", "dashdot": "-."}
@@ -1031,6 +1042,262 @@ def build_busy(i: int):
     return Image.fromarray(rgb), doc, jpeg_q
 
 
+MARK_NAMES = {"o": "circle", "s": "square", "^": "triangle", "v": "triangle-down", "<": "triangle-left", ">": "triangle-right",
+              "D": "diamond", "d": "thin-diamond", "*": "star", "p": "pentagon", "h": "hexagon", "P": "plus-filled", "X": "x-filled",
+              "x": "x", "+": "plus"}
+# One chart each. series: (matplotlib marker, mode, colour, size in px). Modes: filled; open (inside
+# of the background colour: hides the line or bar behind it); hollow (no fill: they show through);
+# edge (filled, black edge - white on a dark page); wedge (filled, white edge, slightly
+# transparent: seaborn's scatter); alpha (semi-transparent, no edge); thin (stroke markers).
+MARK_CHARTS = [
+    dict(dpi=100, series=[("*", "filled", "C0", 11), ("p", "filled", "C1", 9), ("h", "filled", "C2", 9)]),
+    dict(dpi=120, jpeg=True, grid=True, series=[("v", "filled", "C3", 9), ("<", "filled", "C0", 9), (">", "filled", "C2", 9), ("d", "filled", "C4", 10)]),
+    dict(dpi=150, series=[("*", "open", "k", 14), ("p", "open", "k", 12), ("v", "filled", "k", 11)]),
+    dict(dpi=100, series=[("P", "filled", "C3", 10), ("X", "filled", "C0", 10), ("x", "thin", "k", 7)]),
+    dict(dpi=150, jpeg=True, err="y", caps=True, series=[("P", "open", "k", 13), ("X", "open", "k", 13)]),
+    dict(dpi=72, series=[("o", "filled", "C0", 4.5), ("s", "filled", "C1", 4.5), ("^", "filled", "C2", 5)]),
+    dict(dpi=150, series=[("o", "open", "C0", 16), ("*", "filled", "C3", 16), ("D", "filled", "C2", 14)]),
+    dict(dpi=120, jpeg=True, err="y", caps=True, ecolor="k", series=[("o", "edge", "C0", 10), ("s", "edge", "C3", 9), ("^", "edge", "C2", 10)]),
+    dict(dpi=100, layout="line", legend="frame", series=[("o", "edge", "C1", 8), ("s", "edge", "C0", 7.5), ("v", "edge", "C2", 8.5)]),
+    dict(dpi=120, layout="line", legend="plain", series=[("o", "open", "C0", 9), ("s", "open", "C1", 8), ("D", "open", "C2", 8)]),
+    dict(dpi=100, jpeg=True, layout="line", err="y", caps=True, series=[("o", "filled", "k", 8), ("o", "open", "k", 8)]),
+    dict(dpi=100, cloud=True, alpha=0.5, series=[("o", "alpha", "C0", 9), ("o", "alpha", "C1", 9)]),
+    dict(dpi=100, style="seaborn-v0_8-darkgrid", cloud=True, alpha=0.8, series=[("o", "wedge", "C0", 8), ("o", "wedge", "C1", 8), ("o", "wedge", "C2", 8)]),
+    dict(dpi=96, jpeg=True, cloud=True, alpha=0.6, grid=True, series=[("s", "alpha", "C3", 8), ("^", "alpha", "C0", 9)]),
+    dict(dpi=120, grid=True, similar=True, series=[("o", "filled", "#1f77b4", 8), ("o", "filled", "#6baed6", 8)]),
+    dict(dpi=100, layout="line", legend="frame", similar=True, series=[("s", "filled", "#d62728", 8), ("s", "filled", "#ff7f0e", 8)]),
+    dict(dpi=100, jpeg=True, similar=True, series=[("^", "filled", "#2ca02c", 9), ("^", "filled", "#98df8a", 9)]),
+    dict(dpi=150, similar=True, series=[("o", "filled", "k", 11), ("o", "filled", "#7f7f7f", 11)]),
+    dict(dpi=120, err="xy", caps=False, series=[("*", "filled", "C4", 13), ("h", "open", "C4", 11)]),
+    dict(dpi=150, jpeg=True, layout="line", err="y", caps=False, series=[("v", "filled", "k", 12), ("^", "hollow", "k", 12)]),
+    dict(dpi=100, err="xy", caps=True, ecolor="k", series=[("d", "filled", "C0", 10), ("p", "filled", "C3", 10)]),
+    dict(dpi=96, grid=True, legend="frame", series=[("o", "filled", "C0", 7), ("s", "filled", "C1", 7), ("^", "filled", "C2", 8), ("D", "filled", "C3", 7)]),
+    dict(dpi=120, jpeg=True, legend="plain", series=[("o", "open", "k", 9), ("s", "open", "k", 8.5), ("^", "open", "k", 10)]),
+    dict(dpi=100, style="dark_background", series=[("o", "filled", "C0", 8), ("*", "filled", "C1", 11), ("s", "filled", "C3", 8)]),
+    dict(dpi=120, style="dark_background", layout="line", legend="plain", series=[("o", "open", "C0", 9), ("D", "filled", "C3", 8), ("^", "open", "C5", 10)]),
+    dict(dpi=100, jpeg=True, style="dark_background", err="y", caps=True, series=[("s", "filled", "C4", 8), ("o", "open", "C4", 9)]),
+    dict(dpi=100, style="ggplot", series=[("o", "filled", "C0", 7), ("^", "filled", "C1", 8), ("s", "filled", "C5", 7)]),
+    dict(dpi=96, style="ggplot", layout="line", legend="frame", series=[("o", "filled", "C0", 7), ("o", "filled", "C1", 7)]),
+    dict(dpi=72, jpeg=True, grid=True, series=[("*", "filled", "C0", 9), ("p", "filled", "C1", 7), ("X", "filled", "C2", 8)]),
+    dict(dpi=120, layout="line", series=[("x", "thin", "k", 8), ("+", "thin", "k", 9), ("^", "open", "k", 10)]),
+]
+
+
+def build_marks(i: int):
+    """Marker styles for "Find points" (see MARKS_FROM): every marker class is a scatter series."""
+    rng = np.random.default_rng(5000 + i)
+    spec = MARK_CHARTS[i - MARKS_FROM]
+    dpi = int(spec["dpi"])
+    style = spec.get("style")
+    layout = spec.get("layout", "scatter")
+    err = spec.get("err")
+    caps = bool(spec.get("caps"))
+    cloud = bool(spec.get("cloud"))
+    a_fill = float(spec.get("alpha", 1.0))
+    w_in = float(rng.uniform(4.5, 6.5))
+    h_in = float(w_in * rng.uniform(0.62, 0.8))
+    font = str(FONTS[int(rng.integers(0, len(FONTS)))])
+    jpeg_q = int(rng.integers(50, 91)) if spec.get("jpeg") else 0
+    grid = bool(spec.get("grid"))
+    frame = "box" if rng.random() < 0.5 else "L"
+    xlo = float(rng.choice([0, 1, 10]))
+    sx = float(rng.choice([10, 50, 100]))
+    ylo = float(rng.choice([0, 0, 20]))
+    sy = float(rng.choice([1, 10, 100]))
+    xhi, yhi = xlo + sx, ylo + sy
+    px_pt = 72 / dpi
+    rc = {"path.snap": False, "font.family": font, "font.size": float(rng.uniform(8, 11))}
+    with plt.style.context(style or "default"), plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        face = np.array(to_rgb(ax.get_facecolor()))
+        dark = bool(face.mean() < 0.5)
+        series = []
+        for k, (m, mode, cname, ms_px) in enumerate(spec["series"]):
+            color = np.array(to_rgb(cname))
+            if dark and cname == "k":
+                color = np.array([1.0, 1.0, 1.0])
+            if cloud:
+                n = int(rng.integers(25, 46))
+                cu, cv = rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.7)
+                xs = xlo + sx * np.clip(rng.normal(cu, 0.16, n), 0.04, 0.96)
+                ys = ylo + sy * np.clip(rng.normal(cv, 0.16, n), 0.05, 0.95)
+            elif layout == "line" or err:
+                n = int(rng.integers(6, 13))
+                xs = np.linspace(xlo + 0.06 * sx, xhi - 0.06 * sx, n)
+                xs[1:-1] += rng.uniform(-0.25, 0.25, n - 2) * (xs[1] - xs[0])
+                ys = smooth_curve(rng, xs, ylo + 0.2 * sy, yhi - 0.2 * sy) + rng.normal(0, 0.04 * sy, n)
+                ys = np.clip(ys, ylo + 0.1 * sy, yhi - 0.1 * sy)
+            else:
+                n = int(rng.integers(10, 25))
+                xs = rng.uniform(xlo + 0.05 * sx, xhi - 0.05 * sx, n)
+                trend = smooth_curve(rng, np.sort(xs), ylo + 0.2 * sy, yhi - 0.2 * sy)
+                ys = np.interp(xs, np.sort(xs), trend) + rng.normal(0, 0.1 * sy, n)
+                ys = np.clip(ys, ylo + 0.05 * sy, yhi - 0.05 * sy)
+            thick = float(np.clip(ms_px / 9, 0.8, 1.6))
+            eff = color
+            kw = dict(mfc=color, mec=color, mew=0.5 * px_pt)
+            if mode in ("open", "hollow"):
+                kw = dict(mfc=face if mode == "open" else "none", mec=color, mew=float(rng.uniform(1.0, 1.6)) * thick * px_pt)
+            elif mode == "edge":
+                kw = dict(mfc=color, mec="w" if dark else "k", mew=float(rng.uniform(0.7, 1.1)) * thick * px_pt)
+            elif mode == "wedge":
+                kw = dict(mfc=(*color, a_fill), mec="w", mew=float(rng.uniform(0.5, 0.8)) * px_pt)
+                eff = face + a_fill * (color - face)
+            elif mode == "alpha":
+                kw = dict(mfc=(*color, a_fill), mec="none", mew=0.0)
+                eff = face + a_fill * (color - face)
+            elif mode == "thin":
+                kw = dict(mfc=color, mec=color, mew=float(rng.uniform(1.0, 1.5)) * thick * px_pt)
+            line = layout == "line"
+            lw_px = float(rng.uniform(1.0, 2.0))
+            ls = "none" if not line else "--" if k == 1 and rng.random() < 0.35 else "-"
+            elw_px = float(rng.uniform(0.8, 1.4)) * max(1.0, dpi / 100)
+            yerr = rng.uniform(0.03, 0.1, n) * sy if err else None
+            xerr = rng.uniform(0.012, 0.035, n) * sx if err == "xy" else None
+            ecolor = ("w" if dark else "k") if spec.get("ecolor") == "k" else color
+            if err:
+                ax.errorbar(xs, ys, yerr=yerr, xerr=xerr, marker=m, ls=ls, color=color, lw=lw_px * px_pt, ms=ms_px * px_pt,
+                            ecolor=ecolor, elinewidth=elw_px * px_pt, capsize=float(rng.uniform(2.5, 4.5)) * thick * px_pt if caps else 0,
+                            capthick=elw_px * px_pt, zorder=2 + k, **kw)
+            else:
+                ax.plot(xs, ys, marker=m, ls=ls, color=color, lw=lw_px * px_pt, ms=ms_px * px_pt, zorder=2 + k, **kw)
+            series.append(dict(marker=m, mode=mode, cname=cname, color=color, eff=eff * 255, ms_px=float(ms_px), xs=xs, ys=ys,
+                               line=line, seed_at=float(rng.uniform(0.25, 0.75))))
+        ax.set_xlim(xlo - 0.03 * sx, xhi + 0.03 * sx)
+        ax.set_ylim(ylo - (0.1 if err else 0.03) * sy, yhi + (0.1 if err else 0.03) * sy)
+        if grid:
+            ax.grid(True, color=str(rng.choice(["#d9d9d9", "#e0e0e0", "#cccccc"])), lw=float(rng.uniform(0.6, 1.0)) * px_pt)
+            ax.set_axisbelow(True)
+        if not style and frame == "L":
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+        ax.set_xlabel(str(rng.choice(["Time (h)", "Dose (Gy)", "Concentration (mM)", "Distance (mm)"])))
+        ax.set_ylabel(str(rng.choice(["Response (%)", "Signal (a.u.)", "Survival", "Uptake"])))
+        leg = None
+        if spec.get("legend"):
+            names = [str(v) for v in rng.permutation(["Control", "Treated", "Group A", "Group B", "Placebo", "High dose"])]
+            leg = ax.legend(names[:len(series)], loc="best", frameon=spec["legend"] == "frame")
+        fig.tight_layout()
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)
+        legend_box = None
+        if leg is not None:
+            bb = leg.get_window_extent()
+            p = px_of(np.array([[bb.x0, bb.y1], [bb.x1, bb.y0]]), H)
+            legend_box = [float(p[0, 0]), float(p[0, 1]), float(p[1, 0]), float(p[1, 1])]
+        for s in series:
+            s["points"] = px_of(ax.transData.transform(np.column_stack([s["xs"], s["ys"]])), H)
+        plt.close(fig)
+
+    rgb = rgba[:, :, :3]
+    bg = face * 255
+    for s in series:
+        s["seed"] = pick_mark_seed(s, series, rgb, bg, legend_box, W, H)
+    panel = style in ("ggplot", "seaborn-v0_8-darkgrid")
+    tags = ["scenario:marker-styles", "grid" if grid or panel else "no-grid", "frame:panel" if panel else "frame:box" if style or frame == "box" else "frame:L",
+            "jpeg" if jpeg_q else "png", "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
+    if grid:
+        tags.append("grid:light")
+    if dark:
+        tags.append("theme:dark")
+    if panel:
+        tags.append("theme:grey-panel")
+    if leg is not None:
+        tags += ["legend", "legend:samples"]
+    out_series = []
+    for k, s in enumerate(series):
+        mode = s["mode"]
+        stags = ["series:scatter", "color:black" if s["cname"] == "k" else "color:colour", f"marker:{MARK_NAMES[s['marker']]}",
+                 "layout:on-line" if s["line"] else "layout:scatter",
+                 "size:small" if s["ms_px"] < 6.5 else "size:large" if s["ms_px"] >= 12 else "size:mid"]
+        if mode != "thin":
+            stags.append("fill:open" if mode in ("open", "hollow") else "fill:filled")
+        if mode == "hollow":
+            stags.append("fill:hollow")
+        if mode == "edge":
+            stags.append("edge:white" if dark else "edge:black")
+        if mode == "wedge":
+            stags.append("edge:white")
+        if mode in ("alpha", "wedge"):
+            stags.append("alpha")
+        if err:
+            stags += ["errorbars", f"errorbars:{err}", "caps" if caps else "no-caps"]
+            if spec.get("ecolor"):
+                stags.append("errorbars:black")
+        if spec.get("similar"):
+            stags.append("similar-hues")
+        if sum(o["cname"] == s["cname"] for o in series) > 1:
+            stags.append("one-colour-classes")
+        pixels = [[round(float(x), 3), round(float(y), 3)] for x, y in s["points"]]
+        out_series.append({
+            "id": f"s{k}",
+            "kind": "scatter",
+            "tags": stags,
+            "color": [round(255 * float(c)) for c in s["color"]],
+            "style": "none",
+            "marker": s["marker"],
+            "markerFill": mode,
+            "lineWidthPx": 0,
+            "markerSizePx": round(s["ms_px"], 3),
+            "seed": s["seed"],
+            "data": [[round(float(x), 6), round(float(y), 6)] for x, y in zip(s["xs"], s["ys"])],
+            "pixels": pixels,
+            "markers": pixels,
+        })
+    name = f"l{i:02d}"
+    doc = {
+        "image": f"{name}.{'jpg' if jpeg_q else 'png'}",
+        "width": W,
+        "height": H,
+        "description": (f"Synthetic marker-styles chart, {len(series)} marker classes ({', '.join(s['mode'] + ' ' + MARK_NAMES[s['marker']] for s in series)}), "
+                        f"{'on lines' if layout == 'line' else 'scatter'}, dpi {dpi}, font {font}" + (f", style sheet {style}" if style else "")
+                        + (f", JPEG q{jpeg_q}" if jpeg_q else "") + ". Generated by bench/lines/generate.py."),
+        "tags": tags,
+        "plotBox": [[round(float(c), 3) for c in p] for p in box],
+        "legendBox": [round(v, 3) for v in legend_box] if legend_box else None,
+        "series": out_series,
+    }
+    return Image.fromarray(rgb), doc, jpeg_q
+
+
+def pick_mark_seed(s, series, rgb, bg, legend_box, W, H):
+    """A click on one marker of the class: its centre (a filled, edged, transparent or stroke marker:
+    the fill colour, one layer of it) or its outline (open, hollow), on the marker standing most
+    clear of every other marker, preferring the middle of the plot; never a legend sample."""
+    pts = s["points"]
+    ms = s["ms_px"]
+    clear = np.full(len(pts), 1e9)
+    for o in series:
+        d = np.hypot(pts[:, None, 0] - o["points"][None, :, 0], pts[:, None, 1] - o["points"][None, :, 1])
+        if o is s:
+            np.fill_diagonal(d, 1e9)
+        clear = np.minimum(clear, d.min(1) - (ms + o["ms_px"]) / 2)
+    if legend_box:
+        x0, y0, x1, y1 = legend_box
+        inside = (pts[:, 0] >= x0 - ms) & (pts[:, 0] <= x1 + ms) & (pts[:, 1] >= y0 - ms) & (pts[:, 1] <= y1 + ms)
+        clear[inside] = -1e9
+    xr = (pts[:, 0] - pts[:, 0].min()) / max(1e-9, np.ptp(pts[:, 0]))
+    score = np.minimum(clear, 12.0) - 4.0 * np.abs(xr - s["seed_at"])
+    if s["mode"] in ("open", "hollow"):
+        ang = np.radians([a for a in range(0, 360, 10) if 20 <= a % 90 <= 70])
+        rad = np.arange(0.25, 0.76, 0.05) * ms
+        offs = np.array([[r * np.cos(t), r * np.sin(t)] for r in rad for t in ang])
+    else:
+        offs = np.zeros((1, 2))
+    for idx in np.argsort(-score):
+        if clear[idx] < -1e8:
+            continue
+        for off in offs:
+            x, y = int(round(pts[idx, 0] + off[0])), int(round(pts[idx, 1] + off[1]))
+            if not (3 <= x < W - 3 and 3 <= y < H - 3):
+                continue
+            if 0.6 <= coverage_at(rgb, x, y, s["eff"], bg) <= 1.15:
+                return [x, y]
+    raise RuntimeError(f"no visible seed for a {s['mode']} {s['marker']} class")
+
+
 def pick_seed(s, others, rgb, bg, legend_box, W, H, strict=False):
     col = np.array(to_rgb(s["color"])) * 255
     if s["kind"] == "scatter" and s.get("fill") is False:
@@ -1113,7 +1380,7 @@ def main() -> int:
     total = 0
     traces = 0
     for i in range(COUNT):
-        img, doc, q = build_busy(i) if i >= BUSY_FROM else build_scan(i) if i >= SCAN_FROM else build(i)
+        img, doc, q = build_marks(i) if i >= MARKS_FROM else build_busy(i) if i >= BUSY_FROM else build_scan(i) if i >= SCAN_FROM else build(i)
         name = doc["image"]
         if SCAN_FROM <= i < BUSY_FROM:
             img = img.convert("L")  # a black-and-white scan: one grey channel
