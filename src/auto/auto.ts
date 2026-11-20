@@ -85,7 +85,11 @@ function reconcile(n: OcrLabel, t: OcrLabel, l: FoundLabel): OcrLabel {
   }
   if (parseNumberLabel(n.text) !== null && !droppedCharacters(n, l)) return n;
   const again = withMarks(t.text, conf(t.confidence), l);
-  return parseNumberLabel(again.text) !== null && !droppedCharacters(again, l) ? again : n;
+  if (parseNumberLabel(again.text) !== null && !droppedCharacters(again, l)) return again;
+  // The numeric reading lost characters that the text reading shows are not digits ("Q1 2000"
+  // read as "12000"): the label is not a number, and its digits are no value.
+  if (droppedCharacters(n, l) && t.text.trim() !== '' && !droppedCharacters(t, l)) return { text: t.text.trim(), confidence: conf(t.confidence) };
+  return n;
 }
 
 /** Numeric reading of one label: exponent joined, a dropped minus sign restored. */
