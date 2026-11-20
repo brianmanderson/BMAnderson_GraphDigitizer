@@ -61,7 +61,9 @@ description: >
   characters than `FoundLabel.runs` dropped one (`20k` → `20`, `20` → `0`): the text pass
   reconciles it (`reconcile` in auto.ts). Rotated labels are `AxisLabels.alternative`, read only
   when the upright reading declines. Any re-read of a `10ⁿ` label must not turn into a plain
-  number starting with `10` (`102` for 10⁻²): that is the confident-wrong trap.
+  number starting with `10` (`102` for 10⁻²): that is the confident-wrong trap. A word that split
+  (a lost point) must never leave a trusted digit behind: `FoundLabel.partial` labels give no
+  value, like `clipped` ones — never drop the guard to win an axis.
 - Tools that paid off (scratch scripts, outside the repo): an OCR lab that reads every label with
   a `label` in the truth under crop/OCR variants and scores them (1 288 labels, ~25 s); a per-gap
   dump of digit pitch and gap ink against the true text (how the point thresholds were set).
@@ -84,7 +86,7 @@ can pick another WASM core, so a small change on a new machine is not necessaril
 investigate per image (`Changed vs baseline` lines) before updating. Update the baseline
 (`-- --update`) only for an explained improvement or trade-off, in the same commit.
 
-## Known failures (2026-11-19: 71.4 % of 262 axes correct, 0 wrong)
+## Known failures (2026-11-19: 72.1 % of 262 axes correct, 0 wrong)
 
 Label variety: categorical and time-only axes (declined by design), times on a concise date axis
 (the date is only in the offset text), years on a second label line, offset notes over labels that

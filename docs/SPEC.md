@@ -734,9 +734,21 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
     the line → no value). A number has at most one point: with a certain one, none is uncertain.
     And in labels ≤ 15 px a label that disagrees only by its point ("1.5" among 10, 20, 25 where
     15 lies on the line) declines the axis: the others may have lost theirs (×10).
-  - **Word split at a point** (from the isolated fix ad6d319): two digits are joined across a gap of
-    up to one text height when its only ink is point-sized and in the baseline zone, whether or
-    not it formed a component (`pointBetween`).
+  - **Word split at a point** (isolated fixes ad6d319, 8c40168): two digits are joined across a gap
+    of up to one text height when it holds a point (`pointBetween`): ink in the baseline zone at
+    least a quarter as dark as the strokes, at most 0.4 text heights wide, inside the gap (not
+    its first or last column, where the digits' antialiased edges bleed in at a sub-pixel band
+    offset), and no stroke (≥ half the digits' darkness) above it — whether or not the point
+    formed a component (a 1-px point is one pixel; components need two).
+  - **Pieces of labels** (`FoundLabel.partial`): a chosen word with more text left beside it —
+    same row, not chosen itself, same baseline, height within 25 %, within one character pitch
+    measured on this axis's own labels, upright digit shapes, alone in its column (a turned axis
+    title's letters stand in a column of more title) — on X only if the label with the piece is
+    still centred on its tick, on Y only on the far side from the axis. Its reading is shown but
+    gives no value, like `clipped`: five pieces "8 6 4 2 0" of "0.8 … 0.0" agreed on ×10 (c97).
+  - **Ticks from gridlines** (optional `TickSet.source === 'gridlines'`, absent on `main`): no tick
+    marks are drawn, so labels are treated as in labels-only mode for the band start, edge slivers
+    and the "written against the line, may be cut off" flag.
   - **Suffixes, currency** (`splitAffixes`): `k`/`K` ×10³, `M` ×10⁶, `G`/`B` ×10⁹ after a digit
     (never lower-case `m`: milli or a misread `M`), `$ € £ ¥` before or after. The numeric
     whitelist cannot read them (`$` → `%`, `20k` → `20`), so they come from the text reading,
@@ -759,8 +771,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
     cannot tell turned text from small upright digits run together, so this is only
     `AxisLabels.alternative` (optional, `rotated: true`, no note): `autoCalibrate` reads it only
     when the upright reading gives no calibration and uses it only if it calibrates.
-  - **Results** (131 images): 63.7 % → **71.4 %** of axes correct, wrong 6 → **0** (w-high 2 → 0),
-    58.0 % of images end to end (48.1 %); on the 95 earlier images 120 → 128 of 190 axes correct.
+  - **Results** (131 images): 63.7 % → **72.1 %** of axes correct, wrong 6 → **0** (w-high 2 → 0),
+    58.8 % of images end to end (48.1 %); on the 95 earlier images 120 → 130 of 190 axes correct.
     `label-variety` 65.3 → 81.9 %. **Known failures** (declined): categorical and time-only axes
     (by design); times on a concise date axis (c152: the date is in the offset text, not read);
     months with the year on a second line (c130); offset notes `+1e4`/`+2.5e3` whose labels lost
