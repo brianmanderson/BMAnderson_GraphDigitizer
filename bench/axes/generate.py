@@ -1,5 +1,5 @@
 """
-Generates the synthetic axis-detection corpus in bench/axes/synthetic/: ~60 matplotlib charts
+Generates the synthetic axis-detection corpus in bench/axes/synthetic/: 120 matplotlib charts
 with exact ground truth (axis lines, plot box, every tick's pixel position, value and label).
 Run offline and commit the output; the benchmark itself never needs Python:
 
@@ -17,7 +17,11 @@ label step beyond the labelled range, gridlines poking past the frame, and a sca
 tone, noise and specks. Charts c76-c83 (`build_range`) are range frames: both spines moved outward
 from the data and trimmed to the first and last major tick, so the axis lines never meet (linear
 and log-log, with and without tick labels); their plot box truth is the rectangle from the corner
-where the extended axis lines would meet to each line's far end. Do not edit the output by hand and do not change a chart because the
+where the extended axis lines would meet to each line's far end. Charts c84-c119 (`build_styled`)
+imitate other plotting tools and layouts: ggplot2, seaborn, plotly, fivethirtyeight, bmh, dark
+themes, Excel (modern and 2003), MATLAB, Prism, Origin, a coloured figure background, a second Y
+axis, an inset, several panels, a histogram hiding its X ticks, and log axes with few decades
+(see STYLED). Do not edit the output by hand and do not change a chart because the
 detector gets it wrong: the corpus measures the detector, not the other way round.
 
 Coordinates are image pixels in the app's convention: integer = pixel centre, origin top-left,
@@ -51,7 +55,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.ticker as mticker  # noqa: E402
 import matplotlib.transforms as mtransforms  # noqa: E402
 import numpy as np  # noqa: E402
-from PIL import Image  # noqa: E402
+from PIL import Image, ImageOps  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "synthetic"
 COUNT = 70
@@ -564,6 +568,402 @@ def build_range(i: int) -> tuple[Image.Image, dict, int]:
     return img, doc, jpeg_q
 
 
+# Appended styled charts (build_styled): the looks of other plotting tools, emulated with
+# matplotlib's style sheets and rcParams. Per chart: the style, the content, and what is special.
+#   x / y        scale: "linear" (default), "date", "log10", "log3" (three decade ticks, no minor
+#                ticks) or "log2dec" (under two decades: two decade ticks, with minor ticks)
+#   ticks        ggplot only: tick marks drawn (False = none, like theme_minimal)
+#   minor_grid   thin minor gridlines halfway between the major ones (ggplot2's default panel)
+#   frame        "box" or "L" where the style leaves it open
+#   figure_bg    a coloured figure background around a white panel
+#   twin         a second Y axis at the right with its own scale ("linear" / "log10")
+#   inset        an inset axes (x0, y0, w, h in axes fractions) with its own numeric axes
+#   panels       (rows, cols) of independent panels; `truth_panel` is the labelled one
+#   rotation     degrees, like a scan (white-background charts only)
+STYLED = {
+    84: dict(style="ggplot", kind="line", dpi=100, ticks=True),
+    85: dict(style="ggplot", kind="scatter", dpi=72, ticks=False, minor_grid=True),
+    86: dict(style="ggplot", kind="bar", dpi=150, ticks=True, jpeg=82),
+    87: dict(style="ggplot", kind="line", x="date", dpi=200, ticks=False, minor_grid=True),
+    88: dict(style="seaborn-darkgrid", kind="line", dpi=100),
+    89: dict(style="seaborn-darkgrid", kind="bar", dpi=72, jpeg=75),
+    90: dict(style="seaborn-whitegrid", kind="scatter", dpi=150, rotation=1.2),
+    91: dict(style="seaborn-ticks", kind="line", y="log2dec", dpi=200, jpeg=85),
+    92: dict(style="plotly", kind="line", dpi=100),
+    93: dict(style="plotly", kind="scatter", x="log10", dpi=150, jpeg=80),
+    94: dict(style="plotly-white", kind="bar", dpi=72),
+    95: dict(style="fivethirtyeight", kind="line", dpi=100),
+    96: dict(style="fivethirtyeight", kind="bar", dpi=150, jpeg=78),
+    97: dict(style="bmh", kind="scatter", dpi=96),
+    98: dict(style="dark", kind="line", dpi=100, frame="box"),
+    99: dict(style="dark", kind="scatter", x="log10", y="log10", dpi=200, jpeg=85, frame="L"),
+    100: dict(style="plotly-dark", kind="line", dpi=150),
+    101: dict(style="excel", kind="line", dpi=96),
+    102: dict(style="excel", kind="bar", dpi=120, jpeg=88),
+    103: dict(style="excel2003", kind="line", dpi=200),
+    104: dict(style="matlab", kind="line", dpi=150),
+    105: dict(style="matlab", kind="scatter", y="log2dec", dpi=100, jpeg=85),
+    106: dict(style="prism", kind="scatter", x="log3", dpi=150),
+    107: dict(style="prism", kind="bar", dpi=96),
+    108: dict(style="origin", kind="line", dpi=200, jpeg=80, rotation=-1.5),
+    109: dict(style="matlab", kind="line", dpi=96, figure_bg="#cccccc"),
+    110: dict(style="default", kind="line", dpi=150, jpeg=85, frame="L", figure_bg="#d5e4eb"),
+    111: dict(style="default", kind="scatter", dpi=72, frame="box", figure_bg="#f5e9c8", grid=True),
+    112: dict(style="default", kind="line", dpi=100, frame="box", twin="linear"),
+    113: dict(style="default", kind="bar", dpi=150, jpeg=85, frame="box", twin="log10"),
+    114: dict(style="default", kind="line", dpi=150, frame="box", inset=(0.56, 0.54, 0.4, 0.4)),
+    115: dict(style="default", kind="scatter", dpi=100, frame="L", inset=(0.6, 0.13, 0.36, 0.34), grid=True),
+    116: dict(style="default", kind="line", dpi=100, frame="box", panels=(1, 2), truth_panel=0),
+    117: dict(style="default", kind="scatter", dpi=150, frame="L", panels=(1, 2), widths=(1, 2), truth_panel=1),
+    118: dict(style="default", kind="line", dpi=96, jpeg=85, frame="box", panels=(2, 1), truth_panel=0),
+    119: dict(style="matlab", kind="hist", dpi=120),
+}
+STYLED_X_RANGES = [(0, 10), (0, 100), (0, 60), (-3, 3), (0, 1), (10, 90), (0, 250), (2, 14)]
+STYLED_Y_RANGES = [(0, 1), (0, 100), (0, 40), (-1, 1), (0, 8), (20, 120), (0, 1500), (-20, 60)]
+STYLED_BAR_X = [list(range(2015, 2023)), [10, 20, 30, 40, 50, 60], [1, 2, 3, 4, 5, 6, 7], [0, 5, 10, 15, 20],
+                [100, 200, 300, 400, 500, 600]]
+
+
+def styled_look(style: str, spec: dict, dpi: int, rng: np.random.Generator) -> dict:
+    """The rcParams and flags of one look."""
+    px = 72 / dpi  # one device pixel in points
+    hair = max(1, round(dpi / 96)) * px  # a screenshot's 1-px hairline (2 px at high DPI)
+    look = dict(sheet="default", rc={}, lines={"bottom", "left"}, xticks=True, yticks=True, gridx=False, gridy=False,
+                tickdir="out", dark=False, panel=False, colors=["C0", "C1", "C2", "C3"], lw=1.6, font="DejaVu Sans")
+    if style == "ggplot":
+        ticks = spec.get("ticks", True)
+        look.update(sheet="ggplot", lines=set(), xticks=ticks, yticks=ticks, gridx=True, gridy=True, panel=True,
+                    font="Arial", colors=["#F8766D", "#00BFC4", "#7CAE00", "#C77CFF"])
+        look["rc"] = {"font.size": float(rng.uniform(8.5, 11)), "grid.linewidth": 1.0}
+        if not ticks:
+            look["rc"].update({"xtick.major.size": 0, "ytick.major.size": 0})
+    elif style in ("seaborn-darkgrid", "seaborn-whitegrid"):
+        white = style.endswith("whitegrid")
+        look.update(sheet=f"seaborn-v0_8-{'whitegrid' if white else 'darkgrid'}",
+                    lines={"bottom", "left", "top", "right"} if white else set(), xticks=False, yticks=False,
+                    gridx=True, gridy=True, panel=not white, font="Arial",
+                    colors=["#4C72B0", "#DD8452", "#55A868", "#C44E52"])
+        look["rc"] = {"font.size": float(rng.uniform(9, 11))}
+    elif style == "seaborn-ticks":
+        look.update(sheet="seaborn-v0_8-ticks", font="Arial", colors=["#4C72B0", "#DD8452", "#55A868", "#C44E52"])
+        look["rc"] = {"font.size": float(rng.uniform(9, 11))}
+    elif style in ("plotly", "plotly-white", "plotly-dark"):
+        bg, panel, grid, text = {"plotly": ("white", "#E5ECF6", "white", "#2a3f5f"),
+                                 "plotly-white": ("white", "white", "#EBF0F8", "#2a3f5f"),
+                                 "plotly-dark": ("#111111", "#111111", "#283442", "#f2f5fa")}[style]
+        look.update(lines=set(), xticks=False, yticks=False, gridx=True, gridy=True, panel=style == "plotly",
+                    dark=style == "plotly-dark", font="Verdana", zero=grid, zero_lw=2 * hair,
+                    colors=["#636EFA", "#EF553B", "#00CC96", "#AB63FA"], lw=2 * hair)
+        look["rc"] = {"font.size": 9.0, "figure.facecolor": bg, "axes.facecolor": panel, "grid.color": grid,
+                      "grid.linewidth": hair, "axes.grid": True, "axes.axisbelow": True, "text.color": text,
+                      "axes.labelcolor": text, "xtick.color": text, "ytick.color": text,
+                      "xtick.major.size": 0, "ytick.major.size": 0, "xtick.minor.size": 0, "ytick.minor.size": 0}
+    elif style == "fivethirtyeight":
+        look.update(sheet="fivethirtyeight", lines=set(), xticks=False, yticks=False, gridx=True, gridy=True,
+                    colors=["#008fd5", "#fc4f30", "#e5ae38", "#6d904f"], lw=3.0)
+        look["rc"] = {"font.size": 11.0}
+    elif style == "bmh":
+        look.update(sheet="bmh", lines={"bottom", "left", "top", "right"}, gridx=True, gridy=True, panel=True,
+                    tickdir="in", colors=["#348ABD", "#A60628", "#7A68A6", "#467821"])
+    elif style == "dark":
+        box = spec.get("frame") == "box"
+        look.update(sheet="dark_background", lines={"bottom", "left", "top", "right"} if box else {"bottom", "left"},
+                    dark=True, colors=["#8dd3c7", "#feffb3", "#fa8174", "#81b1d2"])
+        look["rc"] = {"font.size": float(rng.uniform(9, 11))}
+    elif style == "excel":
+        look.update(lines={"bottom"}, xticks=False, yticks=False, gridy=True, font="Calibri",
+                    colors=["#4472C4", "#ED7D31", "#A5A5A5", "#FFC000"], lw=2.25)
+        look["rc"] = {"font.size": 9.0, "axes.edgecolor": "#D9D9D9", "axes.linewidth": 0.75, "grid.color": "#D9D9D9",
+                      "grid.linewidth": 0.75, "text.color": "#595959", "axes.labelcolor": "#595959",
+                      "xtick.color": "#595959", "ytick.color": "#595959", "axes.axisbelow": True,
+                      "xtick.major.size": 0, "ytick.major.size": 0}
+    elif style == "excel2003":
+        look.update(lines={"bottom", "left", "top", "right"}, gridy=True, panel=True, font="Arial",
+                    colors=["#000080", "#FF00FF", "#008000"], lw=1.0)
+        look["rc"] = {"font.size": 10.0, "axes.facecolor": "#C0C0C0", "axes.edgecolor": "black", "axes.linewidth": hair,
+                      "grid.color": "black", "grid.linewidth": hair, "axes.axisbelow": True,
+                      "xtick.major.size": 4 * hair, "ytick.major.size": 4 * hair,
+                      "xtick.major.width": hair, "ytick.major.width": hair}
+    elif style == "matlab":
+        look.update(lines={"bottom", "left", "top", "right"}, tickdir="in", font="Arial",
+                    colors=["#0072BD", "#D95319", "#EDB120", "#7E2F8E"], lw=0.9)
+        look["rc"] = {"font.size": 10.0, "axes.linewidth": 0.5, "axes.edgecolor": "#262626",
+                      "xtick.color": "#262626", "ytick.color": "#262626", "xtick.top": True, "ytick.right": True,
+                      "xtick.major.size": 3.4, "ytick.major.size": 3.4, "xtick.minor.size": 1.7, "ytick.minor.size": 1.7,
+                      "xtick.major.width": 0.5, "ytick.major.width": 0.5, "xtick.minor.width": 0.5,
+                      "ytick.minor.width": 0.5}
+    elif style == "prism":
+        lw = float(rng.choice([2.0, 2.5]))
+        look.update(font="Arial", colors=["black", "#D62728", "#1F77B4"], lw=1.5)
+        look["rc"] = {"font.size": 11.0, "font.weight": "bold", "axes.labelweight": "bold", "axes.labelsize": 13.0,
+                      "axes.linewidth": lw, "xtick.major.size": 6.0, "ytick.major.size": 6.0,
+                      "xtick.major.width": lw, "ytick.major.width": lw}
+    elif style == "origin":
+        look.update(lines={"bottom", "left", "top", "right"}, tickdir="in", font="Arial",
+                    colors=["black", "#FF0000", "#0000FF"], lw=1.5, minor=True)
+        look["rc"] = {"font.size": 11.0, "font.weight": "bold", "axes.labelweight": "bold", "axes.linewidth": 1.5,
+                      "xtick.top": True, "ytick.right": True, "xtick.major.size": 6.0, "ytick.major.size": 6.0,
+                      "xtick.minor.size": 3.0, "ytick.minor.size": 3.0, "xtick.major.width": 1.5,
+                      "ytick.major.width": 1.5, "xtick.minor.width": 1.0, "ytick.minor.width": 1.0}
+    else:  # matplotlib's own look, a closed box or an "L"
+        lw = float(rng.choice([0.8, 1.0, 1.25]))
+        look.update(lines={"bottom", "left", "top", "right"} if spec.get("frame") == "box" else {"bottom", "left"},
+                    font=str(FONTS[int(rng.integers(0, len(FONTS)))]))
+        look["rc"] = {"font.size": float(rng.uniform(8.5, 11)), "axes.linewidth": lw,
+                      "xtick.major.width": min(lw, 0.8), "ytick.major.width": min(lw, 0.8),
+                      "xtick.major.size": float(rng.uniform(3, 6)), "ytick.major.size": float(rng.uniform(3, 6))}
+    if look["tickdir"] == "in":
+        look["rc"].update({"xtick.direction": "in", "ytick.direction": "in"})
+    if spec.get("grid"):
+        look.update(gridx=True, gridy=True)
+        look["rc"].update({"axes.grid": True, "grid.color": "#c8c8c8", "grid.linewidth": 0.6, "grid.linestyle": "--",
+                           "axes.axisbelow": True})
+    look["rc"].update({"path.snap": False, "font.family": look["font"]})
+    return look
+
+
+def styled_panel(ax, rng: np.random.Generator, spec: dict, look: dict, kind: str, xscale: str, yscale: str,
+                 small: bool = False) -> tuple[str, str]:
+    """Draws one panel's data and sets its scales, limits and locators. Returns the true scales."""
+    colors, lw = look["colors"], look["lw"]
+    if kind == "bar":
+        xs = np.array(STYLED_BAR_X[int(rng.integers(0, len(STYLED_BAR_X)))], dtype=float)
+        step = xs[1] - xs[0]
+        top = float(rng.choice([8, 40, 100, 1500]))
+        hs = top * rng.uniform(0.15, 0.95, len(xs))
+        prism = spec["style"] == "prism"
+        ax.bar(xs, hs, width=float(rng.uniform(0.55, 0.8)) * step, color=colors[1 if prism else 0],
+               edgecolor="black" if prism else "none", linewidth=1.5 if prism else 0, zorder=2)
+        if prism:
+            ax.errorbar(xs, hs, yerr=0.08 * top, fmt="none", ecolor="black", elinewidth=1.5, capsize=4, capthick=1.5,
+                        zorder=3)
+        ax.set_xlim(xs[0] - 0.75 * step, xs[-1] + 0.75 * step)
+        ax.set_ylim(0, top * 1.08)
+        ax.xaxis.set_major_locator(mticker.FixedLocator(xs))
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        # Bars labelled with calendar years: a date axis (SPEC -> Scale inference: integer years).
+        return ("year" if xs[0] > 1900 else "linear"), "linear"
+    if kind == "hist":  # touching bars over the whole X range: they hide the inward X ticks
+        edges = np.linspace(0, 100, 21)
+        mids = (edges[:-1] + edges[1:]) / 2
+        # At least 2 high, so every bar is taller than a tick and none of the X ticks shows.
+        hs = np.maximum(2, np.round(60 * np.exp(-0.5 * ((mids - float(rng.uniform(42, 58))) / float(rng.uniform(11, 15))) ** 2)))
+        ax.bar(mids, hs, width=5.0, color="#66AAD7", edgecolor="#262626", linewidth=0.5, zorder=2)
+        ax.set_axisbelow(True)
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 70)
+        return "linear", "linear"
+
+    n_series = int(rng.integers(1, 4))
+    n = int(rng.integers(12, 30))
+    if xscale == "date":
+        xs, xlim = make_data(rng, "date", n)
+    elif xscale == "log10":
+        lo = float(rng.integers(-3, 1))
+        hi = lo + float(rng.integers(3, 5))
+        xs, xlim = np.sort(10 ** rng.uniform(lo, hi, n)), (10 ** lo, 10 ** hi)
+    elif xscale == "log3":
+        xs, xlim = np.sort(10 ** rng.uniform(-1, 1, n)), (0.07, 15.0)
+    else:
+        xlim = STYLED_X_RANGES[int(rng.integers(0, len(STYLED_X_RANGES)))]
+        xs = np.sort(rng.uniform(xlim[0], xlim[1], n)) if kind == "scatter" else np.linspace(xlim[0], xlim[1], n)
+    if yscale == "log10":
+        lo = float(rng.integers(-2, 2))
+        ylim = (10 ** lo, 10 ** (lo + float(rng.integers(3, 5))))
+    elif yscale == "log2dec":
+        ylim = (0.5, 50.0) if spec["style"] == "matlab" else (3.0, 400.0)
+    else:
+        ylim = STYLED_Y_RANGES[int(rng.integers(0, len(STYLED_Y_RANGES)))]
+    u = (np.arange(n) + 0.5) / n if kind == "line" else np.sort(rng.uniform(0.03, 0.97, n))
+    log_y = yscale in ("log10", "log2dec")
+    for s in range(n_series):
+        shape = 0.12 + 0.76 * (u ** float(rng.uniform(0.4, 2.2)) if s % 2 == 0 else 1 - u ** float(rng.uniform(0.5, 2.0)))
+        v = np.clip(shape + rng.normal(0, 0.035, n), 0.03, 0.97)
+        if log_y:
+            ys = 10 ** (math.log10(ylim[0]) + v * (math.log10(ylim[1]) - math.log10(ylim[0])))
+        else:
+            ys = ylim[0] + v * (ylim[1] - ylim[0])
+        color = colors[s % len(colors)]
+        if kind == "scatter":
+            if spec["style"] == "prism":
+                ax.errorbar(xs, ys, yerr=(0.25 * ys if log_y else 0.05 * (ylim[1] - ylim[0])), fmt="o-", color=color,
+                            ms=6, lw=lw, capsize=3, zorder=3)
+            else:
+                ax.scatter(xs, ys, s=(14 if small else 26), color=color, marker=["o", "s", "^", "D"][s % 4], zorder=3)
+        else:
+            marker = {"excel": "o", "excel2003": "D", "origin": "s", "plotly": "o"}.get(spec["style"], "")
+            ax.plot(xs, ys, color=color, lw=lw, marker=marker, ms=3.5 if small else 5.0, zorder=3)
+    if xscale in ("log10", "log3"):
+        ax.set_xscale("log")
+    if log_y:
+        ax.set_yscale("log")
+    if xscale == "log3":
+        ax.xaxis.set_minor_locator(mticker.NullLocator())
+    if xscale == "date":
+        loc = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(loc)
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
+        ax.set_xlim(*xlim)
+    elif xscale == "linear":
+        pad = 0.0 if kind == "line" and spec["style"].startswith(("plotly", "excel")) else 0.04 * (xlim[1] - xlim[0])
+        ax.set_xlim(xlim[0] - pad, xlim[1] + pad)
+    else:
+        ax.set_xlim(*xlim)
+    if log_y:
+        ax.set_ylim(*ylim)
+    else:
+        pad = 0.05 * (ylim[1] - ylim[0])
+        ax.set_ylim(ylim[0] - pad, ylim[1] + pad)
+    return ("log10" if xscale == "log3" else xscale), ("log10" if log_y else yscale)
+
+
+def build_styled(i: int) -> tuple[Image.Image, dict, int]:
+    """A chart in the look of another plotting tool (see STYLED). Truth as for `build`: the axis is
+    the bottom/left edge of the plot area even where no line is drawn there (`lineDrawn: false`),
+    `tickMarks` says whether marks are drawn (and visible), `gridlines` whether the axis's major
+    tick positions are drawn as gridlines across the plot. With a second Y axis, an inset or
+    several panels the truth is one axes: the left Y axis; the main axes, not the inset; the
+    `truth_panel` (the first in reading order among equal panels, else the largest). Bars labelled
+    with calendar years are a date axis, as the app reads integer years."""
+    rng = np.random.default_rng(1000 + i)
+    spec = STYLED[i]
+    style, kind, dpi = spec["style"], spec["kind"], spec["dpi"]
+    xscale, yscale = spec.get("x", "linear"), spec.get("y", "linear")
+    jpeg_q, rotation = int(spec.get("jpeg", 0)), float(spec.get("rotation", 0.0))
+    rows, cols = spec.get("panels", (1, 1))
+    w_in = float(rng.uniform(4.6, 6.8)) * (1.5 if cols > 1 else 1.0)
+    h_in = float(rng.uniform(3.3, 4.6)) * (1.5 if rows > 1 else 1.0)
+    if w_in * dpi > 1200:
+        w_in, h_in = 1200 / dpi, 1200 / dpi * h_in / w_in
+    look = styled_look(style, spec, dpi, rng)
+    with plt.style.context(look["sheet"]), plt.rc_context(look["rc"]):
+        fig, grid_axes = plt.subplots(rows, cols, figsize=(w_in, h_in), dpi=dpi, squeeze=False,
+                                      gridspec_kw={"width_ratios": spec.get("widths", [1] * cols)})
+        axs = list(grid_axes.flat)
+        if spec.get("figure_bg"):
+            fig.patch.set_facecolor(spec["figure_bg"])
+            for a in axs:
+                a.set_facecolor("white")
+        # A column chart has no vertical gridlines (ggplot2 keeps them).
+        gridx = look["gridx"] and not (kind in ("bar", "hist") and style != "ggplot")
+        scales = []
+        for k, a in enumerate(axs):
+            scales.append(styled_panel(a, rng, spec, look, kind, xscale, yscale))
+            if look["sheet"] in ("default", "seaborn-v0_8-ticks", "dark_background"):
+                for side in ("bottom", "left", "top", "right"):
+                    a.spines[side].set_visible(side in look["lines"])
+            a.grid(gridx, axis="x")
+            a.grid(look["gridy"], axis="y")
+            if look.get("minor"):
+                a.minorticks_on()
+            if spec.get("minor_grid"):
+                for axis in (a.xaxis, a.yaxis):
+                    axis.set_minor_locator(mticker.AutoMinorLocator(2))
+                a.tick_params(which="minor", length=0)
+                a.grid(True, which="minor", color="white", linewidth=0.5)
+            if look.get("zero"):  # plotly's zero lines, twice as wide as its gridlines
+                if a.get_ylim()[0] < 0 < a.get_ylim()[1]:
+                    a.axhline(0, color=look["zero"], lw=look["zero_lw"], zorder=1.2)
+                if xscale == "linear" and kind != "bar" and a.get_xlim()[0] < 0 < a.get_xlim()[1]:
+                    a.axvline(0, color=look["zero"], lw=look["zero_lw"], zorder=1.2)
+            a.set_xlabel(str(rng.choice(["Time (s)", "Dose (Gy)", "Concentration", "x", "Year"])))
+            a.set_ylabel(str(rng.choice(["Response", "Signal (a.u.)", "Count", "Survival (%)", "y"])))
+            if len(axs) > 1:
+                a.set_title(f"({'abcd'[k]})", loc="left")
+            elif rng.random() < 0.5:
+                a.set_title(str(rng.choice(["Measured response", "Figure 4", "Results", "Dose-response"])))
+        ax = axs[int(spec.get("truth_panel", 0))]
+        xs_true, ys_true = scales[int(spec.get("truth_panel", 0))]
+        if spec.get("twin"):
+            ax2 = ax.twinx()
+            if spec["twin"] == "log10":
+                ax2.set_yscale("log")
+                t = np.linspace(*ax.get_xlim(), 14)[1:-1]
+                ax2.plot(t, 10 ** rng.uniform(0, 3, len(t)), color="C3", marker="o", lw=1.4, zorder=4)
+                ax2.set_ylim(0.2, 3000.0)
+            else:
+                lo = float(rng.choice([0, 100, -4]))
+                hi = lo + float(rng.choice([7, 35, 900]))
+                t = np.linspace(*ax.get_xlim(), 20)[1:-1]
+                ax2.plot(t, lo + (hi - lo) * rng.uniform(0.1, 0.9, len(t)), color="C3", lw=1.4, zorder=4)
+                ax2.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
+            ax2.set_ylabel(str(rng.choice(["Temperature (K)", "Rate (1/s)", "Second quantity"])))
+        if spec.get("inset"):
+            axin = ax.inset_axes(spec["inset"])
+            styled_panel(axin, rng, spec, look, kind, "linear", "linear", small=True)
+            axin.tick_params(labelsize=0.75 * look["rc"]["font.size"])
+            axin.grid(False)
+        fig.tight_layout()
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        hidden_x = kind == "hist"
+        frame = "ggplot" if not look["lines"] else style
+        years = xs_true == "year"
+        truth = extract_truth(fig, ax, W, H, "linear" if years else xs_true, ys_true, frame, look["tickdir"],
+                              no_x_ticks=not look["xticks"] or hidden_x, no_y_ticks=not look["yticks"])
+        if years:  # a year label means 1 January of that year
+            xs_true = "date"
+            truth["xAxis"]["scale"] = "date"
+            for t in truth["xAxis"]["ticks"]:
+                t["value"] = f"{int(round(t['value'])):04d}-01-01T00:00:00Z"
+        if gridx:
+            truth["xAxis"]["gridlines"] = True
+        if look["gridy"]:
+            truth["yAxis"]["gridlines"] = True
+        plt.close(fig)
+
+    img = Image.fromarray(rgba[:, :, :3])
+    if rotation:
+        img, truth = rotate(img, truth, rotation)
+    lines = look["lines"]
+    frame_tag = "box" if len(lines) == 4 else "L" if lines == {"bottom", "left"} else "none" if not lines else "x-only"
+    marks = look["xticks"] and not hidden_x, look["yticks"]
+    tags = [f"x:{xs_true}", f"y:{ys_true}", f"kind:{'bar' if kind == 'hist' else kind}",
+            "grid" if gridx or look["gridy"] else "no-grid", f"frame:{frame_tag}",
+            f"ticks:{look['tickdir'] if any(marks) else 'none'}", "rotated" if rotation else "upright",
+            "jpeg" if jpeg_q else "png", "antialiased", "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high",
+            "styled", f"style:{style}"]
+    if not marks[0]:
+        tags.append("x-no-tickmarks")
+    if not any(marks):
+        tags.append("no-tickmarks")
+    if (gridx and not marks[0]) or (look["gridy"] and not marks[1]):
+        tags.append("gridlines-only")  # an axis whose only position marks are gridlines
+    if look["panel"]:
+        tags.append("panel-fill")
+    if look["dark"]:
+        tags.append("dark")
+    if spec.get("minor_grid"):
+        tags.append("minor-grid")
+    if spec.get("figure_bg"):
+        tags.append("figure-bg")
+    if spec.get("twin"):
+        tags.append("twin-y")
+    if spec.get("inset"):
+        tags.append("inset")
+    if len(axs) > 1:
+        tags.append("multi-panel")
+    if hidden_x:
+        tags.append("bars-hide-ticks")
+    if "log2dec" in (xscale, yscale) or xscale == "log3":
+        tags.append("log-few-decades")
+    name = f"c{i:02d}"
+    ext = "jpg" if jpeg_q else "png"
+    extras = ", ".join(f"{k} {v}" for k, v in spec.items() if k not in ("style", "kind", "dpi", "jpeg", "rotation"))
+    doc = {
+        "image": f"{name}.{ext}",
+        "width": img.width,
+        "height": img.height,
+        "description": (f"Synthetic {kind} chart in the look of '{style}' ({xs_true} x {ys_true}"
+                        + (f"; {extras}" if extras else "") + f"), dpi {dpi}, rotation {rotation:.2f} deg"
+                        + (f", JPEG q{jpeg_q}" if jpeg_q else "") + ". Generated by bench/axes/generate.py."),
+        "tags": tags,
+        **truth,
+    }
+    return img, doc, jpeg_q
+
+
 def tick_entries(ax, axis: str, scale: str, line: np.ndarray, H: int, which: str):
     """Ticks inside the view limits, placed on the axis line (pixel centres)."""
     a = ax.xaxis if axis == "x" else ax.yaxis
@@ -733,8 +1133,9 @@ def main() -> int:
         old.unlink()
     bad = 0
     total = 0
-    for i in list(range(COUNT)) + sorted(HANDLETTERED) + sorted(RANGE_FRAME):
-        img, doc, q = build_handlettered(i) if i in HANDLETTERED else build_range(i) if i in RANGE_FRAME else build(i)
+    for i in list(range(COUNT)) + sorted(HANDLETTERED) + sorted(RANGE_FRAME) + sorted(STYLED):
+        img, doc, q = (build_handlettered(i) if i in HANDLETTERED else build_range(i) if i in RANGE_FRAME
+                       else build_styled(i) if i in STYLED else build(i))
         name = doc["image"]
         if q:
             img.save(OUT / name, quality=q)
@@ -742,12 +1143,13 @@ def main() -> int:
         else:
             img.save(OUT / name, optimize=True)
         (OUT / f"c{i:02d}.json").write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
-        err = self_check(img, doc)
+        # Light ink on a dark background: the check measures dark lines, so look at the negative.
+        err = self_check(ImageOps.invert(img.convert("RGB")) if "dark" in doc["tags"] else img, doc)
         total += (OUT / name).stat().st_size
         flag = "" if err <= 0.35 else "  <-- truth check FAILED"
         bad += err > 0.35
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} truth-check {err:4.2f}px  {' '.join(doc['tags'])}{flag}")
-    print(f"{COUNT + len(HANDLETTERED) + len(RANGE_FRAME)} charts, {total / 1e6:.2f} MB of images")
+    print(f"{COUNT + len(HANDLETTERED) + len(RANGE_FRAME) + len(STYLED)} charts, {total / 1e6:.2f} MB of images")
     return 1 if bad else 0
 
 

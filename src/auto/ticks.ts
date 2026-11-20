@@ -19,13 +19,18 @@
  *    the lattice is, and the residual (or the log-minor fit). Fewer than three majors (without
  *    minors to back them up) means no ticks and confidence 0 — an axis with labels but no tick
  *    marks must not get invented ones.
+ * 4. Short log minors: a mark must normally stick out 2 px past the line (less is the line's own
+ *    wobble or antialiasing). A log axis spanning two decades shows two decade ticks and minors
+ *    that, at a low DPI, stick out only 1–1.5 px. When neither side has a pattern, the axis is
+ *    scanned again with a 1-px floor and the result kept only if it is a log pattern
+ *    (`LOG_FALLBACK_*`): minors at log10(2…9) of the decades, which chance bumps do not form.
  */
 
 import { INK_THRESHOLD, sample, type DarknessMap } from './darkness.ts';
 import { familyPoint, type Frame } from './frame.ts';
 import type { LineCandidate, Point, Tick, TickSet, TickSide } from './types.ts';
 
-interface Segment {
+export interface Segment {
   along: number;
   length: number;
   mass: number;
@@ -35,6 +40,14 @@ interface Segment {
 
 export interface TickOptions {
   maxTickLength: number;
+  /**
+   * A mark may start this many px beyond the line's edge instead of right at it (default 0). For
+   * an axis without a drawn line (the edge of a filled panel): matplotlib's ggplot style paints a
+   * white border over the panel's edge, which leaves a gap between the grey and the tick.
+   */
+  startGap?: number;
+  /** Least distance (px) a mark must stick out past the line's edge (default 2; see header, 4). */
+  minExtent?: number;
 }
 
 export function defaultTickOptions(width: number, height: number): TickOptions {
@@ -62,20 +75,24 @@ export function scanSide(map: DarknessMap, frame: Frame, line: LineCandidate, si
     const p = familyPoint(frame, line.family, t, base + sign * k);
     return sample(map, p.x, p.y);
   };
+  const startGap = opts.startGap ?? 0;
   for (let t = from; t < to; t++) {
     let ext = 0;
     let mass = 0;
     let ref = 0;
-    for (let k = 0; k <= maxK; k++) {
+    // Where the mark starts: at the line, or (startGap) at the first ink within the gap.
+    let k0 = 0;
+    while (k0 < startGap && at(t, k0) + at(t + 1, k0) < tau) k0++;
+    for (let k = k0; k <= maxK + k0; k++) {
       const a = at(t, k);
       const b = at(t + 1, k);
       if (a < 0 || b < 0) break;
       // Adjacent columns summed: a thin antialiased tick split over two keeps its darkness.
       const v = a + b;
       if (v < tau || v < 0.5 * ref) break;
-      if (k === 0) ref = v;
-      else if (k === 1) ref = Math.min(ref, v);
-      ext++;
+      if (k === k0) ref = v;
+      else if (k === k0 + 1) ref = Math.min(ref, v);
+      ext = k + 1;
       mass += v;
     }
     extents.push({ along: t + 0.5, ext, mass });
@@ -85,7 +102,8 @@ export function scanSide(map: DarknessMap, frame: Frame, line: LineCandidate, si
   // A mark must stick out past the line's edge by at least half the line's thickness: a thick
   // hand-ruled or scanned line wobbles by a few pixels along its length, and those bumps are not
   // ticks (a drawn tick is several line widths long).
-  const minExt = Math.max(2, 0.5 * line.thickness);
+  const minExt = Math.max(opts.minExtent ?? 2, 0.5 * line.thickness);
+  const startExt = Math.min(2, minExt);
   // A tick ends in a free tip. A tick label written against the line (hand-lettered labels, or
   // labels close to a thick blurred line) also makes a short mark, but there the ink spreads
   // sideways just beyond the mark's far end, where its own columns are empty: the rest of the
@@ -115,17 +133,17 @@ export function scanSide(map: DarknessMap, frame: Frame, line: LineCandidate, si
   let i = 0;
   while (i < extents.length) {
     const e = extents[i];
-    if (!e || e.ext < 2) {
+    if (!e || e.ext < startExt) {
       i++;
       continue;
     }
     let j = i;
-    while (j + 1 < extents.length && (extents[j + 1]?.ext ?? 0) >= 2) j++;
+    while (j + 1 < extents.length && (extents[j + 1]?.ext ?? 0) >= startExt) j++;
     const group = extents.slice(i, j + 1);
     const longest = Math.max(...group.map((g) => g.ext));
     const t0 = from + i;
     const t1 = from + j + 1; // each extent sums columns t and t + 1
-    if (group.length <= maxWidth && longest >= minExt && longest < opts.maxTickLength + 1) {
+    if (group.length <= maxWidth && longest >= minExt && longest < opts.maxTickLength + startGap + 1) {
       let sw = 0;
       let st = 0;
       for (const g of group) {
@@ -342,7 +360,31 @@ function analyseWith(
  * plot (+1 below the X axis, −1 left of the Y axis). Ticks drawn across the line ("inout") are
  * found on both sides and reported as `both`.
  */
+/** Short-minor fallback (header, 4): the floor, the least number of minors and their log fit. */
+const LOG_FALLBACK_EXTENT = 1;
+const LOG_FALLBACK_MINORS = 6;
+const LOG_FALLBACK_SCORE = 0.9;
+
 export function detectTicks(map: DarknessMap, frame: Frame, line: LineCandidate, outsideSign: 1 | -1, opts: TickOptions): TickSet {
+  const found = detectTicksWith(map, frame, line, outsideSign, opts);
+  if (found.ticks.length || opts.minExtent !== undefined) return found;
+  const short = detectTicksWith(map, frame, line, outsideSign, { ...opts, minExtent: LOG_FALLBACK_EXTENT });
+  const minors = short.ticks.filter((t) => t.kind === 'minor');
+  const majors = short.ticks.filter((t) => t.kind === 'major');
+  if (short.pattern !== 'log' || minors.length < LOG_FALLBACK_MINORS || majors.length < 2 || !short.spacing) return found;
+  // The log fit itself, measured again on the kept marks (analyseMarks keeps minors at ≥ 0.8).
+  const first = majors[0]?.along ?? 0;
+  const tol = Math.max(1.5 / short.spacing, 0.012);
+  const fractions = [2, 3, 4, 5, 6, 7, 8, 9].map((k) => Math.log10(k));
+  const fit = (dir: 1 | -1) =>
+    minors.filter((m) => {
+      const f = ((((m.along - first) / (short.spacing as number)) % 1) + 1) % 1;
+      return fractions.some((l) => Math.abs((dir > 0 ? f : 1 - f) - l) <= tol);
+    }).length / minors.length;
+  return Math.max(fit(1), fit(-1)) >= LOG_FALLBACK_SCORE ? short : found;
+}
+
+function detectTicksWith(map: DarknessMap, frame: Frame, line: LineCandidate, outsideSign: 1 | -1, opts: TickOptions): TickSet {
   const out = analyseMarks(frame, line, scanSide(map, frame, line, outsideSign, opts), 'outside');
   const inn = analyseMarks(frame, line, scanSide(map, frame, line, outsideSign === 1 ? -1 : 1, opts), 'inside');
   if (out.confidence > 0.3 && inn.confidence > 0.3) {

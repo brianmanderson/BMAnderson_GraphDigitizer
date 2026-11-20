@@ -114,12 +114,13 @@ description: >
     an end than the chain's usual outline never cut; one odd column between two that fit is
     noise; slivers beside a rectangle are its blurred side). Unit = commonest width among the
     segments sharing an end with the clicked one; a touching chain n units wide is n bars. Family:
-    baseline = the end most bars share (unless its ends are free and the far ends sit on ink: a
-    100 % stack's top), else stacked segments sitting on ink; a baseline must explain at least as
+    baseline = the end most bars share (unless it is their far end and the other ends sit on ink: a
+    100 % stack's top, gridline or not), else stacked segments sitting on ink; a baseline must explain at least as
     many bars as the stacked reading. Not bars: lengths all alike and ≤ 30 px, longest bar
     < max(8 px, ¼ width), fewer than 4 marker-sized ones, a bar with non-bar ink of its colour on
-    its side or touching pieces that share no end (a thick line's flat stretches). A value end on
-    the plot box's edge → looked at again over the whole image. Returns `kind: 'markers'`, one
+    its side or touching pieces that share no end (a thick line's flat stretches). Box cut the
+    bars (a value end on its edge, or series ink just past an edge a bar ends on) → looked at
+    again over the whole image. Returns `kind: 'markers'`, one
     point per bar at its value end's middle.
 11. Doubling back (`follow.ts`, 2026-11-19): `followStroke` walks the stroke as a path (ring of
     ~1.5 line widths → arcs of ink; straightest unwalked arc; centred on the cross-section;

@@ -33,7 +33,9 @@
  *   curve between its risers) is not one either.
  *
  * Only tried when the click is inside a solid SEED_BLOCK-square of the series' ink (a bar's fill).
- * A value end on the plot box's edge (the box cut the bars) → looked at again over the whole image.
+ * When the plot box cut the bars (a value end on its edge, or the series' ink going on just past an
+ * edge a bar ends on: a box stopping at the last gridline), they are looked for again over the
+ * whole image.
  *
  * Not found (docs/SPEC.md → Known failures): bars without fill (their outline is a thin stroke,
  * traced as a line), bars told apart only by their hatching, bars of height zero.
@@ -541,10 +543,11 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
   }
   let based = zCount >= 2 && zCount >= 0.5 * bars.length;
   if (based) {
-    // A shared far end (top; right for horizontal bars) that is free while the other ends sit on
-    // ink is the top of a full stack (a 100 % chart), not a baseline.
+    // A shared far end (top; right for horizontal bars) while the other ends sit on ink is the top
+    // of a full stack (a 100 % chart), not a baseline — whether or not a gridline touches it.
+    // (Bars hanging from a top baseline have free bottoms.)
     const onBase = ends.filter((s) => Math.abs(s.lo - z) <= ALIGN || Math.abs(s.hi - z) <= ALIGN);
-    const far = onBase.filter((s) => (g.vertical ? Math.abs(s.lo - z) <= ALIGN && !s.loAttached && s.hiAttached : Math.abs(s.hi - z) <= ALIGN && !s.hiAttached && s.loAttached));
+    const far = onBase.filter((s) => (g.vertical ? Math.abs(s.lo - z) <= ALIGN && s.hiAttached : Math.abs(s.hi - z) <= ALIGN && s.loAttached));
     if (far.length > 0.5 * onBase.length) based = false;
   }
   // Whether ink (of any colour) runs from the bar's end at `from` to the baseline, but for seams.
@@ -642,8 +645,9 @@ export function filledBars(input: BarsInput): TracedPoint[] | null {
   if (!inBlock(input)) return null;
   const first = barsIn(input);
   if (!first || !first.clipped || !input.region.quad) return first?.points ?? null;
-  // A bar's value end on the edge of the plot box: bars do not leave the plot area, the box is
-  // wrong (or the image is a crop). Look again over the whole image.
+  // The plot box cut the bars (a value end on its edge, or the series' ink going on past an edge
+  // a bar ends on — a box stopping at the last gridline): bars do not leave the plot area, the box
+  // is wrong. Look again over the whole image.
   const { img, model } = input;
   const n = img.width * img.height;
   const alpha = new Float32Array(n);
@@ -688,9 +692,17 @@ function barsIn(input: BarsInput): { points: TracedPoint[]; clipped: boolean } |
   const points = pointsOf(best.g, best.f);
   if (!points.length) return null;
   const { g } = best;
-  const clipped = points.some((p) => {
-    const v = g.vertical ? p.py : p.px;
-    return v <= g.v0 + 1 || v >= g.v1 - 1;
-  });
+  const atEdge = (v: number) => v <= g.v0 + 1 || v >= g.v1 - 1;
+  const { img, model } = input;
+  // The series' ink just past the box's edge, in the bar's middle column.
+  const beyond = (centre: number, v: number): boolean => {
+    const out = v <= g.v0 + 1 ? Math.round(g.v0) - 2 : Math.round(g.v1) + 2;
+    const x = g.vertical ? Math.round(centre) : out;
+    const y = g.vertical ? out : Math.round(centre);
+    return x >= 0 && y >= 0 && x < img.width && y < img.height && coverage(model, rgbAt(img, y * img.width + x)) >= ON_ALPHA;
+  };
+  const clipped =
+    points.some((p) => atEdge(g.vertical ? p.py : p.px)) ||
+    best.f.bars.some((b) => [b.seg.lo, b.seg.hi].some((v) => atEdge(v) && beyond(b.centre, v)));
   return { points, clipped };
 }
