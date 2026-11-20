@@ -133,8 +133,9 @@ the plot area beyond the outermost gridlines (c94, c101: box 12–15 px short); 
 paints its spines in the background colour over the zero gridline and the gridlines' ends (c96 X
 axis 64 px off, c95 2.5 px); a right log Y whose minors are shorter than the thick spine (c69);
 ticks hidden behind bars or < 2 px past a thick axis (c31, c48, c56 — a 1-px floor for even
-patterns was tried: it rescued only c48, with a false tick, so it was not kept); c97's Y labels
-lose their 1-px decimal points in label finding (a labels.ts fix, not detection). Twin Y →
+patterns was tried: it rescued only c48, with a false tick, so it was not kept). A newly found
+axis can expose label-finding bugs (c97: 1-px decimal points lost, ×10 suggested) — fix those in
+`labels.ts`, never by hiding the axis. Twin Y →
 the left axis; insets → the main axes; several panels → the first among equal ones, else the
 largest — the detector takes the strongest pair, which is that one in the corpus, but it does
 not reason about panels yet. The `bench:lines` real figure `angle-response-chea` now gets its

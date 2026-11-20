@@ -552,7 +552,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   Results (honest corpus baseline → now, 131 images): axes 82.8 → 98.1 %, box 83.2 → 97.7 %,
   major-tick recall 85.3 → 94.3 %, minor 67.1 → 72.6 %, precision 97.9 → 99.2 %, bare 13 → 0;
   gridline recall (majors found from gridlines on axes whose only marks are gridlines) 88.8 %;
-  calibration correct 58.4 → 74.0 % of axes, images calibrated end to end 44.3 → 59.5 %. Per
+  calibration correct 58.4 → 74.8 % of axes, 0 wrong, images calibrated end to end
+  44.3 → 61.1 % (with the axes-labels decimal-point fixes below). Per
   style: ggplot 0 → 100 % axes and box (the three old ggplot charts c11, c35, c59: 0 → 100 %,
   ticks 17/17), seaborn darkgrid/whitegrid, plotly (all three), dark themes, Excel 0 → 100 %
   axes; MATLAB 62.5 → 100 % (c104 box with inward ticks on four sides, c119 histogram), bmh
@@ -567,9 +568,12 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   gridline, 12–15 px short); fivethirtyeight paints its 3-pt spines in the background colour,
   hiding the zero gridline and the gridlines' ends (c96 X axis 64 px off, c95 2.5 px); a right log
   Y axis whose minors are shorter than its thick spine (c69); ticks hidden behind bars or
-  sticking out < 2 px past a thick axis (c31, c48, c56); one wrong calibration, c97 (bmh, 96 dpi):
-  its Y labels' 1-px decimal points are lost in label finding ("0.8" read as "8"), fixed in
-  `labels.ts` by session axes-labels.
+  sticking out < 2 px past a thick axis (c31, c48, c56). Finding c97's left Y axis (bmh, 96 dpi)
+  first exposed a label-finding bug, now fixed in `labels.ts` / `suggest.ts` (session
+  axes-labels): its 1-px decimal points were lost and "0.8" was read as "8", a confident ×10. A
+  point between two digits now joins them unless a real stroke stands above the baseline zone,
+  and a word with a same-baseline piece left beside it is `FoundLabel.partial` and given no
+  value (like `clipped`); c97's Y is now right (high, 0.10 %).
 - **Corpus** (`bench/axes/`): 120 matplotlib charts from `generate.py` (seeded; Python 3.12 +
   matplotlib 3.10; output committed, ~5.5 MB) — c84–c119 (`build_styled`, appended last: the
   looks of other tools via style sheets and rcParams — ggplot2 with and without ticks and minor
