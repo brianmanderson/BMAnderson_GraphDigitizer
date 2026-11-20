@@ -1595,7 +1595,37 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     value end — a bar on the baseline: its top edge (horizontal: its right end); below the
     baseline: its bottom edge (left end); a stacked segment: its edge away from the baseline (its
     top); with an error bar: the bar's own end, never the cap; an edged bar: the middle of the
-    edge's stroke. Method: the series' ink is cut into runs along the value axis (both
+    edge's stroke. Two ways in, one reading (outlined and hatched bars, 2026-11-20): a click in a
+    solid 4 × 4 block of the series' colour reads *filled bars* (below); when that finds nothing and
+    the fill has an outline of another colour (the strongest ink met walking out of the fill four
+    ways, at least three of them nearer it than to the background), or the click is on a thin
+    stroke of the series (an outline, a hatch line), the bars are read as *outlined cells*: walls =
+    the outline colour's ink on straight runs ≥ 7 px (outlines, stems, caps, rulings — never a
+    diagonal hatch line or a dot), thickened by a pixel; cells = what the walls enclose (with an
+    outline of another colour, whatever is neither fill nor outline closes a cell too, so a thin
+    outline blended into the background still does); a bar = a closed cell whose bounding box
+    holds no other cell (an error bar's stem and caps inside it are walls, not cells); its series
+    = every such cell drawn alike — the same face colour (within 45), the same texture (the
+    outline colour's ink inside, off the walls: density read in ~16-px blocks, median block; a
+    texture "all over" — ≥ 3 blocks, ¾ of them ≥ 3 % — is a pattern, a few marked blocks are a
+    curve crossing; densities within 0.02 + 0.3 × the larger; how often the next pixel across,
+    down and along both diagonals is texture too, within 0.3: the hatch angle). Hatching ruled
+    along the axes ("++", "--", "||") cuts a bar into a grid of empty cells walled like bars:
+    neighbours across one wall that line up exactly and are ≤ 24 px across that way join, and four
+    or more joined are one *ruled* inside, moved out past the last rule to just inside the
+    outline (a partial row too thin to be a cell is part of it); ruled matches only ruled. The
+    matched cells become solid boxes inside their walls, the walls their outline, cells drawn
+    otherwise neither fill nor background (what a stacked segment sits on), a run never bridges a
+    wall from one cell into another — and the filled reading runs on that. Not outlined bars: a
+    clicked wall that is not its cell's own side (the run through the click must cover ≥ 60 % of
+    the side and not go on past both its ends: a gridline, a frame line, a flat dash of a curve
+    over a bar), a click on thin ink inside a cell that is not patterned all over (a dash or a
+    curve crossing an outlined bar), cells all of one length (a ruled grid of the series' colour),
+    a cell reaching from one edge of the box to the other along a third (background between the
+    last bar and the frame). Of one fill colour, only the bars textured like the clicked one count
+    (`alike`: other thin ink inside the fill, not on a straight run; a bar too short for three
+    blocks is hatched only when marked all over, ≥ 10 % dense and running on diagonally — a curve
+    crossing a short bar is not). Filled reading: the series' ink is cut into runs along the value axis (both
     orientations are tried; the one with more rectangles wins), thin ink of another colour inside
     a run (hatching, caps, a curve over the bars) bridged; runs of neighbouring columns chain, and
     a chain is cut into rectangles whose ends stay put (a column with more ink beyond an end than
@@ -1603,11 +1633,14 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     two that fit is noise; a sliver beside a rectangle is its blurred side). The unit width is the
     commonest among the rectangles sharing an end with the clicked one; in a chain of touching
     rectangles one n units wide is n bars of one height (a histogram drawn without edges). The
-    baseline is the end most bars share — unless it is their far end (top; right for horizontal
+    baseline is the end most bars share, voted only by bars at least ⅕ of the clicked one's length
+    (a row of legend swatches, or the risers of a thick step curve, lined up by chance) — unless it is their far end (top; right for horizontal
     bars) and their other ends sit on ink (the top of a 100 % stack, with or without a gridline
     along it); bars away from it count when ink runs from them to it (stacked
-    segments). Without a baseline the bars are stacked segments sitting on ink, value at the far
-    end; a baseline must explain at least as many bars as that reading. Not bars: lengths all
+    segments). Without a baseline the bars are stacked segments sitting on ink down to the floor
+    most of them reach (where that ink ends; all sitting or all hanging, whichever explains more —
+    a legend swatch sits on its frame with background below), value at the far end; a baseline
+    must explain at least as many bars as that reading. Not bars: lengths all
     alike and ≤ 30 px (markers in a row), the longest shorter than max(8 px, ¼ of the width), fewer
     than four marker-sized rectangles (filled squares), marker-sized rectangles none of which is
     longer than 1.5 widths (the fills of circles, squares or black-edged markers on their error
@@ -1620,6 +1653,28 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     in curve mode) and answers before any marker code, so the marker classing (colour strength,
     outline, second shape) never sees or filters a bar click; when it finds no bars, Find points
     runs as before — which is why compact marker-sized families are left to it.
+  - *Bar styles (2026-11-20)*: appended l230–l237 (8 charts, 22 bar series; l200–l229
+    byte-identical): four black-and-white series told apart only by hatching (`//`, `\\`, `xx`,
+    `..`); outlined, hatched and solid black bars of one colour with error caps and negative values;
+    two series hanging below a bottom spine drawn at zero (`bars:zero-spine`); hatched and outlined
+    horizontal bars on both sides of a zero line; one face colour with plain, `//` and `xx` hatching
+    (`bars:same-face`); a black-and-white stack with an outlined, a hatched and a ruled `++` layer
+    (`hatch:ruled`); an outlined histogram; four coloured series with error caps and negative values
+    (`bars:four`). Honest baseline first (the engine unchanged: bars kind 80.4 %, marker recall
+    75.4 %, precision 29.7 %), then outlined cells, texture grouping, the ⅕-length baseline
+    vote and the stacked floor: **bars (51)** kind 80.4 → 100 %, recall 75.4 → 100 %, precision
+    29.7 → 100 %, wrong group 3.1 → 0 % (on the 29 round-one bar traces: recall 93.5 → 100 %,
+    precision 63.3 → 100 %); `bars:hatched` 22.9 / 2.4 → 100 / 100 %, `bars:outlined` 0 / 0 → 100 /
+    100 %, `bars:negative` 67.1 / 71.3 → 100 / 100 %, `bars:stacked` 71.9 / 14.6 → 100 / 100 %;
+    OVERALL kind 95.7 → 97.2 %, marker recall 77.8 → 78.6 %, precision 80.5 → 85.8 %. Every
+    changed trace is a bar trace (`l228/s0,s1`, `l229/s0` of round one; the new ones); no other
+    trace changed. Trade-off, explained: the wrong-group *rate* (wrong-group markers ÷ markers
+    found) rose in OVERALL (8.52 → 8.71 %) and `color:black`, `dpi:mid`, `jpeg`, `no-grid`, `png`,
+    `synthetic` although the wrong-group count fell (951 → 921): ~580 hatching "markers" the old
+    marker path returned for bar clicks left the denominator. Negative bars: the zero line inside
+    the box was already read (`l219`, `l229`); with a bottom spine drawn at zero (`l232`)
+    `detectAxes` boxed the whole plot here and both series are found — the box ending at a zero
+    spine stays a possible failure (below).
   - *Benchmark*: l200–l229 (`bench/lines/generate_kinds.py`, called by `generate.py`): 16 path
     charts (32 series, tags `series:path` plus `loop`, `closed`, `cusps`, `merged-tips`,
     `vertical`, `overhang`, `spiral`, `parametric`, `self-crossing`, …) and 14 bar charts (29
@@ -1658,14 +1713,16 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     and shared zero-stress points at every reload, `l203`) close early and are not used; a P–E
     ellipse crossing another loop of a similar grey is taken for markers (`l202/s0`); an S-curve
     whose fold crosses the other S-curve (`l208/s1`) and the same-colour minor loop (`l205/s1`)
-    follow the other series (wrong). Bars: outlined bars without fill (`bars:outlined`) and bars
-    told apart only by hatching on white (`l228/s1`) are not found — their ink is a thin stroke,
-    traced as a curve or matched as markers; cross-hatched grey bars (`l229/s0`) give hatching
-    "markers"; one 100 % stack's JPEG boundary keeps one bar short (`l222/s3`, 6/7); a spine drawn
-    at zero is taken for the x axis by `detectAxes`, so bars below it are outside the plot box
-    and lost (unchanged by the 2026-11-19 detection work: the box still ends at the zero line; a
-    whole-image second look whenever a baseline sits on the box's edge found more false bars than
-    true ones, and was dropped); a click on a bar in curve mode traces its outline as before.
+    follow the other series (wrong). Bars (after 2026-11-20 every bar trace of the corpus is
+    found, `l200`–`l237`): outlined bars all of one length are taken for a ruled grid and left to
+    Find points; a thin outline blended into a fill of nearly its grey (`l229/s0`, a JPEG) is read
+    up to ~2 px inside the drawn edge; touching outlined bars of one series, of equal height and
+    ruled hatching (`++`), could join into one; a click on thin ink between hatch lines too close
+    for a 4 × 4 block of fill (pitch under ~8 px) is read as outlined, not filled; when a spine
+    drawn at zero is taken for the x axis by `detectAxes` the bars below it are outside the plot
+    box and lost (a whole-image second look whenever a baseline sits on the box's edge found more
+    false bars than true ones, and was dropped); a click on a bar in curve mode traces its
+    outline as before.
   - *Tried and rejected*: summed reversal of the path in x as the "doubles back" test (a line
     going round open markers on it reverses by their width every few columns: 3 earlier traces
     changed) — replaced by the deepest return behind a point reached; agreement with ≥ 85 % of the
@@ -1677,7 +1734,16 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
     blurred side cut bars in two), the width of the narrowest mate as the unit (fragments made it
     3 px), a baseline from coincident tops of an upper stack layer (now it must explain at least
     as many bars as the stacked reading), and a whole-image retry whenever a baseline sits on the
-    box's edge (more false bars than true ones).
+    box's edge (more false bars than true ones). Bar styles (2026-11-20): hatching taken into the
+    fill (thin other ink with the fill on both sides made "on") — the hatch lines touching an
+    outline shifted column ends and cut hatched bars into slivers (`l234` lost all three series);
+    the baseline voted by summed bar length — a thick step curve's long plateau carried its
+    risers into a "family" (`km-pericardial-pao/1` turned into 5 markers), replaced by the ⅕-length
+    vote; a whole cell's pixels as the outlined bar (not its box) — ends wobbled where hatch lines
+    met the outline and cut bars into slivers; the thickening's outer pixel as outline — values
+    0.5 px outside the stroke's middle; a 0.8 fill ratio as "rectangular" — an error bar's stem and
+    caps inside a short bar dropped it, and round holes passed; "reaching across the box" without
+    a third edge — dropped the tallest bar where the box ends at its top.
 
 - **Marker styles (2026-11-19; 476 traces)**: appended `marker-styles` charts l140–l169 (30 charts,
   79 marker classes, each a scatter series with exact centres; `build_marks`): stars, triangles in

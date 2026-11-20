@@ -31,7 +31,7 @@
  */
 
 import { detectAxes } from '../detect.ts';
-import { filledBars } from './bars.ts';
+import { findBars } from './bars.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
@@ -262,7 +262,7 @@ export function traceLine(req: TraceRequest): TraceResult {
   // (bars.ts). Before lines along the box edges are taken out: a row of bars standing on the
   // bottom edge is no frame line.
   if (req.mode !== 'curve') {
-    const bars = filledBars({ img, alpha, other, region, model, seed: s, lone: req.mode === 'markers', markerMax });
+    const bars = findBars({ img, alpha, other, region, model, seed: s, lone: req.mode === 'markers', markerMax });
     if (bars) {
       // Bars win over a fill's edge (`traceAreaEdge`, below), unless in auto mode the clicked fill's
       // edge is a smooth curve, not level bar tops: a layer of a stacked-area chart standing on
