@@ -325,3 +325,112 @@ describe('findLabels keeps a 1-px decimal point inside its word (small fonts)', 
     }
   });
 });
+
+describe('findLabels never trusts a piece of a label (small fonts, a point lost)', () => {
+  const D: Record<string, string[]> = {
+    '0': [' ### ', '#   #', '#   #', '#   #', '#   #', '#   #', '#   #', '#   #', ' ### '],
+    '2': [' ### ', '#   #', '    #', '   # ', '  #  ', ' #   ', '#    ', '#    ', '#####'],
+    '4': ['   # ', '  ## ', ' # # ', '#  # ', '#  # ', '#####', '   # ', '   # ', '   # '],
+    '6': [' ### ', '#    ', '#    ', '#### ', '#   #', '#   #', '#   #', '#   #', ' ### '],
+    '8': [' ### ', '#   #', '#   #', ' ### ', '#   #', '#   #', '#   #', '#   #', ' ### '],
+    e: [' ### ', '#   #', '#   #', '#####', '#    ', '#    ', '#    ', '#   #', ' ### '],
+  };
+  type Opts = { point: 'black' | 'none'; bleed?: boolean; title?: boolean };
+  /**
+   * A left Y axis at x = 80, ticks every 40 px, labels "0.8 … 0.0": 9 px digits, 5 empty columns
+   * between them (wider than half the text height, so they are two words unless joined). `point`:
+   * a 1-px point in the gap's third column, or none. `bleed`: the first gap column carries the
+   * left digit's antialiased edge (grey 200) above the baseline, as a band sampled at a sub-pixel
+   * offset does. `title`: a letter of an axis title, 18 px left of the labels, on their baseline.
+   */
+  function chart(o: Opts): { img: RgbaImage; det: Parameters<typeof findLabels>[2] } {
+    const width = 220;
+    const height = 220;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    const ink = (x: number, y: number, v = 0) => data.fill(v, (y * width + x) * 4, (y * width + x) * 4 + 3);
+    const axisX = 80;
+    for (let y = 10; y <= 200; y++) ink(axisX, y);
+    for (let x = axisX; x <= 210; x++) ink(x, 200);
+    const values = ['0.8', '0.6', '0.4', '0.2', '0.0'];
+    const ticks = values.map((_, i) => 30 + 40 * i);
+    const draw = (d: string, x0: number, cy: number) =>
+      (D[d] as string[]).forEach((row, r) => [...row].forEach((c, k) => c === '#' && ink(x0 + k, cy - 4 + r)));
+    values.forEach((text, i) => {
+      const cy = ticks[i] as number;
+      for (let x = axisX - 4; x < axisX; x++) ink(x, cy);
+      const right = axisX - 8; // the second digit's right edge
+      const second = right - 4;
+      const first = second - 5 - 5;
+      draw(text[2] as string, second, cy);
+      draw(text[0] as string, first, cy);
+      if (o.point === 'black') ink(first + 5 + 2, cy + 4);
+      if (o.bleed) for (let r = 0; r <= 6; r++) ink(first + 5, cy - 4 + r, 200);
+      if (o.title) draw('e', first - 18 - 5, cy);
+    });
+    const line = (family: 'vertical' | 'horizontal', offset: number, start: number, end: number) => ({
+      family,
+      offset,
+      start,
+      end,
+      p1: family === 'vertical' ? { x: offset, y: start } : { x: start, y: offset },
+      p2: family === 'vertical' ? { x: offset, y: end } : { x: end, y: offset },
+      length: end - start,
+      contrast: 255,
+      thickness: 1,
+      strength: end - start,
+    });
+    const tickSet = (pts: { x: number; y: number }[], along: (p: { x: number; y: number }) => number) => ({
+      ticks: pts.map((p) => ({ point: p, along: along(p), length: 4, kind: 'major' as const, confidence: 1 })),
+      spacing: 40,
+      pattern: 'even' as const,
+      side: 'outside' as const,
+      confidence: 1,
+      rejected: [],
+    });
+    const det = {
+      width,
+      height,
+      skewDegrees: 0,
+      xAxis: { line: line('horizontal', 200, 80, 210), position: 'bottom' as const, confidence: 1, ticks: tickSet([], (p) => p.x) },
+      yAxis: {
+        line: line('vertical', axisX, 10, 200),
+        position: 'left' as const,
+        confidence: 1,
+        ticks: tickSet(ticks.map((y) => ({ x: axisX, y })), (p) => p.y),
+      },
+      plotBox: null,
+      candidates: { horizontal: [], vertical: [] },
+    };
+    return { img: { width, height, data }, det };
+  }
+  const yLabels = (o: Opts) => {
+    const { img, det } = chart(o);
+    return findLabels(darknessMap(img), img, det).y.labels;
+  };
+
+  it('joins across a point even when a digit edge bleeds into the gap above it', () => {
+    const labels = yLabels({ point: 'black', bleed: true });
+    expect(labels).toHaveLength(5);
+    for (const l of labels) {
+      expect(l.box.width).toBeGreaterThanOrEqual(15);
+      expect(l.marks.points).toHaveLength(1);
+      expect(l.partial).toBeUndefined();
+    }
+  });
+
+  it('marks the digit next to the axis as a piece when the rest stands beside it unjoined', () => {
+    // No point at all: "0 8". The "8" must not be read as a label of its own.
+    const labels = yLabels({ point: 'none' });
+    expect(labels).toHaveLength(5);
+    for (const l of labels) expect(l.partial).toBe(true);
+  });
+
+  it('does not join or flag an axis-title letter two text heights away', () => {
+    const labels = yLabels({ point: 'black', title: true });
+    expect(labels).toHaveLength(5);
+    for (const l of labels) {
+      expect(l.partial).toBeUndefined();
+      expect(l.box.width).toBeLessThanOrEqual(15);
+    }
+  });
+});
