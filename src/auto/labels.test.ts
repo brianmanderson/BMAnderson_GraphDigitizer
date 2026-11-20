@@ -434,3 +434,69 @@ describe('findLabels never trusts a piece of a label (small fonts, a point lost)
     }
   });
 });
+
+describe('findLabels on coloured and faint tick labels (synthetic bench/axes charts)', () => {
+  const near = (labels: { point: { x: number; y: number } }[], truth: number[], key: 'x' | 'y') =>
+    truth.every((v) => labels.some((l) => Math.abs(l.point[key] - v) <= 1.5));
+  const majors = (name: string, key: 'xAxis' | 'yAxis') => {
+    const t = JSON.parse(readFileSync(new URL(`../../bench/axes/synthetic/${name}.json`, import.meta.url), 'utf8')) as Record<
+      string,
+      { ticks: { px: number; py: number; minor?: boolean }[] }
+    >;
+    return (t[key]?.ticks ?? []).filter((k) => !k.minor);
+  };
+
+  it('finds red and blue labels as colour classes, not their colourless fringes (c151)', () => {
+    const f = labelsOf('bench/axes/synthetic/c151.png');
+    const ys = majors('c151', 'yAxis').map((k) => k.py);
+    expect(f.y.labels).toHaveLength(ys.length);
+    expect(near(f.y.labels, ys, 'y')).toBe(true);
+    // Whole digits ("35"), not 2-px slivers.
+    expect(Math.min(...f.y.labels.map((l) => l.box.height))).toBeGreaterThanOrEqual(8);
+    expect(Math.min(...f.x.labels.map((l) => l.box.height))).toBeGreaterThanOrEqual(8);
+  });
+
+  it('prefers coloured Y labels next to the axis over the black axis title beyond them (c156)', () => {
+    const f = labelsOf('bench/axes/synthetic/c156.png');
+    const ys = majors('c156', 'yAxis').map((k) => k.py);
+    expect(near(f.y.labels, ys, 'y')).toBe(true);
+    // Each label lies right beside the axis line, not out at the title.
+    for (const l of f.y.labels) expect(l.point.x - l.box.center.x).toBeLessThan(40);
+  });
+
+  it('reads light orange labels at their own ink threshold (c162)', () => {
+    const f = labelsOf('bench/axes/synthetic/c162.png');
+    expect(f.x.mode).toBe('ticks');
+    expect(f.x.labels.length).toBeGreaterThanOrEqual(5);
+    expect(Math.min(...f.x.labels.map((l) => l.box.height))).toBeGreaterThanOrEqual(6);
+  });
+
+  it('reads faint grey 72-dpi labels beside a black axis title (c161)', () => {
+    const f = labelsOf('bench/axes/synthetic/c161.jpg');
+    expect(f.y.labels.length).toBe(majors('c161', 'yAxis').length);
+    expect(f.x.labels.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('keeps black labels when there is no colour (c00 unchanged: neutral wins)', () => {
+    const f = labelsOf('bench/axes/synthetic/c00.png');
+    expect(f.y.labels).toHaveLength(majors('c00', 'yAxis').length);
+  });
+});
+
+describe('exponent crops (synthetic bench/axes charts)', () => {
+  it("leave out the base's ink and a JPEG fleck in front of a small exponent (c13: 10³ read as 10²³)", () => {
+    const f = labelsOf('bench/axes/synthetic/c13.jpg');
+    const exps = f.y.labels.map((l) => l.exponent).filter((e): e is RgbaImage => e !== null);
+    expect(exps.length).toBe(3);
+    for (const e of exps) {
+      // The crop's left margin column band (inside the white margin) holds no ink of the base's "0":
+      // the leftmost dark column is the exponent digit itself, within the crop's left half.
+      let left = e.width;
+      for (let x = 0; x < e.width; x++) {
+        for (let y = 0; y < e.height; y++) if ((e.data[(y * e.width + x) * 4] ?? 255) < 128) left = Math.min(left, x);
+      }
+      expect(left).toBeGreaterThan(10);
+    }
+    expect(f.y.labels.every((l) => l.exponentSmall)).toBe(true);
+  });
+});

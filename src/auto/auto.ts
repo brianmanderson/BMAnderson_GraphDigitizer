@@ -14,7 +14,7 @@ import { darknessMap } from './darkness.ts';
 import { detectAxesInMap } from './detect.ts';
 import { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
 import { parseAxisNote, parseNumberLabel, restorePoints, splitAffixes } from './parseLabel.ts';
-import { crossCheck, suggestAxis, type AutoCalibration, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
+import { crossCheck, logLattice, suggestAxis, type AutoCalibration, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
 import type { AxisDetection, RgbaImage } from './types.ts';
 
 export type OcrCharset = 'numeric' | 'text';
@@ -132,6 +132,17 @@ async function readNumeric(ocr: OcrEngine, l: FoundLabel): Promise<OcrLabel> {
     let guessed = false;
     // A lone "1" as an exponent often comes back empty, but not beside its base at the same
     // scale ("10" + "1" reads "101"). A second guess: below the confidence that makes a ref.
+    // An exponent 2–4 px tall that comes back without a digit (empty, "-", "."): its own crop at a
+    // smaller upscale, read on its own. A second guess like the one beside the base below.
+    if (!/\d/.test(exp) && l.exponentSmall) {
+      const s = await ocr.recognize(l.exponentSmall, { charset: 'numeric', singleChar: l.exponentSingleChar });
+      const t = s.text.trim().replace(/^[-−–]/, '');
+      if (/^\d{1,2}$/.test(t)) {
+        exp = t;
+        confidence = Math.min(b.confidence, s.confidence, JOINED_CONFIDENCE);
+        guessed = true;
+      }
+    }
     if (exp === '' || exp === '-') {
       const j = await ocr.recognize(beside(l.base, l.exponent, JOIN_GAP), { charset: 'numeric', singleChar: false });
       const t = j.text.trim();
@@ -180,6 +191,7 @@ function readingBase(det: AxisDetection, labels: AxisLabels): Omit<AxisReading, 
     line: ax ? { p1: ax.line.p1, p2: ax.line.p2 } : null,
     tickPoints: ticks.length ? ticks.map((t) => t.point) : onGrid.length >= 2 ? onGrid.map((l) => l.point) : [],
     positionsFrom: ticks.length ? 'ticks' : 'gridlines',
+    lattice: ax && labels.mode === 'ticks' ? logLattice(ax.ticks) : null,
   };
 }
 

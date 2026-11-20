@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AxisLabels, FoundLabel } from './labels.ts';
-import { crossCheck, suggestAxis, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
+import { crossCheck, logLattice, suggestAxis, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
+import type { TickSet } from './types.ts';
 
 const blank = { width: 1, height: 1, data: new Uint8ClampedArray(4) };
 
@@ -254,5 +255,69 @@ describe('suggestAxis with pieces of labels', () => {
     expect(s.status).not.toBe('calibrated');
     expect(s.labels.every((l) => l.value === null)).toBe(true);
     expect(s.message).toMatch(/more text beside them/);
+  });
+});
+
+describe('the log tick lattice (two-decade log axes)', () => {
+  /** Majors at `at` (one decade apart), minors at log10(2…9) of each decade, growing with `along`. */
+  const ticks = (at: number[], ascending: boolean): TickSet => {
+    const p = at[1]! - at[0]!;
+    const minors = at.slice(0, -1).flatMap((a) =>
+      [2, 3, 4, 5, 6, 7, 8, 9].map((k) => (ascending ? a + p * Math.log10(k) : a + p - p * Math.log10(k))),
+    );
+    return {
+      ticks: [
+        ...at.map((a) => ({ point: { x: a, y: 400 }, along: a, length: 6, kind: 'major' as const, confidence: 1 })),
+        ...minors.map((a) => ({ point: { x: a, y: 400 }, along: a, length: 3, kind: 'minor' as const, confidence: 1 })),
+      ],
+      spacing: p,
+      pattern: 'log',
+      side: 'outside',
+      confidence: 1,
+      rejected: [],
+    };
+  };
+
+  it('reads the decade length and the direction of growth from the minors alone', () => {
+    expect(logLattice(ticks([100, 300], true))).toEqual({ decadePx: 200, ascending: true });
+    expect(logLattice(ticks([100, 300], false))).toEqual({ decadePx: 200, ascending: false });
+    expect(logLattice({ ...ticks([100, 300], true), pattern: 'even' })).toBeNull();
+  });
+
+  it('calibrates two decade labels that the lattice confirms, at medium confidence', () => {
+    const lattice = logLattice(ticks([100, 300], true));
+    const s = suggestAxis(reading('x', [100, 300], ['10^-1', '10^0'], { lattice, logHint: true }));
+    expect(s.status).toBe('calibrated');
+    expect(s.level).toBe('medium');
+    expect(s.scale).toBe('log10');
+    expect(s.refs?.map((r) => r.value)).toEqual(['0.1', '1']);
+    // Without the lattice two labels are too few.
+    expect(suggestAxis(reading('x', [100, 300], ['10^-1', '10^0'], { logHint: true })).level).toBe('low');
+  });
+
+  it('declines labels that grow against the minors (a lost minus sign: 10^1, 10^0 for 10^-1, 10^0)', () => {
+    const lattice = logLattice(ticks([100, 300], true));
+    expect(suggestAxis(reading('x', [100, 300], ['10^1', '10^0'], { lattice, logHint: true })).level).toBe('low');
+  });
+
+  it('declines labels a decade off the lattice, and a confident contrary reading', () => {
+    const lattice = logLattice(ticks([100, 300, 500], true));
+    // 10^0 and 10^2 on neighbouring decade ticks: off the lattice.
+    expect(suggestAxis(reading('x', [100, 300], ['10^0', '10^2'], { lattice, logHint: true })).level).toBe('low');
+    // Two agree, but a third reading at 0.95 confidence puts 10 where 100 belongs.
+    expect(suggestAxis(reading('x', [100, 300, 500], ['1', '10', '10'], { lattice, logHint: true })).level).toBe('low');
+    // The same disagreeing reading at low confidence is an outlier.
+    const s = suggestAxis(reading('x', [100, 300, 500], ['1', '10', { text: '10', confidence: 0.3 }], { lattice, logHint: true }));
+    expect(s.level).toBe('medium');
+    expect(s.refs?.map((r) => r.value)).toEqual(['1', '10']);
+  });
+
+  it('needs one of the two labels read outright, not both guessed beside their bases', () => {
+    const lattice = logLattice(ticks([100, 300], true));
+    const guess = (text: string): OcrLabel => ({ text, confidence: 0.7, guessed: true });
+    expect(suggestAxis(reading('x', [100, 300], [guess('10^1'), guess('10^2')], { lattice, logHint: true })).level).toBe('low');
+    const s = suggestAxis(reading('x', [100, 300], ['10^1', guess('10^2')], { lattice, logHint: true }));
+    expect(s.level).toBe('medium');
+    expect(s.refs?.map((r) => r.value)).toEqual(['10', '100']);
   });
 });

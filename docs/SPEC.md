@@ -695,7 +695,8 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   skew-corrected frame, starting past the outside ticks. Glyphs = 8-connected components at an
   adaptive threshold (30 % of the band's 98th-percentile darkness, clamped to 24–80); dropped:
   too big, solid square blobs (markers, ≥ 80 % filled), colourful ones (mean chroma ≥ 80: data,
-  coloured tables — tick labels are black or grey). Rows by vertical overlap, words by gaps under
+  coloured tables — tick labels are usually black or grey; labels printed in a colour are found
+  as a colour class of their own, see Label colours below). Rows by vertical overlap, words by gaps under
   half the text height; Y words grow from the axis side, and a much taller glyph sticking out
   above and below (an axis-title letter) starts a new word. **Matching**: with ≥ 2 major ticks,
   X = the row with most words centred on ticks (nearest the axis on a tie); Y = per tick the
@@ -896,6 +897,64 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
     labels, best −0.4 pp); exponent-crop preprocessing (≤ +5 of 129, more misreads); telling real
     superscripts from false splits by height ratio (ranges overlap); deciding rotation from glyph
     shapes alone (lost three upright axes).
+- **Label colours, faint labels and log exponents (round two, 2026-11-20)**: corpus c156–c167
+  (`build_labels`, appended; earlier charts byte-identical): blue, red, green, purple, orange and
+  cyan labels, spines + ticks + labels in one colour (`label:axis-coloured`), light grey labels at
+  72 dpi in a JPEG, dark themes with coloured, log-power and low-DPI JPEG labels. Their honest
+  baseline had one axis wrong at high (c165 y: red `10ⁿ` labels on a log axis read `1 −2 −3` from
+  the colourless fringes of the dropped red glyphs). Decisions:
+  - **Colour classes** (`colourClasses`, `labels.ts`): per band, text-sized glyphs whose *core*
+    (pixels ≥ half the glyph's darkest, where antialiasing has not diluted the colour) has chroma
+    ≥ 80 are clustered by hue (gaps > 25°); a cluster of ≥ 3 is a class. A class's glyphs are no
+    neutral ink (even when their mean chroma is under 80), and each class is matched to the ticks
+    like the neutral ink — its glyphs only (core within 25° of its hue, chroma ≥ 40), at an ink
+    threshold set by its own strokes (a light orange is far lighter than the black ticks and
+    title that set the band's). It replaces the neutral result when it finds more labels, or —
+    at tick marks only — at least half as many that carry more than twice their ink (the neutral
+    pass matched fringes) or sit clearly nearer the axis (by half a label height, ≥ 2 px: the
+    neutral pass matched the black axis title beyond coloured Y labels). Otherwise neutral wins:
+    a coloured number-at-risk table under black labels matches the same ticks with ink like
+    theirs, further out. A labels-only class matched bar edges (c96), hence ticks only.
+    Not handled: a muted colour whose core chroma stays under 80 (c158's purple, ~76) forms no
+    class; seeding classes from chroma 60 or 45 lost a real figure and c165 x.
+  - **Faint labels**: when the neutral pass matches fewer labels than there are major ticks, the
+    band is read again at the lowest ink threshold (24) and kept if that finds more labels at the
+    ticks (light grey 72-dpi labels beside a black axis title fell apart at 30 % of the title's
+    darkness). Light-on-dark labels need nothing new: the darkness map is the negative's on a dark
+    theme, so label finding and OCR crops are already dark text on light (c155, c160, c163 read).
+  - **Exponent crops**: a pixel of an exponent's box nearer the base's ink than the exponent's is
+    masked (and vice versa for the base), and specks no larger than a quarter of the exponent's
+    height lying wholly in front of its strokes are cut with the base: the top of the base's "0"
+    and JPEG flecks of it made `10³` read `10²³` (c13). A second crop of each exponent at a 16 px
+    upscale (`FoundLabel.exponentSmall`) is read when the first reading has no digit: on the 118
+    corpus exponents 16 px read 105 with no misread, 28 px 99 with 2 (14 px: 106 / 1; 18 px: 105 /
+    0; end to end 14 and 18 px each lost an axis). Like the reading beside the base, it is a guess
+    (`OcrLabel.guessed`: no ref of its own, never "high").
+  - **Log lattice** (`logLattice`, `latticeFit` in `suggest.ts`): a tick set with pattern `log` and
+    ≥ 4 minors, ≥ 80 % of them at log10(2…9) counted from one end of their interval and ≤ 50 % from
+    the other, makes each major interval one decade (`decadePx` = the lattice spacing) and tells
+    from the tick marks alone which way the values grow. When fewer than three labels agree on an
+    axis with such a lattice (and no axis note), the fit's slope is fixed at ± `decadePx`; each label
+    read as an exact power of ten on a major tick proposes the offset, and the offset that most
+    labels share (≥ 2, unique, within the tolerance) wins if one of them was read outright (not
+    guessed) and no reading at confidence ≥ 0.75 contradicts it. Medium at most (a "high" needs
+    three labels read), refs from the read labels (a guessed one may make the pair). A misread
+    exponent lands a whole decade off the lattice, and a lost minus sign reverses the growth, so
+    neither can agree by chance. Two-decade log axes, which show only two labels, were always
+    declined before (c28, c33, c49, c91, c105).
+  - **Results** (179 images): correct 79.6 % (1 wrong at high) → **84.1 %**, **0 wrong**, end to end
+    69.8 → 74.3 %. On the 167 earlier images 267 → 280 of 334 axes correct (79.9 → 83.8 %), no axis
+    worse; on c156–c167 8 → 21 of 24. `label:coloured` 25 → 90 %, `x:log10` 76.8 → 78.6 %, `y:log10`
+    77.3 → 78.8 % (main: 71.2 / 62.9 % on its corpus), `scanned` 58.3 → 66.7 % (c74 y read at the
+    faint threshold). **Known failures** (declined): dates without a year, times, categories (by
+    design, 8 axes); range frames without tick labels (8); hand-lettered scans (6); log exponents
+    OCR still misses — one decade read and the other's exponent unread or the base misread (c06,
+    c14, c25, c37, c44 y, c45, c52 y, c57, c62, c30 x, c158 x: 11; a single read exponent is not
+    trusted with the lattice alone); tiny or low-DPI labels that lose points or digits (c24, c27,
+    c30 y, c55, c148, c164 y, c167 y, c42: 11); offset notes (c03, c34, c63, c136: 5); others (c115
+    inset, c132, c134, c36, c69, c59, two real figures with two labels: 8).
+    Not attempted: a guard for labels sliced by the frame on gridline-sourced axes — no axis of the
+    corpus fails that way, and the position-only guard lost c70–c73 (see Ticks from gridlines).
 
 ## Auto-trace (line tracing engine)
 
