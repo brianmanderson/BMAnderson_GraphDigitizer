@@ -27,6 +27,9 @@ description: >
 4. **No invented ticks.** An axis without tick marks must come back with `ticks: []`,
    `confidence: 0` (the `bare` column must stay 0). Two marks never make a pattern, nor do a few
    even marks on a short stretch of a long axis (a lattice fills half its positions, or has minors).
+   Gridlines are drawn marks: an axis without tick marks may take its positions from the gridlines
+   crossing the plot (`TickSet.source: 'gridlines'`, same lattice rules); `bare` counts those only
+   when they match no labelled tick. A plot's own edge is never a gridline tick.
 5. **Gate**: `npm run bench:axes` is part of `npm run verify` and exits 1 if any gated metric
    (axes found, box found, tick recall, minor recall, tick precision; or more ticks on bare axes —
    and since Phase 5 the calibration metrics, see `auto-calibration`) gets worse than
@@ -39,7 +42,8 @@ description: >
 ## Pipeline (`detectAxes(rgba)` in `src/auto/detect.ts`)
 
 1. `darkness.ts`: grey → darkness above the local mean (window ≈ 1/40 of the short side). Bars
-   become outlines; ink = darkness ≥ 24.
+   become outlines; ink = darkness ≥ 24. A dark theme (border and bulk dark, more pixels lighter
+   than the border than darker) is read as its negative (`inverted`); the map keeps that `gray`.
 2. `skew.ts`: Hough restricted to ±5° (sum of squared bins), snapped to 0 unless clearly better;
    then `detect.ts` refines it once from the median tilt of the longest fitted lines.
 3. `lines.ts`: per row/column of the skew-corrected frame (`frame.ts`), the *longest* ink run
@@ -61,7 +65,17 @@ description: >
 5. `ticks.ts`: short perpendicular marks on each side (adjacent columns summed; a walk stops
    when darkness halves, so ticks don't run into lighter gridlines); a lattice fit picks evenly
    spaced majors (several "major length" references are tried); minors between them; minors at
-   log10(2…9) give `pattern: 'log'`. Crossing ticks → `side: 'both'`.
+   log10(2…9) give `pattern: 'log'`. Crossing ticks → `side: 'both'`. With no pattern on either
+   side, a rescan with a 1-px floor is kept only if it is a log pattern (two-decade log axes at
+   low DPI: minors 1–1.5 px past the line).
+6. Charts without axis lines (SPEC → Charts without axis lines). `panel.ts`: a filled panel
+   (largest flat grey rectangle ≠ page) replaces a missing pair, or a pair whose lines lie on the
+   panel without being its edges. `grid.ts`: gridlines as ridges on the grey image (percentile
+   per row, so hidden stretches don't matter; pixels within ½–3× the line's level); a grid of
+   evenly spaced lines sharing their ends replaces a missing pair or one whose line is one of the
+   grid's own lines. Such axes are the found line along the edge, else `virtual: true` (thickness
+   0). Then every axis without tick marks tries gridline ticks (`withGridlines` in `detect.ts`).
+   A moved (top/right) axis is refused when the frame line opposite it is ticked too.
 
 Output: axis lines (`LineCandidate`: offset, ends, contrast, thickness), plot box quad, tick
 sets with per-tick and per-set confidence, `rejected` marks and the top candidates of each
@@ -70,9 +84,9 @@ family — the inputs Phase 5's OCR and scale inference need.
 ## Corpus and labels
 
 - `bench/axes/generate.py` (Python 3.12 + matplotlib/numpy/Pillow; `npm run bench:axes:corpus`)
-  writes `synthetic/cNN.{png,jpg,json}` — 84 seeded charts (c60–c69, axes at the top/right,
-  c70–c75, old scans with hand-lettered labels and a heavy grid, and c76–c83, range frames, were
-  appended; new charts go at
+  writes `synthetic/cNN.{png,jpg,json}` — 120 seeded charts (c60–c69, axes at the top/right,
+  c70–c75, old scans with hand-lettered labels and a heavy grid, c76–c83, range frames, and
+  c84–c119, other tools' styles — `build_styled`, table `STYLED` — were appended; new charts go at
   the end so earlier ones stay byte-identical — check `git status` after regenerating). Pixel snapping is off so the truth
   is exact; a self-check fails the run if a drawn axis is > 0.35 px from its label. Committed;
   regenerate only when changing the generator, and then rebaseline in the same commit.
@@ -80,7 +94,8 @@ family — the inputs Phase 5's OCR and scale inference need.
   "tags": [...] }`. Labels may live in `fixtures/real/` (shared with e2e) or `bench/axes/real/`.
 - Label format (parsed by `bench/axes/truth.ts`; extra fields ignored):
   `image` (relative to the JSON), optional `tags`, optional `plotBox` `[[x,y] TL, TR, BR, BL]`,
-  and `xAxis` / `yAxis` each with `scale`, `tickMarks` (false = labels only), `ticks`
+  and `xAxis` / `yAxis` each with `scale`, `tickMarks` (false = labels only), optional
+  `gridlines` (true = the major tick positions are drawn as gridlines; scored by `grid-R`), `ticks`
   `[{ value, px, py?, label?, minor? }]` and either `line: [[x1,y1],[x2,y2]]` or the unrotated
   shorthand `axisLineRow` (x) / `axisLineCol` (y). `lineDrawn: false` = no visible line.
   The axis line is the line the ticks hang on — in a closed frame with zero inside it, the
@@ -101,10 +116,10 @@ family — the inputs Phase 5's OCR and scale inference need.
 
 ## Known failures (Phase 4 baseline)
 
-ggplot-style charts (grey panel, no axis lines: 0/3); ticks hidden behind bars or shorter than a
-thick axis line (`kind:bar` tick recall ~62 %); the tick at the corner hides in the other axis;
-log axes with only two decades and invisible minors return no ticks; free axis ends with
-projecting line caps put box corners ~half a line width out.
+ticks hidden behind bars or shorter than a thick axis line (`kind:bar` tick recall ~75 %); the
+tick at the corner hides in the other axis; free axis ends with projecting line caps put box
+corners ~half a line width out. (ggplot-style charts and two-decade log axes with short minors,
+listed here before, are handled since 2026-11-19.)
 
 Gridded old scans (c70–c75; SPEC → Old scanned figures): the frame beats a heavier gridline
 because the crossing axis runs on to it; ticks need to stick out half a line thickness; a side
@@ -112,3 +127,16 @@ whose marks mostly run into glyphs has none. Keep the `bare` column at 0 there t
 
 Range frames (c76–c83): log Y minors on a short Y axis are often missed (c81, c83: 0/24), and
 c80's monospace Y labels are split as base + exponent, so that axis is declined (safe, not wrong).
+
+Styled charts (c84–c119; SPEC → Charts without axis lines): with padded axis ranges nothing marks
+the plot area beyond the outermost gridlines (c94, c101: box 12–15 px short); fivethirtyeight
+paints its spines in the background colour over the zero gridline and the gridlines' ends (c96 X
+axis 64 px off, c95 2.5 px); a right log Y whose minors are shorter than the thick spine (c69);
+ticks hidden behind bars or < 2 px past a thick axis (c31, c48, c56 — a 1-px floor for even
+patterns was tried: it rescued only c48, with a false tick, so it was not kept); c97's Y labels
+lose their 1-px decimal points in label finding (a labels.ts fix, not detection). Twin Y →
+the left axis; insets → the main axes; several panels → the first among equal ones, else the
+largest — the detector takes the strongest pair, which is that one in the corpus, but it does
+not reason about panels yet. The `bench:lines` real figure `angle-response-chea` now gets its
+exact box, which changes Find points there (one marker more found, three more wrong-group): the
+tracer's behaviour on the correct region, identical with the hand-labelled box.
