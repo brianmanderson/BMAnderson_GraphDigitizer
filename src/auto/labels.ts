@@ -25,7 +25,7 @@
  */
 
 import { INK_THRESHOLD, sample, type DarknessMap } from './darkness.ts';
-import { familyPoint, makeFrame, toFrame, type Frame } from './frame.ts';
+import { familyPoint, makeFrame, toFrame, toImage, type Frame } from './frame.ts';
 import type { AxisDetection, AxisPosition, DetectedAxis, LineCandidate, Point, RgbaImage } from './types.ts';
 
 /** A connected ink component in patch coordinates (inclusive bounds). */
@@ -138,6 +138,13 @@ export interface AxisLabels {
    * its text cannot be cut out cleanly: it must be treated as unreadable, never applied.
    */
   noteTangled?: boolean;
+  /** The labels are rotated (45° or 90°) and were read in a turned frame; no note is looked for. */
+  rotated?: boolean;
+  /**
+   * The same ticks' labels read as rotated text: to be used only when these labels give no
+   * calibration and the alternative does.
+   */
+  alternative?: AxisLabels;
 }
 
 const BODY_MIN_HEIGHT = 4;
@@ -788,11 +795,170 @@ function labelsFor(
   const viaTicks = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing);
   // Marks that no two labels sit at are not the labelled ticks (glyphs touching the axis, a
   // scanned line's bumps): the labels themselves give the positions then.
+  let primary = viaTicks;
   if (tickMode === 'ticks' && viaTicks.labels.length < 2) {
     const viaLabels = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing);
-    if (viaLabels.labels.length >= 2) return viaLabels;
+    if (viaLabels.labels.length >= 2) primary = viaLabels;
   }
-  return viaTicks;
+  // Rotated tick labels (45° or 90°, common for long X labels: dates, big numbers; 90° on Y),
+  // looked for only when few of the labels found read as upright text: the band is sampled again
+  // in a frame turned by that angle, where the text is upright. Glyph shapes alone cannot tell
+  // turned text from small upright digits run together, so this is only an alternative reading:
+  // auto-calibration reads it when the upright reading gives no calibration.
+  const upright = UPRIGHT.get(viaTicks) ?? 0;
+  if (tickMode === 'ticks' && upright < ROTATED_ONLY_BELOW * majors.length) {
+    let best: { labels: FoundLabel[]; score: number } | null = null;
+    for (const angle of which === 'x' ? [45, 90] : [90]) {
+      const r = rotatedLabels(map, img, frame, which, ax, majors, angle);
+      if (!best || r.score > best.score) best = r;
+    }
+    if (best && best.score >= 3 && best.score >= upright + 2 && best.labels.length >= 3) {
+      return { ...primary, alternative: { axis: which, mode: 'ticks', labels: best.labels, note: null, rotated: true } };
+    }
+  }
+  return primary;
+}
+
+/** How upright the labels a pass found read (`uprightness`), per result. */
+const UPRIGHT = new WeakMap<AxisLabels, number>();
+/** The rotated readings are tried when the upright pass has fewer upright votes than this many per major tick. */
+const ROTATED_ONLY_BELOW = 0.6;
+
+/**
+ * How upright the text of some words is: each body glyph votes +1 when clearly taller than wide
+ * (an upright digit or letter: ≥ 1.15) and −1 when much wider than tall (a digit turned by 90°:
+ * ≥ 1.5; two upright digits run together are 1.2–1.35 times wider than tall and abstain); thin
+ * strokes (a "1", a turned minus sign) and squarish glyphs abstain. Words of several glyphs
+ * strung along a diagonal (rotated text that the row test chained together: taller than 1.6 text
+ * heights) do not vote.
+ */
+function uprightness(ws: LabelWord[]): number {
+  let votes = 0;
+  for (const wd of ws) {
+    const bodies = wd.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
+    if (bodies.length >= 2 && gh(wd) > 1.6 * wd.textHeight) continue;
+    for (const g of bodies) {
+      const thin = Math.min(gw(g), gh(g)) <= 2 || Math.min(gw(g), gh(g)) < 0.4 * Math.max(gw(g), gh(g));
+      if (thin) continue;
+      if (gh(g) >= 1.15 * gw(g)) votes++;
+      else if (gw(g) >= 1.5 * gh(g)) votes--;
+    }
+  }
+  return votes;
+}
+
+/**
+ * Tick labels rotated by `angle` degrees counter-clockwise (matplotlib's `rotation`): the band
+ * outside the axis is sampled in a frame turned by the same angle, so the text is upright there
+ * and the usual glyph → row → word steps apply. A word belongs to the major tick its axis-side end
+ * (X: rotated labels hang from their tick by that end) or its centre (Y: centred on the tick) is
+ * level with. The score counts the matched words that read as upright text.
+ */
+function rotatedLabels(
+  map: DarknessMap,
+  img: RgbaImage,
+  frame: Frame,
+  which: 'x' | 'y',
+  ax: DetectedAxis,
+  majors: { t: DetectedAxis['ticks']['ticks'][number]; i: number }[],
+  angle: number,
+): { labels: FoundLabel[]; score: number } {
+  const line = ax.line;
+  const flipped = ax.position === 'top' || ax.position === 'right';
+  const outsideLen = ax.ticks.side !== 'inside' ? Math.max(...majors.map(({ t }) => t.length)) : 0;
+  const d0 = Math.max(line.thickness / 2, outsideLen) + 1;
+  const short = Math.min(map.width, map.height);
+  const margin = Math.max(20, 0.08 * (line.end - line.start));
+  const maxTextHeight = Math.max(12, 0.08 * short);
+  // The band in the axis frame: [u0, u1] × [w0, w1].
+  const depth = which === 'x' ? Math.min(300, Math.max(60, 0.22 * short)) : Math.min(400, Math.max(40, 0.25 * map.width));
+  const band =
+    which === 'x'
+      ? { u0: line.start - margin, u1: line.end + margin, w0: flipped ? line.offset - d0 - depth : line.offset + d0, w1: flipped ? line.offset - d0 : line.offset + d0 + depth }
+      : { u0: flipped ? line.offset + d0 : line.offset - d0 - depth, u1: flipped ? line.offset + d0 + depth : line.offset - d0, w0: line.start - margin, w1: line.end + margin };
+  const theta = Math.atan2(frame.sin, frame.cos) - (angle * Math.PI) / 180;
+  const turned = makeFrame(theta);
+  const corners = [
+    [band.u0, band.w0],
+    [band.u1, band.w0],
+    [band.u0, band.w1],
+    [band.u1, band.w1],
+  ].map(([u, w]) => toFrame(turned, toImage(frame, u as number, w as number)));
+  const tu0 = Math.floor(Math.min(...corners.map((c) => c.u)));
+  const tw0 = Math.floor(Math.min(...corners.map((c) => c.w)));
+  const q = makePatch(map, img, turned, tu0, tw0, Math.max(...corners.map((c) => c.u)) - tu0 + 1, Math.max(...corners.map((c) => c.w)) - tw0 + 1);
+  // Only the band itself: the turned patch's corners reach into the plot and the other margin.
+  const inBand = (i: number, j: number) => {
+    const f = toFrame(frame, toImage(turned, q.u0 + i, q.w0 + j));
+    return f.u >= band.u0 && f.u <= band.u1 && f.w >= band.w0 && f.w <= band.w1;
+  };
+  for (let j = 0; j < q.height; j++) for (let i = 0; i < q.width; i++) if (!inBand(i, j)) q.dark[j * q.width + i] = 0;
+  const glyphs = components(q, inkThreshold(q)).filter((g) => glyphChroma(q, g) < MAX_LABEL_CHROMA);
+  // In the turned frame every label is a line of its own: words of a row a space apart ("Nov
+  // 2001") are one label.
+  const all = words(q, glyphs, maxTextHeight, false).flatMap((row) => {
+    const out: LabelWord[] = [];
+    for (const wd of row) {
+      const last = out[out.length - 1];
+      if (last && wd.x0 - last.x1 - 1 <= 1.2 * Math.max(last.textHeight, wd.textHeight)) {
+        out[out.length - 1] = { x0: last.x0, y0: Math.min(last.y0, wd.y0), x1: wd.x1, y1: Math.max(last.y1, wd.y1), glyphs: [...last.glyphs, ...wd.glyphs], textHeight: last.textHeight };
+      } else out.push({ ...wd, glyphs: [...wd.glyphs] });
+    }
+    return out;
+  });
+  const image = (i: number, j: number) => toImage(turned, q.u0 + i, q.w0 + j);
+  const alongOf = (pt: Point) => (which === 'x' ? toFrame(frame, pt).u : toFrame(frame, pt).w);
+  const acrossOf = (pt: Point) => (which === 'x' ? toFrame(frame, pt).w : toFrame(frame, pt).u);
+  const anchor = (wd: LabelWord) => {
+    const cy = (wd.y0 + wd.y1) / 2;
+    // The end nearer the axis (rotated X labels hang from it); a Y label's centre.
+    if (which === 'y') return alongOf(image((wd.x0 + wd.x1) / 2, cy));
+    const a = image(wd.x0, cy);
+    const b = image(wd.x1, cy);
+    const near = Math.abs(acrossOf(a) - line.offset) < Math.abs(acrossOf(b) - line.offset) ? a : b;
+    return alongOf(near);
+  };
+  const reach = (wd: LabelWord) =>
+    Math.min(...[image(wd.x0, wd.y0), image(wd.x1, wd.y0), image(wd.x0, wd.y1), image(wd.x1, wd.y1)].map((pt) => Math.abs(acrossOf(pt) - line.offset)));
+  const used = new Set<LabelWord>();
+  const labels: FoundLabel[] = [];
+  for (const { t, i } of majors) {
+    let pick: LabelWord | null = null;
+    let pickD = Infinity;
+    for (const wd of all) {
+      if (used.has(wd)) continue;
+      const d = Math.abs(anchor(wd) - t.along);
+      if (d <= 0.5 * wd.textHeight + 2 && reach(wd) <= d0 + 3 * wd.textHeight + 4 && d < pickD) {
+        pick = wd;
+        pickD = d;
+      }
+    }
+    if (!pick) continue;
+    used.add(pick);
+    const l = layout(pick, q);
+    const bodyH = Math.max(1, l.baseline - l.baseTop + 1);
+    const hasExp = l.exponent.length > 0;
+    const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
+    const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
+    const bodies = pick.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
+    labels.push({
+      along: t.along,
+      point: t.point,
+      tick: i,
+      crop: cut(q, pick.glyphs, bodyH),
+      base: hasExp ? cut(q, l.base, bodyH) : null,
+      exponent: hasExp ? cut(q, l.exponent, expH) : null,
+      minus: l.minus,
+      exponentMinus: hasExp && l.exponentMinus,
+      singleChar: bodies.length === 1 && !hasExp && pick.x1 - pick.x0 + 1 <= 0.8 * bodyH,
+      exponentSingleChar: expBodies.length === 1,
+      marks: l.marks,
+      runs: l.runWidths.length,
+      box: { center: image((pick.x0 + pick.x1) / 2, (pick.y0 + pick.y1) / 2), width: pick.x1 - pick.x0 + 1, height: pick.y1 - pick.y0 + 1 },
+    });
+  }
+  labels.sort((a, b) => a.along - b.along);
+  return { labels, score: uprightness([...used]) };
 }
 
 function labelsWith(
@@ -1021,7 +1187,9 @@ function labelsWith(
       }
     }
   }
-  return noteTangled ? { axis: which, mode, labels, note, noteTangled } : { axis: which, mode, labels, note };
+  const result: AxisLabels = noteTangled ? { axis: which, mode, labels, note, noteTangled } : { axis: which, mode, labels, note };
+  UPRIGHT.set(result, uprightness(snapped.map(({ word }) => word)));
+  return result;
 }
 
 /** Tick labels beside both detected axes (empty lists when an axis was not found). */

@@ -14,7 +14,7 @@ import { darknessMap } from './darkness.ts';
 import { detectAxesInMap } from './detect.ts';
 import { findLabels, type AxisLabels, type FoundLabel } from './labels.ts';
 import { parseAxisNote, parseNumberLabel, restorePoints, splitAffixes } from './parseLabel.ts';
-import { crossCheck, suggestAxis, type AutoCalibration, type AxisReading, type OcrLabel } from './suggest.ts';
+import { crossCheck, suggestAxis, type AutoCalibration, type AxisReading, type AxisSuggestion, type OcrLabel } from './suggest.ts';
 import type { AxisDetection, RgbaImage } from './types.ts';
 
 export type OcrCharset = 'numeric' | 'text';
@@ -198,7 +198,14 @@ export async function autoCalibrate(img: RgbaImage, ocr: OcrEngine, opts: AutoOp
   };
 
   opts.onProgress?.('Reading the tick labels…');
-  const readAxis = async (labels: AxisLabels) => {
+  const readAxis = async (labels: AxisLabels): Promise<AxisSuggestion> => {
+    const s = await readLabels(labels);
+    // Labels that may be rotated text: their rotated reading, if the upright one gives nothing.
+    if (s.level !== 'low' || !labels.alternative) return s;
+    const r = await readLabels(labels.alternative);
+    return r.level !== 'low' ? r : s;
+  };
+  const readLabels = async (labels: AxisLabels) => {
     const base = readingBase(detection, labels);
     // A note tangled with the other axis's labels is shown as read but never applied.
     const note = labels.note
