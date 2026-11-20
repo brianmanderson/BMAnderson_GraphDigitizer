@@ -1484,27 +1484,27 @@
   }
  },
  "calibOverall": {
-  "calibrated": 0.7137404580152672,
-  "declined": 0.2862595419847328,
-  "correct": 0.7137404580152672,
+  "calibrated": 0.7213740458015268,
+  "declined": 0.2786259541984733,
+  "correct": 0.7213740458015268,
   "wrong": 0,
   "wrongHigh": 0,
   "scaleAccuracy": 0.9952153110047847,
   "medianErrorPct": 0.142,
-  "autoImages": 0.5801526717557252,
+  "autoImages": 0.5877862595419847,
   "knownMaxError": 1,
   "meanOcrMs": 0
  },
  "calibCategories": {
   "antialiased": {
-   "calibrated": 0.6928571428571428,
-   "declined": 0.30714285714285716,
-   "correct": 0.6928571428571428,
+   "calibrated": 0.7071428571428572,
+   "declined": 0.29285714285714287,
+   "correct": 0.7071428571428572,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
    "medianErrorPct": 0.131,
-   "autoImages": 0.5428571428571428,
+   "autoImages": 0.5571428571428572,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -1550,21 +1550,21 @@
    "correct": 0.73,
    "wrong": 0,
    "wrongHigh": 0,
-   "scaleAccuracy": 0.9882352941176471,
-   "medianErrorPct": 0.172,
+   "scaleAccuracy": 0.9880952380952381,
+   "medianErrorPct": 0.173,
    "autoImages": 0.6,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
   "dpi:high": {
-   "calibrated": 0.6388888888888888,
-   "declined": 0.3611111111111111,
-   "correct": 0.6388888888888888,
+   "calibrated": 0.6666666666666666,
+   "declined": 0.3333333333333333,
+   "correct": 0.6666666666666666,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
    "medianErrorPct": 0.11,
-   "autoImages": 0.5,
+   "autoImages": 0.5555555555555556,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -1581,9 +1581,9 @@
    "meanOcrMs": 0
   },
   "dpi:mid": {
-   "calibrated": 0.7816901408450704,
-   "declined": 0.21830985915492956,
-   "correct": 0.7816901408450704,
+   "calibrated": 0.7887323943661971,
+   "declined": 0.2112676056338028,
+   "correct": 0.7887323943661971,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1653,9 +1653,9 @@
    "meanOcrMs": 0
   },
   "frame-beyond-labels": {
-   "calibrated": 0.3333333333333333,
-   "declined": 0.6666666666666666,
-   "correct": 0.3333333333333333,
+   "calibrated": 0.4166666666666667,
+   "declined": 0.5833333333333334,
+   "correct": 0.4166666666666667,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1689,14 +1689,14 @@
    "meanOcrMs": 0
   },
   "frame:box": {
-   "calibrated": 0.6854838709677419,
-   "declined": 0.31451612903225806,
-   "correct": 0.6854838709677419,
+   "calibrated": 0.7016129032258065,
+   "declined": 0.29838709677419356,
+   "correct": 0.7016129032258065,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.98989898989899,
    "medianErrorPct": 0.16,
-   "autoImages": 0.5,
+   "autoImages": 0.5161290322580645,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -1743,7 +1743,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.128,
+   "medianErrorPct": 0.163,
    "autoImages": 0.5,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -1779,7 +1779,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9565217391304348,
-   "medianErrorPct": 0.17,
+   "medianErrorPct": 0.163,
    "autoImages": 0.5625,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -1797,13 +1797,13 @@
    "meanOcrMs": 0
   },
   "grid": {
-   "calibrated": 0.6190476190476191,
-   "declined": 0.38095238095238093,
-   "correct": 0.6190476190476191,
+   "calibrated": 0.6309523809523809,
+   "declined": 0.36904761904761907,
+   "correct": 0.6309523809523809,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.155,
+   "medianErrorPct": 0.148,
    "autoImages": 0.4523809523809524,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -1821,9 +1821,9 @@
    "meanOcrMs": 0
   },
   "handlettered": {
-   "calibrated": 0.3333333333333333,
-   "declined": 0.6666666666666666,
-   "correct": 0.3333333333333333,
+   "calibrated": 0.4166666666666667,
+   "declined": 0.5833333333333334,
+   "correct": 0.4166666666666667,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1833,9 +1833,9 @@
    "meanOcrMs": 0
   },
   "heavy-grid": {
-   "calibrated": 0.3333333333333333,
-   "declined": 0.6666666666666666,
-   "correct": 0.3333333333333333,
+   "calibrated": 0.4166666666666667,
+   "declined": 0.5833333333333334,
+   "correct": 0.4166666666666667,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1857,9 +1857,9 @@
    "meanOcrMs": 0
   },
   "jpeg": {
-   "calibrated": 0.6818181818181818,
-   "declined": 0.3181818181818182,
-   "correct": 0.6818181818181818,
+   "calibrated": 0.696969696969697,
+   "declined": 0.30303030303030304,
+   "correct": 0.696969696969697,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1881,9 +1881,9 @@
    "meanOcrMs": 0
   },
   "kind:line": {
-   "calibrated": 0.7377049180327869,
-   "declined": 0.26229508196721313,
-   "correct": 0.7377049180327869,
+   "calibrated": 0.7459016393442623,
+   "declined": 0.2540983606557377,
+   "correct": 0.7459016393442623,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -1893,14 +1893,14 @@
    "meanOcrMs": 0
   },
   "kind:scatter": {
-   "calibrated": 0.6276595744680851,
-   "declined": 0.3723404255319149,
-   "correct": 0.6276595744680851,
+   "calibrated": 0.6382978723404256,
+   "declined": 0.3617021276595745,
+   "correct": 0.6382978723404256,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
    "medianErrorPct": 0.135,
-   "autoImages": 0.44680851063829785,
+   "autoImages": 0.46808510638297873,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2391,7 +2391,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.112,
+   "medianErrorPct": 0.121,
    "autoImages": 0.7666666666666667,
    "knownMaxError": 1,
    "meanOcrMs": 0
@@ -2433,14 +2433,14 @@
    "meanOcrMs": 0
   },
   "no-grid": {
-   "calibrated": 0.7468354430379747,
-   "declined": 0.25316455696202533,
-   "correct": 0.7468354430379747,
+   "calibrated": 0.7531645569620253,
+   "declined": 0.2468354430379747,
+   "correct": 0.7531645569620253,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9924812030075187,
    "medianErrorPct": 0.151,
-   "autoImages": 0.620253164556962,
+   "autoImages": 0.6329113924050633,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2457,9 +2457,9 @@
    "meanOcrMs": 0
   },
   "no-tickmarks": {
-   "calibrated": 0.3333333333333333,
-   "declined": 0.6666666666666666,
-   "correct": 0.3333333333333333,
+   "calibrated": 0.3888888888888889,
+   "declined": 0.6111111111111112,
+   "correct": 0.3888888888888889,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -2505,14 +2505,14 @@
    "meanOcrMs": 0
   },
   "png": {
-   "calibrated": 0.7244897959183674,
-   "declined": 0.2755102040816326,
-   "correct": 0.7244897959183674,
+   "calibrated": 0.7295918367346939,
+   "declined": 0.27040816326530615,
+   "correct": 0.7295918367346939,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9935483870967742,
-   "medianErrorPct": 0.142,
-   "autoImages": 0.6020408163265306,
+   "medianErrorPct": 0.136,
+   "autoImages": 0.6122448979591837,
    "knownMaxError": 1,
    "meanOcrMs": 0
   },
@@ -2523,7 +2523,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.128,
+   "medianErrorPct": 0.163,
    "autoImages": 0.5,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -2547,7 +2547,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9615384615384616,
-   "medianErrorPct": 0.17,
+   "medianErrorPct": 0.166,
    "autoImages": 0.3684210526315789,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -2589,9 +2589,9 @@
    "meanOcrMs": 0
   },
   "scanned": {
-   "calibrated": 0.3333333333333333,
-   "declined": 0.6666666666666666,
-   "correct": 0.3333333333333333,
+   "calibrated": 0.4166666666666667,
+   "declined": 0.5833333333333334,
+   "correct": 0.4166666666666667,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -2613,14 +2613,14 @@
    "meanOcrMs": 0
   },
   "synthetic": {
-   "calibrated": 0.7083333333333334,
-   "declined": 0.2916666666666667,
-   "correct": 0.7083333333333334,
+   "calibrated": 0.7166666666666667,
+   "declined": 0.2833333333333333,
+   "correct": 0.7166666666666667,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9947368421052631,
    "medianErrorPct": 0.151,
-   "autoImages": 0.5666666666666667,
+   "autoImages": 0.575,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2643,7 +2643,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.128,
+   "medianErrorPct": 0.163,
    "autoImages": 1,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -2661,14 +2661,14 @@
    "meanOcrMs": 0
   },
   "ticks:inout": {
-   "calibrated": 0.7941176470588235,
-   "declined": 0.20588235294117646,
-   "correct": 0.7941176470588235,
+   "calibrated": 0.8235294117647058,
+   "declined": 0.17647058823529413,
+   "correct": 0.8235294117647058,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
    "medianErrorPct": 0.126,
-   "autoImages": 0.5882352941176471,
+   "autoImages": 0.6470588235294118,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2678,7 +2678,7 @@
    "correct": 0.7191011235955056,
    "wrong": 0,
    "wrongHigh": 0,
-   "scaleAccuracy": 0.9929078014184397,
+   "scaleAccuracy": 0.9928571428571429,
    "medianErrorPct": 0.151,
    "autoImages": 0.6067415730337079,
    "knownMaxError": null,
@@ -2697,14 +2697,14 @@
    "meanOcrMs": 0
   },
   "upright": {
-   "calibrated": 0.7326732673267327,
-   "declined": 0.26732673267326734,
-   "correct": 0.7326732673267327,
+   "calibrated": 0.7425742574257426,
+   "declined": 0.25742574257425743,
+   "correct": 0.7425742574257426,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.148,
-   "autoImages": 0.6039603960396039,
+   "medianErrorPct": 0.149,
+   "autoImages": 0.6138613861386139,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2721,9 +2721,9 @@
    "meanOcrMs": 0
   },
   "x-no-tickmarks": {
-   "calibrated": 0.5833333333333334,
-   "declined": 0.4166666666666667,
-   "correct": 0.5833333333333334,
+   "calibrated": 0.625,
+   "declined": 0.375,
+   "correct": 0.625,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
@@ -2757,14 +2757,14 @@
    "meanOcrMs": 0
   },
   "x:linear": {
-   "calibrated": 0.7236842105263158,
-   "declined": 0.27631578947368424,
-   "correct": 0.7236842105263158,
+   "calibrated": 0.7368421052631579,
+   "declined": 0.2631578947368421,
+   "correct": 0.7368421052631579,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.142,
-   "autoImages": 0.618421052631579,
+   "medianErrorPct": 0.136,
+   "autoImages": 0.631578947368421,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2775,7 +2775,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.172,
+   "medianErrorPct": 0.173,
    "autoImages": 0.5652173913043478,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -2805,14 +2805,14 @@
    "meanOcrMs": 0
   },
   "y:linear": {
-   "calibrated": 0.7282608695652174,
-   "declined": 0.2717391304347826,
-   "correct": 0.7282608695652174,
+   "calibrated": 0.7391304347826086,
+   "declined": 0.2608695652173913,
+   "correct": 0.7391304347826086,
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 0.9932432432432432,
-   "medianErrorPct": 0.151,
-   "autoImages": 0.6086956521739131,
+   "medianErrorPct": 0.149,
+   "autoImages": 0.6195652173913043,
    "knownMaxError": null,
    "meanOcrMs": 0
   },
@@ -2823,7 +2823,7 @@
    "wrong": 0,
    "wrongHigh": 0,
    "scaleAccuracy": 1,
-   "medianErrorPct": 0.155,
+   "medianErrorPct": 0.16,
    "autoImages": 0.42857142857142855,
    "knownMaxError": null,
    "meanOcrMs": 0
@@ -3569,7 +3569,7 @@
    "xTicks": "7/7M 0/0m 7/7det",
    "yTicks": "7/7M 0/0m 7/7det",
    "xCalib": "ok high linear 0.15%",
-   "yCalib": "low linear",
+   "yCalib": "low -",
    "known": ""
   },
   "c135": {
@@ -4714,7 +4714,7 @@
    "xTicks": "9/9M 0/0m 9/9det",
    "yTicks": "6/6M 0/0m 6/6det",
    "xCalib": "ok high linear 0.03%",
-   "yCalib": "low -",
+   "yCalib": "ok medium linear 0.05%",
    "known": ""
   },
   "c40": {
@@ -4901,7 +4901,7 @@
    "boxError": 0.112,
    "xTicks": "6/6M 0/0m 6/6det",
    "yTicks": "5/5M 0/0m 5/5det",
-   "xCalib": "ok high linear 0.17%",
+   "xCalib": "ok high linear 0.08%",
    "yCalib": "ok high linear 0.11%",
    "known": ""
   },
@@ -5507,7 +5507,7 @@
    "boxError": 0.119,
    "xTicks": "bare:0",
    "yTicks": "bare:0",
-   "xCalib": "low linear",
+   "xCalib": "ok high linear 0.36%",
    "yCalib": "low -",
    "known": ""
   },
@@ -5643,7 +5643,7 @@
    "xTicks": "5/5M 28/32m 33/33det",
    "yTicks": "4/4M 21/24m 25/25det",
    "xCalib": "ok high log10 0.11%",
-   "yCalib": "ok high log10 0.07%",
+   "yCalib": "ok high log10 0.17%",
    "known": ""
   },
   "c78": {
@@ -5944,7 +5944,7 @@
    "xTicks": "7/7M 6/6m 13/13det",
    "yTicks": "5/5M 4/4m 9/11det",
    "xCalib": "ok high linear 0.03%",
-   "yCalib": "ok medium linear 0.02%",
+   "yCalib": "ok high linear 0.02%",
    "known": ""
   },
   "bland-altman-rabe": {
