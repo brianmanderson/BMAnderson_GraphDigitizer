@@ -1202,7 +1202,12 @@ function labelsWith(
     p = makePatch(map, img, frame, u0, line.start - margin, depth, line.end - line.start + 2 * margin);
   }
   const all = components(p, inkThreshold(p));
-  const glyphs = all.filter((g) => ink(p, g));
+  // The band's colour classes; in the neutral pass, a glyph of one of them is no neutral ink even
+  // when its mean colour, diluted by its antialiased edge, falls under MAX_LABEL_CHROMA (a muted
+  // purple label splits into "neutral" digits and coloured exponents otherwise).
+  const classes = ink === NEUTRAL ? colourClasses(p, all, maxTextHeight) : [];
+  const inks = classes.map(ofHue);
+  const glyphs = all.filter((g) => ink(p, g) && !inks.some((c) => c(p, g)));
   // Y labels are aligned at the axis: words grow from the axis side.
   const rows = words(p, glyphs, maxTextHeight, which === 'y' && !flipped);
   // X rows nearest the axis first.
@@ -1444,7 +1449,7 @@ function labelsWith(
   let mass = 0;
   for (const { word } of snapped) for (const g of word.glyphs) for (const k of g.pixels) mass += p.dark[k] ?? 0;
   MASS.set(result, mass);
-  if (ink === NEUTRAL) HUES.set(result, colourClasses(p, all, maxTextHeight));
+  if (ink === NEUTRAL) HUES.set(result, classes);
   return result;
 }
 
