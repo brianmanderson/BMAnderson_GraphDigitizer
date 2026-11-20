@@ -651,6 +651,24 @@ function layoutOf(word: LabelWord, p: Patch, digitWidth: number | null): Layout 
   };
 }
 
+/**
+ * An exponent's glyphs for its own crop, and the specks among them: at low resolution or in a JPEG
+ * a fleck of the base's last digit (the top of a "0") ends up raised beside the exponent and is
+ * taken for part of it; cut out with the exponent it reads as a point or a digit ("²" as ".2").
+ * A speck is no taller and no wider than a quarter of the exponent's height, not a minus sign, and
+ * lies wholly in front of the exponent's other glyphs.
+ */
+function exponentParts(exponent: Glyph[], bodyH: number, expH: number): [Glyph[], Glyph[]] {
+  const tiny = (g: Glyph) => !isDash(g, bodyH) && gh(g) <= 0.25 * expH && gw(g) <= 0.25 * expH;
+  const solid = exponent.filter((g) => !tiny(g));
+  if (!solid.length) return [exponent, []];
+  // Only in front of the exponent's own strokes: a small piece under or beside them is a part of
+  // a digit broken up at low resolution (the foot of a "3").
+  const start = Math.min(...solid.map((g) => g.x0));
+  const speck = (g: Glyph) => tiny(g) && g.x1 < start;
+  return [exponent.filter((g) => !speck(g)), exponent.filter(speck)];
+}
+
 /** Shears tried for italic text (horizontal shift per pixel of height, top to the right). */
 const SLANTS = Array.from({ length: 17 }, (_, i) => i * 0.05);
 /** Below this shear (about 8.5°) text is treated as upright. */
@@ -708,13 +726,33 @@ function slantOf(p: Patch, glyphs: Glyph[], bodyHeight: number): number {
  * `slant` > 0 shears italic text upright (rows shift left in proportion to their height above
  * the box's bottom).
  */
-function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0): RgbaImage {
+function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0, exclude: Glyph[] = []): RgbaImage {
   const x0 = Math.min(...glyphs.map((g) => g.x0)) - 1;
   const x1 = Math.max(...glyphs.map((g) => g.x1)) + 1;
   const y0 = Math.min(...glyphs.map((g) => g.y0)) - 1;
   const y1 = Math.max(...glyphs.map((g) => g.y1)) + 1;
   let max = 1;
   for (const g of glyphs) for (const k of g.pixels) max = Math.max(max, p.dark[k] ?? 0);
+  // The other part of a word (the base beside an exponent, or the exponent above a base) can
+  // reach into this part's box: the top of a "0" next to a small exponent made "³" read as "23".
+  // A pixel of the box nearer to that part's ink than to this part's is left out (its own pixels
+  // and its antialiased rim; faint ink of this part, such as a light point, stays).
+  const masked = new Set<number>();
+  if (exclude.length) {
+    const coords = (gs: Glyph[]) =>
+      gs.flatMap((g) => g.pixels.map((k) => [k % p.width, Math.floor(k / p.width)] as const));
+    const own = coords(glyphs);
+    const other = coords(exclude).filter(([x, y]) => x >= x0 - 3 && x <= x1 + 3 && y >= y0 - 3 && y <= y1 + 3);
+    const nearest = (pts: readonly (readonly [number, number])[], x: number, y: number) =>
+      pts.reduce((m, [px, py]) => Math.min(m, Math.max(Math.abs(px - x), Math.abs(py - y))), Infinity);
+    if (other.length) {
+      for (let y = Math.max(0, y0); y <= Math.min(p.height - 1, y1); y++) {
+        for (let x = Math.max(0, x0); x <= Math.min(p.width - 1, x1); x++) {
+          if (nearest(other, x, y) < nearest(own, x, y)) masked.add(y * p.width + x);
+        }
+      }
+    }
+  }
   const scale = Math.min(10, Math.max(1, OCR_TEXT_HEIGHT / Math.max(1, bodyHeight)));
   const margin = Math.round(0.5 * OCR_TEXT_HEIGHT);
   // Upright x = x + slant·(y − y1): the box's bottom row stays put, its top moves left.
@@ -726,7 +764,8 @@ function cut(p: Patch, glyphs: Glyph[], bodyHeight: number, slant = 0): RgbaImag
   const data = new Uint8ClampedArray(width * height * 4).fill(255);
   // Everything inside the glyphs' box: faint parts below the glyph threshold (a light decimal
   // point) stay visible to OCR.
-  const at = (x: number, y: number) => (x < x0 || y < y0 || x > x1 || y > y1 ? 0 : (p.dark[y * p.width + x] ?? 0));
+  const at = (x: number, y: number) =>
+    x < x0 || y < y0 || x > x1 || y > y1 || masked.has(y * p.width + x) ? 0 : (p.dark[y * p.width + x] ?? 0);
   for (let j = 0; j < ch; j++) {
     const fy = y0 - 0.5 + (j + 0.5) / scale;
     const iy = Math.floor(fy);
@@ -962,14 +1001,15 @@ function rotatedLabels(
     const hasExp = l.exponent.length > 0;
     const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
     const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
+    const [expGlyphs, specks] = exponentParts(l.exponent, bodyH, expH);
     const bodies = pick.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
     labels.push({
       along: t.along,
       point: t.point,
       tick: i,
       crop: cut(q, pick.glyphs, bodyH),
-      base: hasExp ? cut(q, l.base, bodyH) : null,
-      exponent: hasExp ? cut(q, l.exponent, expH) : null,
+      base: hasExp ? cut(q, l.base, bodyH, 0, l.exponent) : null,
+      exponent: hasExp ? cut(q, expGlyphs, expH, 0, [...l.base, ...specks]) : null,
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       singleChar: bodies.length === 1 && !hasExp && pick.x1 - pick.x0 + 1 <= 0.8 * bodyH,
@@ -1148,6 +1188,7 @@ function labelsWith(
     const hasExp = l.exponent.length > 0 && slant === 0;
     const expBodies = hasExp ? l.exponent.filter((g) => !isDash(g, bodyH)) : [];
     const expH = expBodies.length ? Math.max(...expBodies.map(gh)) : bodyH;
+    const [expGlyphs, specks] = exponentParts(l.exponent, bodyH, expH);
     const bodies = word.glyphs.filter((g) => gh(g) >= BODY_MIN_HEIGHT);
     const cx = (word.x0 + word.x1) / 2;
     const cy = (word.y0 + word.y1) / 2;
@@ -1158,8 +1199,8 @@ function labelsWith(
       point,
       tick,
       crop: cut(q, word.glyphs, bodyH, slant),
-      base: hasExp ? cut(q, l.base, bodyH, slant) : null,
-      exponent: hasExp ? cut(q, l.exponent, expH, slant) : null,
+      base: hasExp ? cut(q, l.base, bodyH, slant, l.exponent) : null,
+      exponent: hasExp ? cut(q, expGlyphs, expH, slant, [...l.base, ...specks]) : null,
       minus: l.minus,
       exponentMinus: hasExp && l.exponentMinus,
       // One glyph no wider than it is tall (two touching digits make one wide component).
