@@ -976,18 +976,21 @@ function labelsFor(
     if (viaLabels.labels.length >= 2) primary = viaLabels;
   }
   // Labels printed in a colour: each colour class of the band is matched like the neutral ink,
-  // and replaces the neutral pass when it finds more labels, or at least half as many with more
-  // than twice their ink (the neutral pass then matched the faint, colourless fringes of the
-  // coloured glyphs: empty readings at every tick). Its glyphs only, so a black gridline or a
-  // curve of another hue is no part of them. Otherwise neutral wins: a coloured number-at-risk
-  // table under black tick labels matches the same ticks with ink like theirs.
+  // and replaces the neutral pass when it finds more labels, or at least half as many that either
+  // have more than twice their ink (the neutral pass then matched the faint, colourless fringes of
+  // the coloured glyphs: empty readings at every tick) or sit nearer the axis (it matched the
+  // black axis title beyond them) — both only at tick marks. Its glyphs only, so a black gridline or a curve of another hue
+  // is no part of them. Otherwise neutral wins: a coloured number-at-risk table under black tick
+  // labels matches the same ticks with ink like theirs, further from the axis.
   for (const hue of HUES.get(viaTicks) ?? []) {
     let alt = labelsWith(map, img, frame, which, ax, avoid, tickMode, majors, crossing, ofHue(hue));
     if (tickMode === 'ticks' && alt.labels.length < 2) alt = labelsWith(map, img, frame, which, ax, avoid, 'labels-only', [], crossing, ofHue(hue));
     const n = alt.labels.length;
     const m = primary.labels.length;
-    const inkier = n >= 0.5 * m && (MASS.get(alt) ?? 0) > 2 * (MASS.get(primary) ?? 0);
-    if (n >= 2 && (n > m || inkier)) {
+    const half = alt.mode === 'ticks' && n >= 0.5 * m;
+    const inkier = half && (MASS.get(alt) ?? 0) > 2 * (MASS.get(primary) ?? 0);
+    const nearer = half && m > 0 && reach(alt) < reach(primary) - Math.max(2, 0.5 * median(alt.labels.map((l) => l.box.height)));
+    if (n >= 2 && (n > m || inkier || nearer)) {
       primary = alt;
       UPRIGHT.set(viaTicks, UPRIGHT.get(alt) ?? 0);
     }
@@ -1010,6 +1013,9 @@ function labelsFor(
   }
   return primary;
 }
+
+/** Median distance of a pass's labels from their points on the axis line, image px. */
+const reach = (r: AxisLabels) => median(r.labels.map((l) => Math.hypot(l.box.center.x - l.point.x, l.box.center.y - l.point.y)));
 
 /** How upright the labels a pass found read (`uprightness`), per result. */
 const UPRIGHT = new WeakMap<AxisLabels, number>();
