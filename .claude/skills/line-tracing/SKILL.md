@@ -82,6 +82,26 @@ description: >
    `KINK_COLUMNS`) whose runs must emerge from the ink and are only a fallback; retry from the last
    fork (`RETRY_COLUMNS`, `MAX_RETRY_DEPTH`; kink-only runs make no fork; the branch that followed
    most ink wins). Walk order: right, left primed with right, right primed with left.
+   Darker shades: a run peaking above 1.15 × the trace's typical peak (`DARKER_RATIO`, a darker
+   shade of a one-hue palette — all shades are "on") ranks behind same-strength runs, never resets
+   `entryX/entryY` and gives no slope (`dark` entries; the slope looks back ≤ 30 columns for the
+   series' own, else follows the stroke over it). A walk that dies in a gap is retried from where
+   the gap opened (`gapStart`, kept when it follows ≥ 8 more columns, ≤ 6 times per direction;
+   never for `only` walks — every dash piece would retry — and riding only when the gap began
+   under other ink, `gapUnder`: almost every walk "dies" at its real end, watch the `ms` column):
+   *riding* — following the stroke of another colour it went under (≤ max(10, 4t + 4) px tall,
+   must run the series' way after 6 columns, else its columns are open gap again; ridden centres
+   become path points via `ColumnEntry.hidden`) — or *noisy* — a measured signal (`noisySeries`:
+   slope MAD ≥ 0.6 px and ≥ 3 reversals over 12 columns) looked for around its last level within
+   a random walk's reach, gaps never hidden. Both only as retries: as first choices they broke
+   straight chords, steep lines and polylines under markers.
+   Fill edges (`curve.ts → traceAreaEdge`, before the style read in `index.ts`): a click inside a
+   fill tall and wide enough (≥ max(16 px, 4 % H), ≥ max(64 px, 25 % W) through its middle)
+   follows its upper edge (lower when clicked within 12 % of it): a stacked-area layer without an
+   outline. The bar finder (`bars.ts`) runs first and keeps a click on bars, unless in auto mode the
+   fill's edge is not `flatTopped` (pieces between > 1.5-px steps drift > 2 px: a smooth layer).
+   The fold follower (`follow.ts`) takes over only when what it adds has the walk's strength
+   (`strengthAlong`, within 1.15×): shades of one hue meeting at a common start.
 5. Dash hopping (`dashes.ts → hopDashes`, dashed / dash-dot): from each end of the walk, the next
    piece ahead on the walk's course (size, alignment, no series-colour ink between), walked alone
    and primed with the line's direction; repeated to the real end. `traceColumns(…, only)` is the
@@ -92,7 +112,10 @@ description: >
    bridged; a 1-column stair of a steep line stays, its corner bounds `insertHiddenKinks`); square
    groups wider than a stroke sticking out past the curve (same-colour markers) → one corner at
    their centroid; thin groups sticking out on both sides ('+') dropped.
-7. `kinks.ts`: vertices hidden under other-colour markers (occluder centroid, or the intersection
+7. `kinks.ts`: patterned step corners (`stepLike` → `withStepCorners` from the walk over the
+   filled pattern, checked level on both sides, then `levelCorners` from the levels either side of
+   each vertical: the verticals of a dashed/dotted step have no stroke once `unfill` ran);
+   vertices hidden under other-colour markers (occluder centroid, or the intersection
    of the stretches either side, both only over ink) and line ends under a marker.
 8. `resample.ts`: ends + corners + extrema + DP kinks always, rest evenly in x up to `maxPoints`.
 9. Markers ("Find points", `markers.ts`): `markerTemplate` cuts the clicked marker out of its blob
@@ -156,7 +179,7 @@ description: >
   `kind: "bars"` series (loaded as scatter; `markers` = value ends; tags `bars:*`, `histogram`).
   `score.ts` adds `pathCoverage` / `pathPrecision` / `pointsOrder` (gated) for `series:path` only
   — absent from every other category, so earlier entries gain no key.
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (140 charts, 375 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (170 charts, 484 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
@@ -169,7 +192,12 @@ description: >
   (300–1000 small black "+"/"x"/dot markers in overlapping clusters, filled diamonds among them,
   grey or coloured curves through the cloud with a corner on the first, percent labels, an
   offset range frame `detectAxes` boxes from where the extended axes would meet, log-log or linear; `build_busy`; marker truth
-  per class, `corners` = the curve's corner) — so earlier ones stay
+  per class, `corners` = the curve's corner), l170–l199 `styles` (`build_styles`, one variant per
+  chart from `STYLE_VARIANTS`: bands, filled / stacked areas — truth = a layer's top edge, seed in
+  the fill when it has no edge line —, 6–8 series of one palette, noisy series, curves running
+  together, 1-px lines, dark / grey-panel themes, gridlines in the series' colour, annotations
+  and a legend over curves, KM pairs with "|" ticks, steep sigmoids, log-x, log-log; seeds by
+  `pick_seed_styles`) — so earlier ones stay
   byte-identical: check `git status` after regenerating). Per series: `kind` (`line|step|scatter`), `tags`, `color`, `style`, `marker`,
   `lineWidthPx`, `markerSizePx`, `seed`, `data`, `pixels`, and `path` (drawn polyline),
   `markers` (centres), `corners` (step corners; for kink polylines every vertex). Seeds: visible ink of the series (coverage ≥ 0.6),
@@ -205,12 +233,19 @@ by a dense grid often go unread, a marker touching a curve or gridline traces as
 busy-scatter: a minority of thin markers ("x") among dense piles of dots is over-counted, two grey
 curves of different shades meeting can send the walk along the darker one, corners hidden under a
 marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
-a faint marker. New kinds (l200–l229): a P–E loop whose tips are one merged line leaves its tips
+a faint marker; styles: a curve hidden under another for more than 30 % of the plot width ends
+there, a light shade hidden under a darker one can leave with the darker one (`l184/s1`), a legend
+box over a curve ends the trace at the box, noisy JPEG series at 72 DPI fragment, dashed series
+among dashed gridlines of their colour are misread / follow the grid, dotted KM steps with "|"
+ticks read as dash-dot; a JPEG dashed line touching a thick related-hue curve can switch to it
+(`l31/s3`). Scans: keeping a walk off a gridline it only touches (no far-end exit from a run
+that is mostly ruling) fixes `l121/s0` but costs steep curves crossing horizontal gridlines —
+rejected, see SPEC.
+New kinds (l200–l229): a P–E loop whose tips are one merged line leaves its tips
 out (the walk stops where the branches merge), a curve folding back that the walk retraces is left
 to the column walk (an open path is never trusted after retracing), stress–strain cycles in one
 black stroke (crossings at every reload) are not followed, a P–E ellipse among another loop is
 taken for markers, a minor loop inside a same-colour major loop follows the major one; outlined
 and hatched-only bars (white fill) are not found, cross-hatched grey bars read as markers, a
-spine drawn at zero cuts the plot box (bars below it lost unless the box is right). Numbers:
-docs/SPEC.md → Auto-trace →
-Baseline / Known failures.
+spine drawn at zero cuts the plot box (bars below it lost unless the box is right). Numbers: docs/SPEC.md → Auto-trace →
+Line-chart styles / Baseline / Known failures.

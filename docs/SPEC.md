@@ -1111,7 +1111,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 140 seeded charts, 375 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 170 seeded charts, 484 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -1150,8 +1150,21 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   a 25–40° corner — "1%/3%/5%" labels at their starts, an offset range frame (the axes stand off
   and span only the labelled range; `detectAxes` boxes them from where the extended axis lines
   would meet, see Axis detection → Range frames),
-  log-log or linear. Gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third)
-  vary.
+  log-log or linear; (l170–l199, `scenario:styles`, `build_styles`, one variant per chart, each
+  tagged) line-chart looks the corpus lacked — a shaded band of the series' own lighter colour
+  around each curve (`band`, with dashed limits `band-limits`), filled areas under an edge line
+  (`area`) and stacked areas with and without edge lines (`stacked`, `area:no-edge`; the truth is
+  each layer's top edge, the seed in the fill just below it when there is no line), six to eight
+  series from one palette (`many-series`, `palette:tab10|colorblind|hue|grey`, greys also with
+  line styles), noisy time series that cross many times (`noisy`), curves that run exactly
+  together for a stretch before parting (`touching`), 1-px lines at 72–96 DPI (`hairline:aa`,
+  `hairline:crisp`), dark and grey-panel themes (`theme:dark`, `theme:grey-panel`; matplotlib's
+  `dark_background`, `ggplot`, `seaborn-v0_8-darkgrid`), dashed / dotted gridlines in the series'
+  colour (`grid:series-colour`), labels, an arrow and a legend box over the curves
+  (`annotations`, `legend-over`), Kaplan–Meier pairs of one colour with "|" censor ticks, solid +
+  dashed and solid + dotted (`km-styles`, `censor-ticks`), steep sigmoids (`steep`), log-x
+  dose-response curves with bands (`log-x`) and log-log power laws. Gridlines, legends, frames,
+  line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
   Real figures (`bench/lines/real/manifest.json`; CC BY or public domain, provenance in
@@ -1403,6 +1416,100 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   read as a dull grey-blue, so the walk follows other ink either way) stops after 6 points instead
   of running 76 wrong ones (coverage 12.1 → 0.9 %; busy-scatter p95 28.1 → 1.9 px only because
   its wrong points no longer count); the other 53 busy-scatter traces are unchanged.
+- **Line-chart styles (2026-11-19; 506 traces)**: the corpus gained l170–l199 (`scenario:styles`,
+  109 traces, see Benchmark), committed first with the tracer's honest baseline (earlier charts
+  byte-identical, no earlier trace changed). Then, in the curve walk and around it:
+  - *Fill edges* (`curve.ts → traceAreaEdge`, called from `index.ts` before the style read): a
+    click inside a fill of one colour — at least max(16 px, 4 % of the plot's height) tall and,
+    through the middle of the fill, at least max(64 px, 25 % of the plot's width) wide (a stroke, a
+    bar or a marker is not) — follows the fill's upper edge column by column through the run that
+    overlaps the last one most, to where the fill ends (its lower edge when the click is within
+    12 % of it). The edge is the coverage boundary, sub-pixel from the partly covered pixels there.
+    Reported as a solid curve. (A filled area drawn under an edge line is traced on the line, as
+    before; a band or fill of the series' own lighter colour is below ½ coverage and was never
+    "on".)
+  - *Riding a hiding stroke* (`curve.ts`): a walk that dies in a gap is walked again from where
+    the gap opened, following the stroke of another colour the series went under there (its run
+    at the predicted row, at most max(10 px, 4 widths + 4) tall, then wherever it goes, within 2
+    rows per column; down a long run to its end farther from where the walk came in). After 6
+    columns it must still run the series' way (slope within 0.3 × (1 + |slope|) of the series'
+    own), else it is dropped and its columns count as open gap again (a "+" marker is no hiding
+    place). The series is taken back where it comes out beside the stroke (within 2.5 px of its
+    edge); the ridden centres become path points (confidence 0.4). The retry is kept only when it
+    follows ≥ 8 more columns of ink, up to 6 times per direction; it runs only when the gap began
+    under ink of another colour, and never for the one-piece walks of dash hopping (retrying every
+    walk at its real end cost ~55 % more time per trace; gated, 335 ms vs 323 ms before). A curve that runs exactly on
+    another for a stretch and bends there (`touching`) is followed to its real end.
+  - *Noisy series* (`curve.ts → noisySeries`): a walk that dies in a gap of a measured signal —
+    the median absolute deviation of its last 12 column slopes ≥ 0.6 px and ≥ 3 reversals by ≥
+    0.6 px — is walked again from where the gap opened, looking for it around its last level (the
+    median of its last 5 centres), as far off as a random walk with its median jump would wander
+    (1.5 × jump × √(gap + 1) + ½ width + 1.5 px); such gaps never count as hidden (a guess, so
+    only the open-gap limit). Only as a retry: as a prediction everywhere it broke steep lines
+    (pixel stairs scatter the slope) and zigzag polylines under markers.
+  - *Darker shades* (`curve.ts`, `DARKER_RATIO`): a run whose peak coverage exceeds 1.15 × the
+    trace's typical peak is a darker shade of the series' hue (one-hue palettes: every shade is "on"
+    for the others), ranks behind a run of the series' own strength in reach, never resets where
+    the walk entered a long stretch, and its columns give no slope (`recentSlope` and the clean
+    slope skip them, looking back up to 30 columns for the series' own; only when there are fewer
+    than three own pairs — the series hidden under a darker one for a long stretch — the stroke
+    over it sets the slope).
+  - *Corners of patterned steps* (`kinks.ts → withStepCorners`, `levelCorners`, `stepLike`): a
+    dashed / dotted / dash-dot step curve has no vertical stroke once the pattern's fill is undone.
+    For a step curve (≥ 70 % of neighbouring path points within 0.2 px of each other and ≤ 20 %
+    sloped by 0.2–2 px, in the real path or the one over the filled pattern) the corners are read
+    from the walk over the filled pattern (each vertical's pair replaces what the real ink left of
+    it when the path is level within 1.5 px for 2 px on both sides), then from the levels either
+    side of each remaining vertical (consecutive levels ≥ max(2.5 px, a width) apart, their ends
+    within a gap + a piece + 2 widths + 2 px, only points near one x between them): x = the centre
+    of the series' ink between the two levels there, or their ends' middle within 4 px.
+  - *With the new kinds (merge of 2026-11-19)*: the bar finder (`bars.ts`) answers a click in a
+    fill first; its bars are kept unless, in auto mode, the clicked fill's edge (`traceAreaEdge`)
+    is a smooth curve — `curve.ts → flatTopped`: the edge cut at steps of > 1.5 px, a bar's top
+    drifts ≤ 2 px from end to end within its piece, a smooth layer drifts far (also where it borders
+    another fill unblended and comes out as 1-px steps) — then it is that layer's edge (a stacked
+    area standing on the baseline was cut into narrow "bars"). The fold follower (`follow.ts`) takes
+    over only when what it adds beyond the column walk has the series' own strength (median peak
+    coverage within 1.15× of the walk's, `strengthAlong`): where curves of one hue meet at a common
+    start it turned back along a lighter or darker one (`l178/s0`, `l179/s3`). Noisy-series retries
+    need ≥ 3 reversals (with 2 they fired on a stress-cycle path, `l203/s0`, path precision 0.979 →
+    0.954).
+  Before → after (506 traces): overall coverage 89.6 → 91.2 %, p95 1.81 → 1.29 px, wrong series
+  5.2 → 4.2 %, corner recall 55.9 → 59.7 %, kind 96.3 %, style 92.5 % unchanged; `style:dashed`
+  corner recall 14.0 → 30.0 %; `color:black` corners 47.0 → 54.1 %; `lw:thin` coverage 86.3 →
+  89.2 %; `scenario:line-markers` coverage 85.0 → 91.2 % (`l01` 77.9 → 91.1 / 31.4 → 74.2 %,
+  `l25/s1` 43.8 → 87.2 %); `scenario:same-colour` corners 41.6 → 48.7 %; `scenario:styles`
+  coverage 89.8 → 94.9 %, p95 2.72 → 0.90 px, wrong 5.5 → 1.8 %, corners 40.7 → 55.0 %; `area`
+  63.6 → 100 % (fill-only stacked layers 0 → 100 %), `noisy` 59.7 → 69.0 %, `touching` 83.1 →
+  94.3 %, `palette:hue` coverage 91.0 → 95.4 %, wrong 22.2 → 11.1 %, `km-styles` corners 40.7 →
+  55.0 %. Unchanged: `scenario:scan-grid` (65.5 %, wrong 27.8 %), `rotated` (71.8 %, 29.2 %),
+  `own-colour-lines` (78.6 %, 13.9 %), `four-series`, `km`, `scenario:top-axis` style (62.5 %),
+  `log-log` p95 (5.95 px), `color:grey` p95 (1.73 px). Trade-offs (rebaselined with the gains):
+  pooled median errors rise by 0.0002–0.04 px (traces that now succeed are scored on more,
+  harder points; `area` 0.34 → 0.38 px: a fill edge sits ~0.7 px off matplotlib's path, which
+  blends the next layer into the boundary pixel); `l31/s3` (a JPEG dashed line touching a thick
+  brown curve whose peak is only ~1.2 × its own) 98.8 → 92.8 %; `l07/s3` 58.9 → 57.5 %;
+  `l106/s2` 98.1 → 97.1 %; `l43/s1` corners 23 → 22 of 32; `l78/s1` coverage 84.6 → 83.0 % (with
+  corners 15 → 22 of 70); `l93/s0` (a scatter traced as a curve either way) 14 → 6 points.
+  **Tried and rejected**: a noisy-series prediction in every gap (steep lines and polylines under
+  markers broke); counting reversals only across thin runs, or only where both run ends move (a
+  noisy line's columns span from one level to the next, so neither holds); requiring continuous
+  ink for a noisy series (the cause of a busy-scatter regression was riding, not the noise test);
+  riding as the first choice in every gap (a straight chord across the hidden stretch, and step
+  curves under censor ticks, got worse); validating corners from the filled walk without
+  checking that the path is level beside them (spurious corners on smooth dashed curves); for
+  scans, never leaving a run that is mostly ruling by its far end, or never taking one off the
+  prediction (fixed `l121/s0` running up a gridline and `l126/s2` 27 → 58 %, but a steep curve
+  crossing a horizontal gridline leaves exactly such a run by its far end: `l122/s0`, `l123/s0`,
+  `l125/s0` lost 2–7 % coverage, and a 20–40 px "along the column" condition removed the gain
+  too). **Known failures**: a curve hidden under another for longer than 30 % of the plot width
+  ends there (riding does not lift the hidden-gap limit); `l184/s1` (a light shade hidden under a
+  darker one, then leaving it upward) still follows the darker one; a legend box over a curve
+  ends the trace there (`l193/s0`, `l194/s1`: inside the box is background, wider than the open
+  gap limit); noisy JPEG series at 72 DPI (`l182/s3` 23.6 %, style unread); dashed series among
+  dashed gridlines of their colour (`l191/s1` reads dash-dot and follows the grid, `l192/s1`
+  62.5 %); dotted KM steps with "|" ticks (`l196/s1` reads dash-dot, 33 %, 6/42 corners); scans
+  as before (rulings above).
 - **New kinds: curves that double back, and bars (2026-11-19, `new-kinds`).** Two kinds the
   column walker cannot do at all, each in its own file with a small hook in `index.ts`; both take
   over only where the old code fails, and every one of the 397 earlier per-trace baseline entries

@@ -34,9 +34,9 @@ import { detectAxes } from '../detect.ts';
 import { filledBars } from './bars.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
-import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
+import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
 import { followStroke, mayDoubleBack, pickPoints, takesOver } from './follow.ts';
-import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
+import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
@@ -59,6 +59,8 @@ const RULING_STROKE = 0.5;
  * within the walker's own tolerances once the gridline's ink is dropped with the dashes it touches.
  */
 const HEAVY_RULING = 6;
+/** Ink this many times stronger or weaker than the series' own is another shade of its hue. */
+const SHADE_RATIO = 1.15;
 
 const now = (): number => {
   const p = (globalThis as { performance?: { now(): number } }).performance;
@@ -259,7 +261,17 @@ export function traceLine(req: TraceRequest): TraceResult {
   // bottom edge is no frame line.
   if (req.mode !== 'curve') {
     const bars = filledBars({ img, alpha, other, region, model, seed: s, lone: req.mode === 'markers', markerMax });
-    if (bars) return result({ ok: true, kind: 'markers', style: 'unknown', color, path: bars, points: bars.map((p) => ({ ...p })) });
+    if (bars) {
+      // Bars win over a fill's edge (`traceAreaEdge`, below), unless in auto mode the clicked fill's
+      // edge is a smooth curve, not level bar tops: a layer of a stacked-area chart standing on
+      // the baseline, which the bar finder cuts into narrow "bars".
+      const area = req.mode === 'auto' ? traceAreaEdge(alpha, region, s) : null;
+      if (area && !flatTopped(area)) {
+        const path: TracedPoint[] = area.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+        return result({ ok: true, kind: 'curve', style: 'solid', color, path, points: resample(area, req.maxPoints, 1) });
+      }
+      return result({ ok: true, kind: 'markers', style: 'unknown', color, path: bars, points: bars.map((p) => ({ ...p })) });
+    }
   }
   excludeEdgeLines(region, alpha);
   if ((alpha[s.y * w + s.x] ?? -1) < 0.5) {
@@ -316,6 +328,16 @@ export function traceLine(req: TraceRequest): TraceResult {
     }
   }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
+
+  // A click inside a fill (an area chart without an outline, a layer of a stacked-area chart): the
+  // fill's edge is the series (curve.ts → `traceAreaEdge`).
+  if (req.mode !== 'markers' && !small) {
+    const area = traceAreaEdge(alpha, region, s);
+    if (area) {
+      const path: TracedPoint[] = area.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+      return result({ ok: true, kind: 'curve', style: 'solid', color, path, points: resample(area, req.maxPoints, 1) });
+    }
+  }
 
   const ctx = { found, alpha, other, region, ruling, darker };
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
@@ -381,6 +403,17 @@ export function traceLine(req: TraceRequest): TraceResult {
     if (walked && walked.length >= 2 && !mayDoubleBack(walked, alpha, region, thick)) return null;
     const f = follow();
     if (!f || !takesOver(f, walked, region.x1 - region.x0 + 1, markerMax)) return null;
+    // What the follower adds beyond the walk must be the series' own ink: where shades of one hue
+    // meet (curves of a one-hue palette from a common start), it would turn back along a lighter or
+    // darker one (curve.ts → DARKER_RATIO).
+    if (walked && walked.length >= 2) {
+      const r = Math.max(1, Math.ceil(thick / 2));
+      const reach = 2 * thick + 2;
+      const added = f.path.filter((p) => !walked.some((q) => Math.hypot(q.px - p.px, q.py - p.py) <= reach));
+      const own = strengthAlong(walked, alpha, region, r);
+      const theirs = added.length >= 8 ? strengthAlong(added, alpha, region, r) : own;
+      if (own > 0 && (theirs > SHADE_RATIO * own || theirs < own / SHADE_RATIO)) return null;
+    }
     const path: TracedPoint[] = f.path.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
     return result({ ok: true, kind: 'curve', style: sig.style, color, path, points: pickPoints(f.path, req.maxPoints) });
   };
@@ -404,7 +437,16 @@ export function traceLine(req: TraceRequest): TraceResult {
     // A dashed line's walk ends where its gaps were not filled (dashes too uneven for one pattern,
     // a dash cut by a gridline): on from the next piece ahead, to the line's real end (dashes.ts).
     if (walked && (sig.style === 'dashed' || sig.style === 'dash-dot')) walked = hopDashes(walked, found, alpha, region, sig, opts);
+    // A patterned step curve has no vertical strokes to take corners from once the fill is undone:
+    // they are read from the walk over the filled line, then from the levels either side (kinks.ts).
+    const filled = walked && fill ? columnsToPath(walked, alpha, w) : [];
+    const filledCorners = filled.filter((p) => p.corner);
+    // Only for a step curve (level between its verticals, with the gaps filled or as drawn): a
+    // smooth dashed curve gets no corners.
+    const steps = (real: PathPoint[]) => patterned && (stepLike(real) || stepLike(filled));
     const e = walked && fill ? unfill(fill, walked, alpha, region) : walked;
+    // Level ends either side of one vertical of a patterned step: a gap and a piece apart at most.
+    const cornerJoin = sig.gap + sig.maxOn + 2 * sig.thickness + 2;
     // The dots the walk went through (a walk can't start up a steep thin dotted line from one dot).
     const dots: Blob[] = [];
     if (sig.style === 'dotted' && e) {
@@ -422,8 +464,9 @@ export function traceLine(req: TraceRequest): TraceResult {
     if (sig.style === 'dotted' && (dots.length >= 2 || straight.length >= 2)) {
       // A dotted line: its points are the centroids of its dots, along the walk or the straight
       // chain, whichever passes through more of them.
-      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
       thickness = Math.max(1, Math.min(blobWidth(template), blobHeight(template)));
+      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
+      if (steps(traced)) traced = levelCorners(withStepCorners(traced, filledCorners, thickness), thickness, { width: w, height: h, alpha, other }, cornerJoin);
     } else {
       if (!e || e.length < 2) return doublingBack(null, sig.thickness) ?? fail('Could not follow a line from the clicked point.', color);
       thickness = thicknessOf(e);
@@ -431,7 +474,9 @@ export function traceLine(req: TraceRequest): TraceResult {
       const maps = { width: w, height: h, alpha, other };
       // A solid line among dashes of its own colour: the dashes touching it stick out as spurs.
       const spurs = sig.style === 'solid' && dropped;
-      traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w, spurs), thickness, maps), thickness, maps);
+      let centre = columnsToPath(e, alpha, w, spurs);
+      if (steps(centre)) centre = levelCorners(withStepCorners(centre, filledCorners, thickness), thickness, maps, cornerJoin);
+      traced = extendHiddenEnds(insertHiddenKinks(centre, thickness, maps), thickness, maps);
     }
   }
   const doubled = doublingBack(traced.length < 2 ? null : traced, thickness);
