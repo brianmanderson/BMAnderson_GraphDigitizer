@@ -149,6 +149,22 @@ description: >
    of it only after the ring test, when clicked on and clearly thicker than the attached strokes.
    `legendSample` also follows a line handle to the label, ignores ink touching the marker and
    needs thin-stroked letters (scan dashes are not letters).
+   Open templates with a real inside (`roomy`: ≥ 12 px clear of the ring) are matched by the
+   ring's *core* (within a pixel of its ridge, depth in the ring band alone); a straight stroke
+   through the inside that runs on outside the ring is unknown, not fill (`throughLine`,
+   `runsOn`; such a `through` hit with a rough outline needs agree ≥ 0.6); a clicked ring split by
+   a line gets its whole inside back as the hull of its pieces (`wholeInside`).
+   Stroke markers (`cross.ts`, 2026-11-20): in the busy blob match a clicked "x"/"+" with four
+   troughs in its 16-ray *ink profile* makes singles and cluster copies correlate with it
+   (≥ 0.5) — only when ≥ 25 compact look-alike blobs (dots) lack the pattern and are ≥ ¼ of the
+   markers. On lines: `crossAtSeed` (four arms at one angle, lengths agreeing, thin alike
+   strokes inked all along, ≥ 3 ending with ≥ 2 free tips, ≥ 3 gaps clear or 2 + a line across)
+   → `findCrosses` (that angle and length; ends 3, or 2 + a line on along one pair with free
+   tips; legend samples dropped). Hooked in `index.ts` before the marker branch whenever the
+   trace would be a curve, the blob is large without a shape, or the shape cut is filled or a
+   tiny-inside open one; never over a roomy open template or a small blob standing alone. The
+   ruled-scan marker check (a marker-sized seed reading as a pattern) tries the arms first too,
+   on the map with the gridlines in (`strokeMarkers`).
 10. Bars (`bars.ts → findBars`, 2026-11-19, outlined/hatched 2026-11-20; not in curve mode; before
     `excludeEdgeLines`, so a row of bars on the bottom edge is no frame line). Two ways in, one
     reading: a click in a solid 4 × 4 block of the series' colour reads *filled bars*; if that finds
@@ -237,7 +253,7 @@ description: >
   an outlined histogram, four series with error caps).
   `score.ts` adds `pathCoverage` / `pathPrecision` / `pointsOrder` (gated) for `series:path` only
   — absent from every other category, so earlier entries gain no key.
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (246 charts, 686 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (258 charts, 715 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
@@ -256,6 +272,9 @@ description: >
   4.5–16 px, one colour or similar hues, error bars, on lines, legends, dark / ggplot / seaborn
   themes, JPEG, low dpi; tags `marker:*`, `fill:*`, `edge:*`, `alpha`, `theme:*`,
   `similar-hues`, `one-colour-classes`, `legend:samples`, `layout:*`, `size:*`),
+  l290–l301 `marker-lines` (`MARK_CHARTS2`, `build_marks`, `MARKS2_FROM = 290`: open shapes of
+  one colour in black and white, open markers with error bars or a line through them, thin x/+
+  on lines, small, in JPEG, among dots, with error bars),
   l170–l199 `styles` (`build_styles`, one variant per
   chart from `STYLE_VARIANTS`: bands, filled / stacked areas — truth = a layer's top edge, seed in
   the fill when it has no edge line —, 6–8 series of one palette, noisy series, curves running
@@ -297,15 +316,18 @@ the axis, a dashed trace stops at an open marker whose cap it entered; scans (sc
 scan-rotated 25.0 %): a dashed curve where an "x" sits on a gridline crossing still leaves along
 the "x" (`l124/s2`, `l277/s1`), a dash touching a gridline at the seed can read solid
 (`l120/s2`), dashed curves converging on another's dashes at a shallow angle switch (`l122/s1`,
-`l270/s1`), a dash cut into a stub by a gridline kinks the path, most "x"/"o" clicks in a dense
-grid still trace a curve (marker recall 31–35 %);
-busy-scatter: a minority of thin markers ("x") among dense piles of dots is over-counted, two grey
+`l270/s1`), a dash cut into a stub by a gridline kinks the path, most "o" clicks in a dense grid
+still trace a curve; an "x" there is found by its arms (cross.ts, 2026-11-20);
+busy-scatter: an "x" merged with a dot of its colour fails the profile test (l137 recall 74 %), two grey
 curves of different shades meeting can send the walk along the darker one, corners hidden under a
 marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
 a faint marker;
 marker styles: a filled marker of another class inside two heavily overlapping clicked ones is
 taken, markers half under a close colour (JPEG orange on red) or a semi-transparent one are
 lost, legend samples with run-together labels or drawn with error bars still count;
+marker lines (l290–l301): a hollow circle with a line through it can pass for a hollow square,
+an "x" on its error bar for a "+", stroke markers ≤ 4 px on a line are not found by their arms,
+scan rings crossed by two lines or broken by the scan still miss (scan ring recall 50 %);
 styles: a curve hidden under another for more than 30 % of the plot width ends
 there, a light shade hidden under a darker one can leave with the darker one (`l184/s1`), a legend
 box over a curve ends the trace at the box, noisy JPEG series at 72 DPI fragment, dashed series

@@ -37,7 +37,8 @@ import { hopDashes } from './dashes.ts';
 import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
 import { followStroke, mayDoubleBack, pickPoints, takesOver, withFollowed } from './follow.ts';
 import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
-import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
+import { crossAtSeed, findCrosses } from './cross.ts';
+import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, roomy, withoutLegendSamples, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
 import { findRulings } from './rulings.ts';
@@ -336,6 +337,16 @@ export function traceLine(req: TraceRequest): TraceResult {
   const ruled = marker0 ? null : findRulings(alpha, region, s);
   const rulings = sig.style === 'dashed' ? null : ruled;
   let ruling = rulings?.mask(Math.max(MIN_RULING, RULING_STROKE * Math.max(rulings.stroke, sig.thickness), patterned0 ? HEAVY_RULING : 0)) ?? undefined;
+  // Stroke markers ("x", "+") by their arms (cross.ts) on a coverage map: those like the one at the
+  // seed, legend samples dropped.
+  const strokeMarkers = (map: Float32Array): TracedPoint[] => {
+    const cov = (x: number, y: number) => {
+      const a = map[y * w + x] ?? -1;
+      return a <= 0 ? 0 : a < 1 ? a : 1;
+    };
+    const cross = crossAtSeed(cov, region, s.x, s.y, markerMax / 2);
+    return cross ? withoutLegendSamples(map, other, region, findCrosses(cov, region, cross), 2 * cross.len) : [];
+  };
   let rulingInk: Uint8Array | undefined;
   if (ruling) {
     const saved: number[] = [];
@@ -356,6 +367,12 @@ export function traceLine(req: TraceRequest): TraceResult {
     // marker's shape is looked for on the map as it was (cut out of the gridline's blob, the way a
     // marker with error bars is) — found three times or more, the series is those markers.
     if (req.mode === 'auto' && marker2 && patterned2) {
+      // An "x" or "+" is found by its arms first, on the map with the gridlines in (cross.ts; a
+      // filled cut of a thick "x" fits its neighbours' strokes too).
+      const uncut = alpha.slice();
+      for (let i = 0; i < saved.length; i += 3) uncut[saved[i]!] = saved[i + 1]!;
+      const crosses = strokeMarkers(uncut);
+      if (crosses.length >= 3) return result({ ok: true, kind: 'markers', style: 'unknown', color, path: crosses, points: crosses.map((p) => ({ ...p })) });
       // As cut (a marker beside a dash), then with the gridlines through it back (a marker on one).
       const shape2 = markerTemplate(found2, alpha, region, s, markerMax, hole);
       const hits2 = shape2 && (shape2.shape === 'open' || shape2.elongation < MARKER_ELONGATION) ? findMarkers(found2, alpha, other, region, shape2) : [];
@@ -455,6 +472,19 @@ export function traceLine(req: TraceRequest): TraceResult {
         const loop = follow();
         if (!(loop && loop.closed && takesOver(loop, null, region.x1 - region.x0 + 1, markerMax))) kind = 'markers';
       }
+    }
+  }
+  // A stroke marker ("x", "+") drawn on a line, a gridline or a dashed curve of its colour is one
+  // blob with them and no shape is cut out of it: found by its arms instead (cross.ts) — in auto
+  // mode when it is found three times or more.
+  // Its arms come first also over a shape cut out of it (a thick "x" opened into a filled shape
+  // with concave corners, the tiny pocket between an "x" and its line taken for an open marker),
+  // never over an open marker with a real inside, nor a small marker standing alone (the blob
+  // match, with its own stroke test for crowded plots).
+  if (req.mode !== 'curve' && !(shape && roomy(shape)) && (kind === 'curve' || !small || shape)) {
+    const crosses = strokeMarkers(alpha);
+    if (crosses.length >= (req.mode === 'markers' ? 1 : 3)) {
+      return result({ ok: true, kind: 'markers', style: 'unknown', color, path: crosses, points: crosses.map((p) => ({ ...p })) });
     }
   }
   if (kind === 'markers') {

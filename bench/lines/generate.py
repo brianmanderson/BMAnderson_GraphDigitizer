@@ -1102,10 +1102,32 @@ MARK_CHARTS = [
 ]
 
 
+# l290-l301 (MARKS2_FROM; l230-l289 belong to other sets): stroke and open markers where round one left them weak - several open
+# shapes of one colour in one black-and-white chart, open markers with error bars or a line through
+# them (hollow: the line shows inside), thin "x" and "+" on lines, at small sizes, in JPEG, among
+# dots of their colour, with error bars. Same builder, own scenario tag.
+MARKS2_FROM = 290
+MARK_CHARTS2 = [
+    dict(dpi=100, layout="line", series=[("o", "open", "k", 9), ("s", "open", "k", 8.5), ("^", "open", "k", 10), ("D", "open", "k", 8.5)]),
+    dict(dpi=120, jpeg=True, err="y", caps=True, series=[("o", "open", "k", 10), ("s", "open", "k", 9), ("^", "open", "k", 10.5)]),
+    dict(dpi=150, layout="line", series=[("o", "hollow", "k", 12), ("s", "hollow", "k", 11)]),
+    dict(dpi=100, series=[("x", "thin", "k", 6), ("+", "thin", "k", 6.5), ("o", "filled", "k", 5)]),
+    dict(dpi=96, jpeg=True, layout="line", series=[("x", "thin", "k", 7), ("+", "thin", "k", 8)]),
+    dict(dpi=120, layout="line", series=[("x", "thin", "C0", 9), ("+", "thin", "C3", 9)]),
+    dict(dpi=150, jpeg=True, err="xy", caps=False, series=[("D", "open", "k", 11), ("v", "open", "k", 11)]),
+    dict(dpi=100, grid=True, layout="line", series=[("o", "hollow", "C0", 10), ("^", "hollow", "C0", 10.5)]),
+    dict(dpi=72, jpeg=True, layout="line", series=[("x", "thin", "k", 6), ("o", "open", "k", 7)]),
+    dict(dpi=120, err="y", caps=True, series=[("x", "thin", "k", 9), ("+", "thin", "k", 9)]),
+    dict(dpi=100, cloud=True, series=[("x", "thin", "C2", 7), ("o", "filled", "C2", 6)]),
+    dict(dpi=150, layout="line", series=[("p", "open", "k", 12), ("h", "open", "k", 12), ("*", "open", "k", 13)]),
+]
+
+
 def build_marks(i: int):
-    """Marker styles for "Find points" (see MARKS_FROM): every marker class is a scatter series."""
-    rng = np.random.default_rng(5000 + i)
-    spec = MARK_CHARTS[i - MARKS_FROM]
+    """Marker styles for "Find points" (see MARKS_FROM, MARKS2_FROM): every marker class is a scatter series."""
+    # MARK_CHARTS2 charts are seeded by their place in the table (5250 + k), not by their id.
+    rng = np.random.default_rng(5250 + i - MARKS2_FROM if i >= MARKS2_FROM else 5000 + i)
+    spec = MARK_CHARTS2[i - MARKS2_FROM] if i >= MARKS2_FROM else MARK_CHARTS[i - MARKS_FROM]
     dpi = int(spec["dpi"])
     style = spec.get("style")
     layout = spec.get("layout", "scatter")
@@ -1215,7 +1237,7 @@ def build_marks(i: int):
     for s in series:
         s["seed"] = pick_mark_seed(s, series, rgb, bg, legend_box, W, H)
     panel = style in ("ggplot", "seaborn-v0_8-darkgrid")
-    tags = ["scenario:marker-styles", "grid" if grid or panel else "no-grid", "frame:panel" if panel else "frame:box" if style or frame == "box" else "frame:L",
+    tags = ["scenario:marker-lines" if i >= MARKS2_FROM else "scenario:marker-styles", "grid" if grid or panel else "no-grid", "frame:panel" if panel else "frame:box" if style or frame == "box" else "frame:L",
             "jpeg" if jpeg_q else "png", "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
     if grid:
         tags.append("grid:light")
@@ -1863,10 +1885,10 @@ def main() -> int:
         old.unlink()
     total = 0
     traces = 0
-    # COUNT covers l00-l169 (MARKS_FROM's marker-styles end at 169); then l170-l199 (STYLE_FROM).
-    ids = [*range(COUNT), *range(STYLE_FROM, STYLE_FROM + len(STYLE_VARIANTS))]
+    # COUNT covers l00-l169 (MARKS_FROM's marker-styles end at 169); then l170-l199 (STYLE_FROM), l290-l301 (MARKS2_FROM).
+    ids = [*range(COUNT), *range(STYLE_FROM, STYLE_FROM + len(STYLE_VARIANTS)), *range(MARKS2_FROM, MARKS2_FROM + len(MARK_CHARTS2))]
     for i in ids:
-        img, doc, q = (build_styles(i) if i >= STYLE_FROM else build_marks(i) if i >= MARKS_FROM else build_busy(i) if i >= BUSY_FROM
+        img, doc, q = (build_marks(i) if i >= MARKS2_FROM else build_styles(i) if i >= STYLE_FROM else build_marks(i) if i >= MARKS_FROM else build_busy(i) if i >= BUSY_FROM
                        else build_scan(i) if i >= SCAN_FROM else build(i))
         name = doc["image"]
         if SCAN_FROM <= i < BUSY_FROM:

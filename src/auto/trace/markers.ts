@@ -20,6 +20,7 @@
  */
 
 import { ON_ALPHA } from './color.ts';
+import { crossFits, crossTemplate, type Coverage } from './cross.ts';
 import { agreement, HIDDEN, outline, type Agreement, type Soft } from './outline.ts';
 import type { Region } from './region.ts';
 
@@ -220,9 +221,27 @@ export function matchMarkers(found: Blobs, template: Blob, width: number, alpha:
   // of another class ("x" among dots) are as large and as full. Otherwise a merged blob a few
   // markers large is split by area.
   const shape = out.length >= BUSY ? smallShape(found, template, width, alpha) : null;
-  if (shape) out = out.filter((_, i) => sameShape(found, width, singles[i]!, shape));
+  // A stroke marker ("x", "+") must also have its ink profile (cross.ts): a dot as large is the
+  // same block of on-pixels, and a pile of dots holds copies of an "x" anywhere.
+  const cov: Coverage = (x, y) => {
+    const a = alpha[y * width + x] ?? -1;
+    return a <= 0 ? 0 : a < 1 ? a : 1;
+  };
+  // Only when the plot has many such look-alikes: compact blobs of the colour no larger than the
+  // marker without its profile (where there are few, the test would lose more crowded markers than
+  // look-alikes).
+  const cross = shape ? crossTemplate(cov, template.cx, template.cy, Math.max(bw(template), bh(template))) : null;
+  let lookalikes = 0;
+  if (cross) {
+    for (const b of found.blobs) {
+      if (b.area < LOOKALIKE_AREA * template.area || bw(b) > tw + 2 || bh(b) > th + 2 || b.elongation >= 2) continue;
+      if (!crossFits(cov, cross, b.cx, b.cy)) lookalikes++;
+    }
+  }
+  const stroke = cross && lookalikes >= Math.max(BUSY, LOOKALIKE_SHARE * (out.length + merged.reduce((n, b) => n + b.area, 0) / template.area)) ? (x: number, y: number) => crossFits(cov, cross, x, y) : null;
+  if (shape) out = out.filter((m, i) => sameShape(found, width, singles[i]!, shape) && (!stroke || stroke(m.px, m.py)));
   for (const b of merged) {
-    if (shape) out.push(...splitCluster(found, width, b, shape));
+    if (shape) out.push(...splitCluster(found, width, b, shape, stroke));
     else if (b.area <= 8.5 * template.area && bw(b) <= 4 * tw + 2 && bh(b) <= 4 * th + 2) {
       const k = Math.round(b.area / template.area);
       for (const c of splitBlob(found.labels, width, b, k)) out.push({ px: c.x, py: c.y, confidence: 0.5 });
@@ -330,6 +349,10 @@ interface SmallShape {
 
 /** A plot with at least this many markers standing alone like the clicked one is busy. */
 const BUSY = 25;
+/** A blob at least this share of a stroke marker's area (and no larger) without its ink profile is a look-alike (a dot). */
+const LOOKALIKE_AREA = 0.3;
+/** …and the test is made when there are BUSY such blobs and at least this share of the markers (single matches plus merged ink in markers' areas). */
+const LOOKALIKE_SHARE = 0.25;
 /** A single blob of a busy plot is the marker when its pixels overlap the marker's this much (IoU). */
 const SAME_SHAPE = 0.45;
 /** Share of a copy's pixels that must be ink for it to explain them. */
@@ -400,7 +423,7 @@ function sameShape(found: Blobs, W: number, b: Blob, t: SmallShape): boolean {
 }
 
 /** The markers a merged blob is made of (see above); none when copies of the marker don't explain it. */
-function splitCluster(found: Blobs, W: number, b: Blob, t: SmallShape): Marker[] {
+function splitCluster(found: Blobs, W: number, b: Blob, t: SmallShape, stroke: ((x: number, y: number) => boolean) | null = null): Marker[] {
   const n = t.pix.length / 2;
   if (b.area > MAX_CLUSTER * n) return [];
   // The blob in a window with a margin of the marker's size (copies may reach out of it).
@@ -542,6 +565,12 @@ function splitCluster(found: Blobs, W: number, b: Blob, t: SmallShape): Marker[]
         }
       }
       if (!best || bestNew < PLACE * n) break;
+      // A stroke marker's copy must have its ink profile there; a place that has not is no marker
+      // (and explains nothing).
+      if (stroke && !stroke(best.x + wx0 + t.ox, best.y + wy0 + t.oy)) {
+        places.splice(places.indexOf(best as (typeof places)[number]), 1);
+        continue;
+      }
       for (let k = 0; k < t.pix.length; k += 2) {
         const xx = best.x + t.pix[k]!;
         const yy = best.y + t.pix[k + 1]!;
@@ -708,6 +737,117 @@ function throughStroke(B: Uint8Array, d: Uint16Array, w: number, h: number, sx: 
   return 2 * onStroke < rim;
 }
 
+/** Pieces of an open marker's inside this close (share of the inside's size, ≥ 3 px) are split by a line through it… */
+const SPLIT_GAP = 0.4;
+/** …no larger than this many times the clicked piece… */
+const SPLIT_MORE = 3;
+/** …and their convex hull at most this much larger than they are (a band through a convex inside). */
+const SPLIT_HULL = 1.7;
+
+/**
+ * The whole inside of an open marker a line runs through: the enclosed background pieces (beside
+ * `piece`, the one by the click) within a line's width of it, filled out to their convex hull —
+ * the line's pixels between them are inside too. Null when no other piece is that close, or the
+ * hull is no band's worth larger than the pieces (they are not one convex inside).
+ * `notB`: background of the window; pixels as window indices.
+ */
+function wholeInside(notB: Uint8Array, w: number, h: number, piece: number[]): number[] | null {
+  let x0 = w;
+  let y0 = h;
+  let x1 = 0;
+  let y1 = 0;
+  const own = new Uint8Array(w * h);
+  for (const i of piece) {
+    own[i] = 1;
+    const x = i % w;
+    const y = (i - x) / w;
+    x0 = Math.min(x0, x);
+    x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y);
+    y1 = Math.max(y1, y);
+  }
+  const gap = Math.max(3, SPLIT_GAP * Math.max(x1 - x0 + 1, y1 - y0 + 1));
+  const toPiece = chamfer(Uint8Array.from(own, (v) => 1 - v), w, h, false);
+  const seen = own.slice();
+  const pieces = [...piece];
+  let merged = 0;
+  for (let i0 = 0; i0 < w * h; i0++) {
+    if (!notB[i0] || seen[i0] || toPiece[i0]! > 3 * gap) continue;
+    const c = component(notB, w, h, i0, false);
+    for (const j of c.pixels) seen[j] = 1;
+    if (c.border || c.pixels.length < 2) continue;
+    // Within the clicked piece's box grown by its size, and no more than SPLIT_MORE times its
+    // area: a piece of the same inside, not a cell between other lines beside the marker.
+    const grow = Math.max(x1 - x0 + 1, y1 - y0 + 1);
+    if (
+      c.pixels.length > SPLIT_MORE * piece.length ||
+      c.pixels.some((j) => {
+        const x = j % w;
+        const y = (j - x) / w;
+        return x < x0 - grow || x > x1 + grow || y < y0 - grow || y > y1 + grow;
+      })
+    )
+      continue;
+    pieces.push(...c.pixels);
+    merged++;
+  }
+  if (!merged) return null;
+  // Convex hull of the pixel centres (monotone chain), then every pixel whose centre is in it.
+  const pts = pieces.map((i) => [i % w, Math.floor(i / w)] as [number, number]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: [number, number][] = [];
+  for (let k = pts.length - 1; k >= 0; k--) {
+    const p = pts[k]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  const hull = [...lower.slice(0, -1), ...upper.slice(0, -1)];
+  if (hull.length < 3) return null;
+  let hx0 = w;
+  let hy0 = h;
+  let hx1 = 0;
+  let hy1 = 0;
+  for (const [x, y] of hull) {
+    hx0 = Math.min(hx0, x);
+    hx1 = Math.max(hx1, x);
+    hy0 = Math.min(hy0, y);
+    hy1 = Math.max(hy1, y);
+  }
+  const out: number[] = [];
+  for (let y = hy0; y <= hy1; y++) {
+    for (let x = hx0; x <= hx1; x++) {
+      let inside = true;
+      for (let k = 0; k < hull.length && inside; k++) inside = cross(hull[k]!, hull[(k + 1) % hull.length]!, [x, y]) >= 0;
+      if (inside) out.push(y * w + x);
+    }
+  }
+  if (out.length > SPLIT_HULL * pieces.length) return null;
+  // What the hull adds is the line: ink, one straight band across it (not the ring's arc to a
+  // pocket outside the marker).
+  const inPieces = new Uint8Array(w * h);
+  for (const i of pieces) inPieces[i] = 1;
+  const band: number[] = [];
+  const all: number[] = [];
+  let open = 0;
+  for (const i of out) {
+    const x = i % w;
+    const y = (i - x) / w;
+    all.push(x, y);
+    if (inPieces[i]) continue;
+    if (notB[i]) open++;
+    band.push(x, y);
+  }
+  if (open > 0.1 * (band.length / 2)) return null;
+  const size = Math.max(hx1 - hx0 + 1, hy1 - hy0 + 1);
+  // (The marker is its inside and a ring each side: a line as wide as across the whole of it.)
+  return throughLine(band, all, Math.max(3, LINE_THROUGH * (size + 4))) ? out : null;
+}
+
 /** The smallest inscribed radius (px) of a filled marker cut out of the strokes attached to it. */
 const SMALL_CORE = 1.5;
 /** …unless the cut holds this share of the blob's ink: the blob is the marker, matched as a blob. */
@@ -852,9 +992,19 @@ export function markerTemplate(
       const dH = chamfer(notHole, w, h, false);
       // A pocket beside a thick line, walled off by thinner lines of its colour, is no marker.
       if (!clicked && throughStroke(B, d, w, h, sx, sy, dH)) return null;
+      // A line through the clicked marker (a curve, a gridline) splits its inside: the pieces
+      // across the line are one inside, their convex hull.
+      const whole = wholeInside(notB, w, h, best);
+      if (whole) {
+        hole.fill(0);
+        for (const i of whole) hole[i] = 1;
+        notHole.fill(1);
+        for (const i of whole) notHole[i] = 0;
+        dH.set(chamfer(notHole, w, h, false));
+      }
       // Ring width: twice the half width of the blob just outside the hole.
       const halves: number[] = [];
-      for (let i = 0; i < w * h; i++) if (B[i] && dH[i]! <= 6) halves.push(d[i]! / 3);
+      for (let i = 0; i < w * h; i++) if (B[i] && !hole[i] && dH[i]! <= 6) halves.push(d[i]! / 3);
       halves.sort((a, b) => a - b);
       const ring = 2 * (halves[halves.length >> 1] ?? 1) + 1;
       M = new Uint8Array(w * h);
@@ -934,6 +1084,13 @@ export function markerTemplate(
       else if (!hole && out >= 2 && out <= 3.4) margin.push(x - ax, y - ay);
     }
   }
+  if (hole && off.length / 2 >= ROOMY) {
+    // Depth within the ring itself: a stroke merged with it is deeper and no part of it.
+    const band = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) band[i] = M[i] && B[i] && !hole[i] ? 1 : 0;
+    const dR = chamfer(band, w, h);
+    ringCore(on, (dx, dy) => dR[(dy + ay) * w + dx + ax]!);
+  }
   if (on.length < 8) return null;
   let area = 0;
   for (let i = 0; i < w * h; i++) if (M[i] && B[i]) area++;
@@ -950,6 +1107,89 @@ export function markerTemplate(
   const elongation = Math.sqrt(((vxx + vyy) / 2 + disc) / Math.max(1e-6, (vxx + vyy) / 2 - disc));
   return { shape: hole ? 'open' : 'filled', area, on, off, margin, body, deep, ax: ax + x0, ay: ay + y0, ox: cx - ax, oy: cy - ay, size: Math.max(mw, mh), open: hole ? 0 : k, elongation };
   }
+}
+
+/**
+ * An open marker with an inside of at least this many pixels clear of its ring may have a line
+ * through it (its anchor on ink, the line's pixels unknown) and is matched by its ring's core: a
+ * tiny hole is all that pins its place.
+ */
+const ROOMY = 12;
+export const roomy = (t: MarkerTemplate) => t.shape === 'open' && t.off.length / 2 >= ROOMY;
+/** A stroke at most this share of an open marker's size wide may cross its inside (≥ 1.5 px). */
+const LINE_THROUGH = 0.35;
+/** …and must run across at least this share of the inside. */
+const LINE_ACROSS = 0.7;
+/** A rough fit with a line through it must agree with the clicked marker's outline this much. */
+const THROUGH_AGREE = 0.6;
+
+/**
+ * Whether the ink found inside an open marker (`missed`: offsets of its inside pixels that are
+ * ink) is one straight stroke across it — at most `width` px wide across its main direction and
+ * spanning most of the inside along it — and not a fill or a smaller marker in it: its mean and
+ * direction, or null.
+ */
+function throughLine(missed: number[], off: number[], width: number): { mx: number; my: number; ux: number; uy: number } | null {
+  const n = missed.length / 2;
+  if (n < 2) return null;
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < missed.length; i += 2) {
+    mx += missed[i]!;
+    my += missed[i + 1]!;
+  }
+  mx /= n;
+  my /= n;
+  let xx = 0;
+  let yy = 0;
+  let xy = 0;
+  for (let i = 0; i < missed.length; i += 2) {
+    const dx = missed[i]! - mx;
+    const dy = missed[i + 1]! - my;
+    xx += dx * dx;
+    yy += dy * dy;
+    xy += dx * dy;
+  }
+  const a = 0.5 * Math.atan2(2 * xy, xx - yy);
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  const span = (pts: number[], fx: number, fy: number): [number, number] => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < pts.length; i += 2) {
+      const v = pts[i]! * fx + pts[i + 1]! * fy;
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+    return [lo, hi];
+  };
+  const [w0, w1] = span(missed, -uy, ux);
+  if (w1 - w0 + 1 > width) return null;
+  const [l0, l1] = span(missed, ux, uy);
+  const [o0, o1] = span(off, ux, uy);
+  return l1 - l0 + 1 >= LINE_ACROSS * (o1 - o0 + 1) ? { mx, my, ux, uy } : null;
+}
+
+/**
+ * An open marker's ink, matched by the core of its ring: the pixels within a pixel of the ring's
+ * ridge (chamfer depth ≥ its 90th percentile less 2/3 px). A ring 3–4 px wide drawn by hand or
+ * scanned is a pixel thinner or thicker in places, and the full band then misses a fifth of its
+ * ink in a copy that is the same marker; a ring 1–2 px wide keeps every pixel. `depth`: chamfer
+ * depth (thirds of a pixel) at an offset. Filters `on` in place.
+ */
+function ringCore(on: number[], depth: (dx: number, dy: number) => number): void {
+  const ds: number[] = [];
+  for (let i = 0; i < on.length; i += 2) ds.push(depth(on[i]!, on[i + 1]!));
+  const sorted = [...ds].sort((a, b) => a - b);
+  const ridge = sorted[Math.floor(0.9 * (sorted.length - 1))] ?? 3;
+  const min = Math.max(3, ridge - 2);
+  let j = 0;
+  for (let i = 0; i < ds.length; i++) {
+    if (ds[i]! < min) continue;
+    on[j++] = on[2 * i]!;
+    on[j++] = on[2 * i + 1]!;
+  }
+  on.length = j;
 }
 
 /**
@@ -993,21 +1233,22 @@ export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array
   const probe: number[] = [];
   const step = Math.max(1, Math.floor(t.on.length / 2 / 12));
   for (let i = 0; i < t.on.length; i += 2 * step) probe.push(t.on[i]!, t.on[i + 1]!);
-  const hits: { x: number; y: number; s: number }[] = [];
+  const hits: { x: number; y: number; s: number; through: boolean }[] = [];
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       // The anchor's own pixel first: ink for a filled marker, background inside an open one.
       const c = ink(x, y);
-      if (c !== 2 && (t.shape === 'filled' ? c !== 1 : c !== 0)) continue;
+      // (An open marker's inside may have a line through it: its anchor may be ink.)
+      if (c !== 2 && (t.shape === 'filled' ? c !== 1 : c !== 0 && !roomy(t))) continue;
       let seen = 0;
       for (let i = 0; i < probe.length; i += 2) if (ink(x + probe[i]!, y + probe[i + 1]!) !== 0) seen++;
       if (2 * seen < probe.length * HIDDEN_SHARE) continue;
       const s = score(x, y, true);
-      if (s && fits(t, s) && (!busy || solid(x, y))) hits.push({ x, y, s: s.on + s.off });
+      if (s && fits(t, s) && (!busy || solid(x, y))) hits.push({ x, y, s: s.on + s.off, through: s.through });
     }
   }
   hits.sort((a, b) => b.s - a.s);
-  const keep: { x: number; y: number; s: number }[] = [];
+  const keep: { x: number; y: number; s: number; through: boolean }[] = [];
   const sep = 0.6 * t.size;
   for (const p of hits) if (keep.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= sep)) keep.push(p);
   const same = sameMarker(alpha, region, t, soft, stripped);
@@ -1022,6 +1263,9 @@ export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array
     .filter((j) => !legendSample(alpha, other, region, { px: j.p.x + t.ox, py: j.p.y + t.oy }, t.size));
   const kept = judged
     .filter((j) => {
+      // A line through the inside hides part of it, and a ring of another shape with a line
+      // through it fits as well: a rough outline must agree on most of it.
+      if (j.p.through && !j.v.ok && j.v.agree < THROUGH_AGREE) return false;
       if (j.v.ok) return true;
       if (!j.v.rough || !j.v.sig) return false;
       const other = alternatives.filter((o) => {
@@ -1036,10 +1280,16 @@ export function findMarkers(found: Blobs, alpha: Float32Array, other: Uint8Array
   // Two peaks on one marker (part of it under another series) refine to the same centre.
   for (const m of kept.map((p) => refine(found, alpha, region, t, p))) if (out.every((q) => Math.hypot(q.px - m.px, q.py - m.py) >= 0.3 * t.size)) out.push(m);
   if (t.shape === 'filled') out.push(...clustered(ink, region, t, kept));
-  // A legend's sample has its label beside it — letters, not more markers of its kind (a row of
-  // markers at one height reads as letters too).
-  const inRow = (m: Marker) => out.some((o) => o !== m && Math.abs(o.py - m.py) <= 0.6 * t.size && Math.abs(o.px - m.px) <= 8.5 * t.size);
-  return out.filter((m) => inRow(m) || !legendSample(alpha, other, region, m, t.size)).sort((p, q) => p.px - q.px || p.py - q.py);
+  return withoutLegendSamples(alpha, other, region, out, t.size).sort((p, q) => p.px - q.px || p.py - q.py);
+}
+
+/**
+ * Markers less the legend's samples: a sample has its label beside it — letters, not more markers
+ * of its kind (a row of markers at one height reads as letters too). `size`: the marker's, px.
+ */
+export function withoutLegendSamples<M extends { px: number; py: number }>(alpha: Float32Array, other: Uint8Array, region: Region, out: M[], size: number): M[] {
+  const inRow = (m: M) => out.some((o) => o !== m && Math.abs(o.py - m.py) <= 0.6 * size && Math.abs(o.px - m.px) <= 8.5 * size);
+  return out.filter((m) => inRow(m) || !legendSample(alpha, other, region, m, size));
 }
 
 /** A marker's ink is the clicked one's colour when its strength is within these factors of it. */
@@ -1398,7 +1648,24 @@ export function matcher(alpha: Float32Array, other: Uint8Array, region: Region, 
   const nOn = t.on.length / 2;
   const nOff = t.off.length / 2;
   const nMargin = t.margin.length / 2;
-  const score = (x: number, y: number, early = false): { on: number; off: number; margin: number; lopsided: number } | null => {
+  const open = roomy(t);
+  // The widest stroke that may cross an open marker's inside (as outline.ts → CROSSING).
+  const crossing = Math.max(1.5, LINE_THROUGH * t.size);
+  // The line runs on out of the marker on one side at least (a cap or a mark inside the ring
+  // does not): ink beyond its outer edge along the line, within a pixel of it.
+  const runsOn = (x: number, y: number, a: { mx: number; my: number; ux: number; uy: number }): boolean => {
+    const along = (a.mx - t.ox) * a.ux + (a.my - t.oy) * a.uy;
+    for (const side of [1, -1]) {
+      const r = side * (t.size / 2 + 1.5) - along;
+      for (const d of [0, -1, 1]) {
+        const px = Math.round(x + a.mx + r * a.ux - d * a.uy);
+        const py = Math.round(y + a.my + r * a.uy + d * a.ux);
+        if (ink(px, py, true) === 1) return true;
+      }
+    }
+    return false;
+  };
+  const score = (x: number, y: number, early = false): { on: number; off: number; margin: number; lopsided: number; through: boolean } | null => {
     let onHit = 0;
     let onKnown = 0;
     let onMiss = 0;
@@ -1421,12 +1688,27 @@ export function matcher(alpha: Float32Array, other: Uint8Array, region: Region, 
     let offHit = 0;
     let offKnown = 0;
     let offMiss = 0;
+    const missed: number[] = [];
     for (let i = 0; i < t.off.length; i += 2) {
       const v = ink(x + t.off[i]!, y + t.off[i + 1]!, true);
       if (v === 2) continue;
       offKnown++;
       if (v === 0) offHit++;
-      else if (++offMiss > (1 - OFF_SHARE) * nOff && early) return null;
+      else {
+        offMiss++;
+        if (open) missed.push(t.off[i]!, t.off[i + 1]!);
+        else if (offMiss > (1 - OFF_SHARE) * nOff && early) return null;
+      }
+    }
+    // A line drawn through an open marker (a curve, a gridline, its error bar running on) is ink
+    // inside it that hides what is under it: unknown, not a filled shape.
+    let through = false;
+    if (open && offMiss > (1 - OFF_SHARE) * nOff) {
+      const axis = throughLine(missed, t.off, crossing);
+      if (axis && runsOn(x, y, axis)) {
+        offKnown -= offMiss;
+        through = true;
+      } else if (early) return null;
     }
     let marginHit = 0;
     let marginKnown = 0;
@@ -1443,7 +1725,7 @@ export function matcher(alpha: Float32Array, other: Uint8Array, region: Region, 
     // Unknown pixels count half: a marker partly under another series still fits where it is, not
     // a few pixels off.
     const share = (hit: number, known: number, n: number) => (n ? (hit + 0.5 * (n - known)) / n : 1);
-    return { on: share(onHit, onKnown, nOn), off: share(offHit, offKnown, nOff), margin: share(marginHit, marginKnown, nMargin), lopsided };
+    return { on: share(onHit, onKnown, nOn), off: share(offHit, offKnown, nOff), margin: share(marginHit, marginKnown, nMargin), lopsided, through };
   };
   return { ink, score, soft, stripped };
 }
