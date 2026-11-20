@@ -31,10 +31,12 @@
  */
 
 import { detectAxes } from '../detect.ts';
+import { filledBars } from './bars.ts';
 import { backgroundColor, colorModel, coverage, dist, enclosedHole, greySeries, INK_MIN, inkColor, markDarkerInk, maxAlpha, neutralBlack, refineSeed, rgbAt, type Img, type RGB } from './color.ts';
 import { hopDashes } from './dashes.ts';
-import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, thicknessOf, traceColumns, type PathPoint } from './curve.ts';
-import { extendHiddenEnds, insertHiddenKinks } from './kinks.ts';
+import { columnsToPath, defaultMaxGap, defaultMaxHiddenGap, flatTopped, strengthAlong, thicknessOf, traceAreaEdge, traceColumns, type PathPoint } from './curve.ts';
+import { followStroke, mayDoubleBack, pickPoints, takesOver } from './follow.ts';
+import { extendHiddenEnds, insertHiddenKinks, levelCorners, stepLike, withStepCorners } from './kinks.ts';
 import { blobHeight, blobWidth, findBlobs, findMarkers, markerTemplate, matchMarkers, withoutLighterInk, type Blob, type Blobs, type MarkerTemplate } from './markers.ts';
 import { excludeEdgeLines, insideQuad, makeRegion } from './region.ts';
 import { resample } from './resample.ts';
@@ -59,6 +61,8 @@ const RULING_STROKE = 0.5;
 const HEAVY_RULING = 6;
 /** A shape cut out of a small long blob is a marker (not a thick dash) when it is less elongated than this. */
 const MARKER_ELONGATION = 1.8;
+/** Ink this many times stronger or weaker than the series' own is another shade of its hue. */
+const SHADE_RATIO = 1.15;
 
 const now = (): number => {
   const p = (globalThis as { performance?: { now(): number } }).performance;
@@ -254,6 +258,23 @@ export function traceLine(req: TraceRequest): TraceResult {
   // A grey curve among black markers: black continues the grey's hue, so it would count as the
   // series' strongest ink. Ink much darker than the series' own colour is another series (color.ts).
   const darker = req.mode !== 'markers' && greySeries(colorModel(bg, raw)) ? markDarkerInk(alpha, other, region, maxAlpha(model), s) : null;
+  // A click on a bar of a bar chart or histogram: the value end of every bar of its series
+  // (bars.ts). Before lines along the box edges are taken out: a row of bars standing on the
+  // bottom edge is no frame line.
+  if (req.mode !== 'curve') {
+    const bars = filledBars({ img, alpha, other, region, model, seed: s, lone: req.mode === 'markers', markerMax });
+    if (bars) {
+      // Bars win over a fill's edge (`traceAreaEdge`, below), unless in auto mode the clicked fill's
+      // edge is a smooth curve, not level bar tops: a layer of a stacked-area chart standing on
+      // the baseline, which the bar finder cuts into narrow "bars".
+      const area = req.mode === 'auto' ? traceAreaEdge(alpha, region, s) : null;
+      if (area && !flatTopped(area)) {
+        const path: TracedPoint[] = area.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+        return result({ ok: true, kind: 'curve', style: 'solid', color, path, points: resample(area, req.maxPoints, 1) });
+      }
+      return result({ ok: true, kind: 'markers', style: 'unknown', color, path: bars, points: bars.map((p) => ({ ...p })) });
+    }
+  }
   excludeEdgeLines(region, alpha);
   if ((alpha[s.y * w + s.x] ?? -1) < 0.5) {
     return fail('The clicked point is on the plot frame or an axis line, not on a series.', color);
@@ -310,6 +331,16 @@ export function traceLine(req: TraceRequest): TraceResult {
   }
   const small = blobWidth(template) <= markerMax && blobHeight(template) <= markerMax;
 
+  // A click inside a fill (an area chart without an outline, a layer of a stacked-area chart): the
+  // fill's edge is the series (curve.ts → `traceAreaEdge`).
+  if (req.mode !== 'markers' && !small) {
+    const area = traceAreaEdge(alpha, region, s);
+    if (area) {
+      const path: TracedPoint[] = area.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+      return result({ ok: true, kind: 'curve', style: 'solid', color, path, points: resample(area, req.maxPoints, 1) });
+    }
+  }
+
   const ctx = { found, alpha, other, region, ruling, darker };
   let kind: 'curve' | 'markers' = req.mode === 'markers' ? 'markers' : 'curve';
   const chained = small && template.elongation < 2.5 && regularChain(found, template, markerMax);
@@ -325,13 +356,22 @@ export function traceLine(req: TraceRequest): TraceResult {
   // dash is not — and a small one, whatever its style was read as, when the shape is a ring.
   let shape: MarkerTemplate | null = null;
   let found3: TracedPoint[] | null = null;
+  // A closed loop through the seed (follow.ts) is a curve, whatever shapes can be cut out of it.
+  // Every ruling (rulings.ts), however thin, is a line the follower may cross but not run along.
+  // The follower runs at most once per trace, and only when asked.
+  let followed: ReturnType<typeof followStroke> | undefined;
+  const follow = () => (followed !== undefined ? followed : (followed = followStroke({ alpha, other, region, seed: s, maxHiddenGap: defaultMaxHiddenGap(region), blocked: rulings?.mask(0) ?? rulingInk })));
   if (kind === 'markers') shape = markerTemplate(found, alpha, region, s, markerMax, hole);
   else if (req.mode === 'auto' && (!patterned || small)) {
     shape = markerTemplate(found, alpha, region, s, markerMax, hole);
     const tried = shape && (shape.shape === 'open' ? small || !patterned : !patterned && !chained && (!small || shape.elongation < MARKER_ELONGATION));
     if (shape && tried) {
       found3 = findMarkers(found, alpha, other, region, shape);
-      if (found3.length >= 3) kind = 'markers';
+      // …unless the stroke through the seed is a closed loop: shapes cut from it are no markers.
+      if (found3.length >= 3) {
+        const loop = follow();
+        if (!(loop && loop.closed && takesOver(loop, null, region.x1 - region.x0 + 1, markerMax))) kind = 'markers';
+      }
     }
   }
   if (kind === 'markers') {
@@ -359,6 +399,30 @@ export function traceLine(req: TraceRequest): TraceResult {
     return result({ ok: path.length > 0, kind: 'markers', style: 'unknown', color, path, points: path.map((p) => ({ ...p })) });
   }
 
+  // A stroke that doubles back (a loop, a spiral, a curve that folds over itself) is no function of
+  // x: the column walk follows it to the first fold at best. The path follower (follow.ts) takes
+  // over only then — when its path doubles back, agrees with the walk and is clearly longer.
+  const doublingBack = (walked: PathPoint[] | null, thick: number): TraceResult | null => {
+    if (patterned || chained) return null;
+    // Only where the walk shows a fold: a jump, or an end where the stroke turns back.
+    if (walked && walked.length >= 2 && !mayDoubleBack(walked, alpha, region, thick)) return null;
+    const f = follow();
+    if (!f || !takesOver(f, walked, region.x1 - region.x0 + 1, markerMax)) return null;
+    // What the follower adds beyond the walk must be the series' own ink: where shades of one hue
+    // meet (curves of a one-hue palette from a common start), it would turn back along a lighter or
+    // darker one (curve.ts → DARKER_RATIO).
+    if (walked && walked.length >= 2) {
+      const r = Math.max(1, Math.ceil(thick / 2));
+      const reach = 2 * thick + 2;
+      const added = f.path.filter((p) => !walked.some((q) => Math.hypot(q.px - p.px, q.py - p.py) <= reach));
+      const own = strengthAlong(walked, alpha, region, r);
+      const theirs = added.length >= 8 ? strengthAlong(added, alpha, region, r) : own;
+      if (own > 0 && (theirs > SHADE_RATIO * own || theirs < own / SHADE_RATIO)) return null;
+    }
+    const path: TracedPoint[] = f.path.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));
+    return result({ ok: true, kind: 'curve', style: sig.style, color, path, points: pickPoints(f.path, req.maxPoints) });
+  };
+
   let traced: PathPoint[];
   let thickness: number;
   if (chained && !patterned) {
@@ -378,7 +442,16 @@ export function traceLine(req: TraceRequest): TraceResult {
     // A dashed line's walk ends where its gaps were not filled (dashes too uneven for one pattern,
     // a dash cut by a gridline): on from the next piece ahead, to the line's real end (dashes.ts).
     if (walked && (sig.style === 'dashed' || sig.style === 'dash-dot')) walked = hopDashes(walked, found, alpha, region, sig, opts);
+    // A patterned step curve has no vertical strokes to take corners from once the fill is undone:
+    // they are read from the walk over the filled line, then from the levels either side (kinks.ts).
+    const filled = walked && fill ? columnsToPath(walked, alpha, w) : [];
+    const filledCorners = filled.filter((p) => p.corner);
+    // Only for a step curve (level between its verticals, with the gaps filled or as drawn): a
+    // smooth dashed curve gets no corners.
+    const steps = (real: PathPoint[]) => patterned && (stepLike(real) || stepLike(filled));
     const e = walked && fill ? unfill(fill, walked, alpha, region) : walked;
+    // Level ends either side of one vertical of a patterned step: a gap and a piece apart at most.
+    const cornerJoin = sig.gap + sig.maxOn + 2 * sig.thickness + 2;
     // The dots the walk went through (a walk can't start up a steep thin dotted line from one dot).
     const dots: Blob[] = [];
     if (sig.style === 'dotted' && e) {
@@ -396,18 +469,23 @@ export function traceLine(req: TraceRequest): TraceResult {
     if (sig.style === 'dotted' && (dots.length >= 2 || straight.length >= 2)) {
       // A dotted line: its points are the centroids of its dots, along the walk or the straight
       // chain, whichever passes through more of them.
-      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
       thickness = Math.max(1, Math.min(blobWidth(template), blobHeight(template)));
+      traced = chainPath(found, straight.length > dots.length ? straight : dots, alpha, w);
+      if (steps(traced)) traced = levelCorners(withStepCorners(traced, filledCorners, thickness), thickness, { width: w, height: h, alpha, other }, cornerJoin);
     } else {
-      if (!e || e.length < 2) return fail('Could not follow a line from the clicked point.', color);
+      if (!e || e.length < 2) return doublingBack(null, sig.thickness) ?? fail('Could not follow a line from the clicked point.', color);
       thickness = thicknessOf(e);
       // Vertices hidden under markers: kinks between straight stretches, and ends under a marker.
       const maps = { width: w, height: h, alpha, other };
       // A solid line among dashes of its own colour: the dashes touching it stick out as spurs.
       const spurs = sig.style === 'solid' && dropped;
-      traced = extendHiddenEnds(insertHiddenKinks(columnsToPath(e, alpha, w, spurs), thickness, maps), thickness, maps);
+      let centre = columnsToPath(e, alpha, w, spurs);
+      if (steps(centre)) centre = levelCorners(withStepCorners(centre, filledCorners, thickness), thickness, maps, cornerJoin);
+      traced = extendHiddenEnds(insertHiddenKinks(centre, thickness, maps), thickness, maps);
     }
   }
+  const doubled = doublingBack(traced.length < 2 ? null : traced, thickness);
+  if (doubled) return doubled;
   if (traced.length < 2) return fail('Could not follow a line from the clicked point.', color);
   const points = resample(traced, req.maxPoints, thickness);
   const path: TracedPoint[] = traced.map((p) => ({ px: p.px, py: p.py, confidence: p.confidence }));

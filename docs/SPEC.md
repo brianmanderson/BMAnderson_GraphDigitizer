@@ -407,8 +407,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
 - **Module**: `src/auto/` — pure TS, no DOM (checked by `tsconfig.core.json` and ESLint like
   `src/core`), so Phase 5 can run it in a Web Worker. `detectAxes({ width, height, data })` takes
   RGBA bytes and returns the skew angle, the X/Y axis lines (sub-pixel offset, ends, contrast,
-  thickness, confidence, `position`: X `bottom`/`top`, Y `left`/`right`), the plot box (four
-  corners; whether the edges opposite the axes are drawn frame lines), per-axis tick sets and the
+  thickness, confidence, `position`: X `bottom`/`top`, Y `left`/`right`; optional `virtual: true`
+  when no line is drawn and the axis is a panel's or grid's edge), the plot box (four
+  corners; whether the edges opposite the axes are drawn frame lines), per-axis tick sets
+  (optional `source: 'gridlines'` when the positions are gridlines) and the
   strongest line candidates. Phase 5 consumes it (Auto-calibration).
 - **Pipeline**: adaptive darkness (pixel darker than the local mean over ~1/40 of the short side;
   ink ≥ 24/255) → skew from a ±5° Hough over ink pixels (sum of squared bins; snapped to 0 unless
@@ -421,7 +423,9 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   horizontal × vertical candidates that meet with the plot on one side of each (L corner or
   cross; bottom-left by default, top/right under the rule below) or, in a range frame, would meet
   if extended (rule below), ranked by strength, extent and tick evidence → plot box to the far
-  axis ends or a frame line of similar darkness. This is the prompt's "projection profiles + Hough fallback": the Hough only
+  axis ends or a frame line of similar darkness → a filled panel or a grid replaces a missing or
+  bogus pair, and gridlines stand in for missing tick marks (Charts without axis lines, below;
+  dark themes are read as their negative first). This is the prompt's "projection profiles + Hough fallback": the Hough only
   estimates the angle; profiles run in the rotated frame. OpenCV.js was not needed.
 - **Axes at the top or right** (decided 2026-11-09, motivated by an Excel survival curve whose
   dose axis runs along the top, labels above it: a "Γ" frame that got no plot box before). Each
@@ -484,8 +488,105 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   declined). No earlier chart's result changed; overall (95 images) axes 95.8 %, box 95.8 %,
   major-tick recall 88.7 %, calibration correct 63.2 % (the unlabelled charts move the shared
   categories).
-- **Corpus** (`bench/axes/`): 84 matplotlib charts from `generate.py` (seeded; Python 3.12 +
-  matplotlib 3.10; output committed, ~4.5 MB) — c76–c83 (range frames: both spines moved 3–16 pt
+- **Charts without axis lines; other tools' styles** (decided 2026-11-19, styled corpus c84–c119
+  below). Many styles draw no dark axis line with tick marks: ggplot2 / seaborn (grey panel,
+  white gridlines), plotly (faint gridlines, nothing else), fivethirtyeight, Excel (gridlines and
+  an X line only), dark themes. The rules:
+  - *Polarity*: an image whose border and bulk are dark (both medians < 128) and that has more
+    pixels lighter than the border than darker is read as its negative (`darkness.ts`;
+    `DarknessMap.inverted`), so every later step still looks for dark ink. A light chart with
+    dark bars, or a white panel on a dark page, keeps its polarity.
+  - *Filled panel* (`panel.ts`): the largest rectangle of one flat grey level ≠ the page's
+    (≥ 6 levels apart, ≥ 10 % of the image, spanning ≥ 30 % each way, leaving ≥ 3 % free at its
+    left and below for labels); each edge is the outermost position ≥ 15 % of the rows/columns
+    reach, spread over ≥ 70 % of the edge (so bars standing on it, gridlines and data don't
+    matter); sub-pixel from the boundary pixels' coverage. It decides the axes when there is no
+    pair, or when both pair lines lie on the panel without being its edges (ggplot's white
+    gridlines and data had made pairs); a pair that encloses a shaded region or sits on the
+    panel's edges (a frame) stays.
+  - *Gridlines* (`grid.ts`) are found on the grey image as ridges, not on the darkness map (a
+    plotly gridline is 16 levels from white; a white gridline on grey is lighter, not darker):
+    per row of a region, the ridge height that ≥ 20 % of positions reach (so data, bars and
+    labels hiding most of it don't matter), ≥ 5 levels (more on a noisy scan: 3× a typical row
+    + 2); pixels count along it only within ½–3× its level (a dark label stroke centred on a light
+    gridline does not extend it); offset and mass from the mean cross-profile. A *grid* is ≥ 3
+    evenly spaced lines (1–2 steps apart) of one family, polarity and colour sharing their ends;
+    its ends are the plot's edges (snapped to a crossing line running there). It decides the
+    axes when there is no pair, or when a pair line is one of the grid's own lines inside it (a
+    crossing of two gridlines looks like a ticked corner); against a pair only a grid of both
+    families counts. A single clearly stronger line spanning the grid inside it (≥ 1.4× the
+    gridlines) is an axis line through the plot (Excel's X axis at 0) when nothing is written
+    beyond the grid's edge on that side.
+  - *Virtual axes*: from a panel or grid, an axis is the found line along that edge if there is
+    one (Excel's X line, a whitegrid frame), else the edge itself with `DetectedAxis.virtual:
+    true`, `thickness` 0 and the step's contrast. Ticks on a virtual axis are only marks pointing
+    away from the plot, which may start a few px beyond the edge (matplotlib's ggplot style paints
+    a white border over the panel's edge). An axis is at the top/right there when the pair had it
+    on the panel's edge, or when a line is drawn along that edge only and nothing is written
+    beyond the default one (a Γ over a grid, `l114` in bench:lines).
+  - *Gridlines as tick positions*: an axis on which no tick marks were found takes its positions
+    from the gridlines crossing the plot box from edge to edge (`TickSet.source: 'gridlines'`,
+    `side: 'inside'`, each tick's `length` = the plot's extent). The tick-pattern rules apply
+    unchanged (≥ 3 evenly spaced majors, or 2 with minors; thinner lines between them, < 70 % of
+    the second-strongest's mass, are minor gridlines). This is not "inventing" ticks: a gridline is
+    a drawn mark at a tick value. The plot's own edges are never ticks (a frame often stands a step
+    beyond the last label), except for a grid of one family, whose outermost lines are all that is
+    known. An axis with neither tick marks nor gridlines still gets `ticks: []`, confidence 0.
+    Consumers (`labels.ts`) see ordinary major ticks; `source` lets them treat them differently.
+  - *Default corner with ticks all round*: an axis moved to the top/right is refused when the
+    frame line opposite it (at the other end of the crossing axis, spanning the plot, ≥ 30 % as
+    dark) carries a tick pattern too — a MATLAB/bmh box with inward ticks on four sides had gone
+    top-right because a 1-px line on a pixel row looked "stronger" than its antialiased twin. Of
+    several frame-line candidates at an axis's far end, the nearest is the frame.
+  - *Short log minors*: when neither side of an axis has a pattern, it is scanned again with a
+    1-px floor (normally 2: less is a line's own wobble) and that result is kept only if it is a
+    log pattern — ≥ 2 decade ticks, ≥ 6 minors, ≥ 90 % of them at log10(2…9). Two-decade log axes
+    at low DPI show minors only 1–1.5 px past the line (c33, c44, c61, c105: 0 → 51 of 65 minors).
+  - *Twin Y axes, insets, several panels* — what the right answer is: the left Y axis (the right
+    one is ignored, no box change); the main axes, never an inset; of several panels the first in
+    reading order among equal ones, else the largest (the truth is labelled so). The detector
+    takes the strongest pair, which on c112–c118 is that one; it does not yet reason about panels
+    explicitly, so a multi-panel figure whose second panel has the stronger axes would give that
+    panel — consistent, but a figure with a different right answer would be a confident wrong
+    pick (none in the corpus).
+  Results (honest corpus baseline → now, 131 images): axes 82.8 → 98.1 %, box 83.2 → 97.7 %,
+  major-tick recall 85.3 → 94.3 %, minor 67.1 → 72.6 %, precision 97.9 → 99.2 %, bare 13 → 0;
+  gridline recall (majors found from gridlines on axes whose only marks are gridlines) 88.8 %;
+  calibration correct 58.4 → 74.8 % of axes, 0 wrong, images calibrated end to end
+  44.3 → 61.1 % (with the axes-labels decimal-point fixes below). Per
+  style: ggplot 0 → 100 % axes and box (the three old ggplot charts c11, c35, c59: 0 → 100 %,
+  ticks 17/17), seaborn darkgrid/whitegrid, plotly (all three), dark themes, Excel 0 → 100 %
+  axes; MATLAB 62.5 → 100 % (c104 box with inward ticks on four sides, c119 histogram), bmh
+  50 → 100 %; `kind:bar` tick recall 64.9 → 74.6 %; `log-few-decades` minors 45.7 → 82.9 %.
+  bench:lines: `l114` (a Γ over a grid) now gets its box (coverage of s1 0.96 → 1.0);
+  `angle-response-chea` (Excel, X axis through the middle) gets the exact box (corner error
+  110 → 0.1 px; tracing with the hand-labelled box gives identical results), which brings the
+  50°/60° markers into the region: one more marker found over the three series (26 → 27 of 37),
+  one fewer for the blue series, three more wrong-group markers — Find points' grouping on the
+  correct region, accepted as a trade-off. **Known failures**: nothing marks the plot area beyond
+  the outermost gridlines when the axis range is padded (c94, c101: box ends at the last
+  gridline, 12–15 px short); fivethirtyeight paints its 3-pt spines in the background colour,
+  hiding the zero gridline and the gridlines' ends (c96 X axis 64 px off, c95 2.5 px); a right log
+  Y axis whose minors are shorter than its thick spine (c69); ticks hidden behind bars or
+  sticking out < 2 px past a thick axis (c31, c48, c56). Finding c97's left Y axis (bmh, 96 dpi)
+  first exposed a label-finding bug, now fixed in `labels.ts` / `suggest.ts` (session
+  axes-labels): its 1-px decimal points were lost and "0.8" was read as "8", a confident ×10. A
+  point between two digits now joins them unless a real stroke stands above the baseline zone,
+  and a word with a same-baseline piece left beside it is `FoundLabel.partial` and given no
+  value (like `clipped`); c97's Y is now right (high, 0.10 %).
+- **Corpus** (`bench/axes/`): 120 matplotlib charts from `generate.py` (seeded; Python 3.12 +
+  matplotlib 3.10; output committed, ~5.5 MB) — c84–c119 (`build_styled`, appended last: the
+  looks of other tools via style sheets and rcParams — ggplot2 with and without ticks and minor
+  gridlines, seaborn darkgrid/whitegrid/ticks, plotly default/white/dark, fivethirtyeight, bmh,
+  dark_background, Excel modern (line, column) and 2003, MATLAB (box, inward ticks on four sides,
+  semilogy, histogram hiding its X ticks), Prism (thick L, bold), Origin, coloured figure
+  backgrounds, twin Y, insets, two/three panels, log axes with two decade ticks; line/scatter/bar,
+  PNG/JPEG, 72–200 dpi, two rotated; tags `styled`, `style:<name>`, `panel-fill`, `dark`,
+  `gridlines-only`, `no-tickmarks`, `figure-bg`, `twin-y`, `inset`, `multi-panel`,
+  `bars-hide-ticks`, `log-few-decades`, `frame:none`/`frame:x-only`; an axis without a drawn line
+  is the plot area's edge with `lineDrawn: false`; per axis `gridlines: true` when its tick
+  positions are drawn as gridlines; bars labelled with calendar years are a date axis; the
+  self-check reads dark themes as their negative) were appended after c76–c83 (range frames: both spines moved 3–16 pt
   outward and trimmed to the first and last major tick, linear and log-log with log minors, tick
   labels drawn or hidden, crisp/antialiased, JPEG, two rotated; tags `frame:range`,
   `range-frame`, `ticklabels`/`no-ticklabels`; box truth = the rectangle from where the extended
@@ -508,7 +609,10 @@ unchanged and need no format bump; projects saved earlier keep their "Dataset 1"
   2 px of the true line at both ends; a plot box when every corner is within 4 px; ticks match
   within 2 px along the axis (4 px across); tick recall counts major ticks on axes with tick
   marks, precision all reported ticks there; `bare` counts ticks reported on axes without tick
-  marks (must stay 0). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
+  marks (must stay 0) — except gridline-sourced ticks (`TickSet.source: 'gridlines'`) that match a
+  labelled tick, which are drawn marks; unmatched ones still count. `grid-R` (gated) is the share
+  of major ticks found from gridlines on axes whose only position marks are gridlines (truth
+  `gridlines: true`, `tickMarks: false`). Reported overall and per tag (scale, kind, frame, DPI, JPEG, rotation…).
   `-- --summary <path>` also writes every row of this table and the calibration table as
   `<path>.csv` and `<path>.json` (`bench/summary.ts`: the console's numbers unrounded, ratios in
   percent, a unit per column; the CSV has one header over the union of both tables' columns).
@@ -966,7 +1070,7 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   beyond `maxPoints` (owner's decision: a KM curve may get 50+ points rather than lose corners); the rest of the budget evenly in x over the non-vertical stretches, snapped
   to traced points.
 - **Benchmark** (`npm run bench:lines`, ~22 s, part of `npm run verify`): `bench/lines/generate.py`
-  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 140 seeded charts, 375 series:
+  (Python 3.12 + matplotlib; `npm run bench:lines:corpus`) writes 170 seeded charts, 484 series:
   smooth crossing curves, lines with markers, dashed/dotted/dash-dot, KM steps (starting together
   at 1.0, '+' censoring marks), scatter, black series on black axes, mixed kinds, four series on
   dark gridlines, and (l60–l71, appended so the first 60 are unchanged) zigzag polylines with a
@@ -1005,8 +1109,21 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   a 25–40° corner — "1%/3%/5%" labels at their starts, an offset range frame (the axes stand off
   and span only the labelled range; `detectAxes` boxes them from where the extended axis lines
   would meet, see Axis detection → Range frames),
-  log-log or linear. Gridlines, legends, frames, line widths, 72–200 DPI and JPEG (every third)
-  vary.
+  log-log or linear; (l170–l199, `scenario:styles`, `build_styles`, one variant per chart, each
+  tagged) line-chart looks the corpus lacked — a shaded band of the series' own lighter colour
+  around each curve (`band`, with dashed limits `band-limits`), filled areas under an edge line
+  (`area`) and stacked areas with and without edge lines (`stacked`, `area:no-edge`; the truth is
+  each layer's top edge, the seed in the fill just below it when there is no line), six to eight
+  series from one palette (`many-series`, `palette:tab10|colorblind|hue|grey`, greys also with
+  line styles), noisy time series that cross many times (`noisy`), curves that run exactly
+  together for a stretch before parting (`touching`), 1-px lines at 72–96 DPI (`hairline:aa`,
+  `hairline:crisp`), dark and grey-panel themes (`theme:dark`, `theme:grey-panel`; matplotlib's
+  `dark_background`, `ggplot`, `seaborn-v0_8-darkgrid`), dashed / dotted gridlines in the series'
+  colour (`grid:series-colour`), labels, an arrow and a legend box over the curves
+  (`annotations`, `legend-over`), Kaplan–Meier pairs of one colour with "|" censor ticks, solid +
+  dashed and solid + dotted (`km-styles`, `censor-ticks`), steep sigmoids (`steep`), log-x
+  dose-response curves with bands (`log-x`) and log-log power laws. Gridlines, legends, frames,
+  line widths, 72–200 DPI and JPEG (every third) vary.
   Truth per series: data points, their pixels, the drawn polyline, step corners, marker centres,
   and a seed on visible ink of the series with no other ink within 3 px (as a user clicks).
   Real figures (`bench/lines/real/manifest.json`; CC BY or public domain, provenance in
@@ -1258,6 +1375,228 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   read as a dull grey-blue, so the walk follows other ink either way) stops after 6 points instead
   of running 76 wrong ones (coverage 12.1 → 0.9 %; busy-scatter p95 28.1 → 1.9 px only because
   its wrong points no longer count); the other 53 busy-scatter traces are unchanged.
+- **Line-chart styles (2026-11-19; 506 traces)**: the corpus gained l170–l199 (`scenario:styles`,
+  109 traces, see Benchmark), committed first with the tracer's honest baseline (earlier charts
+  byte-identical, no earlier trace changed). Then, in the curve walk and around it:
+  - *Fill edges* (`curve.ts → traceAreaEdge`, called from `index.ts` before the style read): a
+    click inside a fill of one colour — at least max(16 px, 4 % of the plot's height) tall and,
+    through the middle of the fill, at least max(64 px, 25 % of the plot's width) wide (a stroke, a
+    bar or a marker is not) — follows the fill's upper edge column by column through the run that
+    overlaps the last one most, to where the fill ends (its lower edge when the click is within
+    12 % of it). The edge is the coverage boundary, sub-pixel from the partly covered pixels there.
+    Reported as a solid curve. (A filled area drawn under an edge line is traced on the line, as
+    before; a band or fill of the series' own lighter colour is below ½ coverage and was never
+    "on".)
+  - *Riding a hiding stroke* (`curve.ts`): a walk that dies in a gap is walked again from where
+    the gap opened, following the stroke of another colour the series went under there (its run
+    at the predicted row, at most max(10 px, 4 widths + 4) tall, then wherever it goes, within 2
+    rows per column; down a long run to its end farther from where the walk came in). After 6
+    columns it must still run the series' way (slope within 0.3 × (1 + |slope|) of the series'
+    own), else it is dropped and its columns count as open gap again (a "+" marker is no hiding
+    place). The series is taken back where it comes out beside the stroke (within 2.5 px of its
+    edge); the ridden centres become path points (confidence 0.4). The retry is kept only when it
+    follows ≥ 8 more columns of ink, up to 6 times per direction; it runs only when the gap began
+    under ink of another colour, and never for the one-piece walks of dash hopping (retrying every
+    walk at its real end cost ~55 % more time per trace; gated, 335 ms vs 323 ms before). A curve that runs exactly on
+    another for a stretch and bends there (`touching`) is followed to its real end.
+  - *Noisy series* (`curve.ts → noisySeries`): a walk that dies in a gap of a measured signal —
+    the median absolute deviation of its last 12 column slopes ≥ 0.6 px and ≥ 3 reversals by ≥
+    0.6 px — is walked again from where the gap opened, looking for it around its last level (the
+    median of its last 5 centres), as far off as a random walk with its median jump would wander
+    (1.5 × jump × √(gap + 1) + ½ width + 1.5 px); such gaps never count as hidden (a guess, so
+    only the open-gap limit). Only as a retry: as a prediction everywhere it broke steep lines
+    (pixel stairs scatter the slope) and zigzag polylines under markers.
+  - *Darker shades* (`curve.ts`, `DARKER_RATIO`): a run whose peak coverage exceeds 1.15 × the
+    trace's typical peak is a darker shade of the series' hue (one-hue palettes: every shade is "on"
+    for the others), ranks behind a run of the series' own strength in reach, never resets where
+    the walk entered a long stretch, and its columns give no slope (`recentSlope` and the clean
+    slope skip them, looking back up to 30 columns for the series' own; only when there are fewer
+    than three own pairs — the series hidden under a darker one for a long stretch — the stroke
+    over it sets the slope).
+  - *Corners of patterned steps* (`kinks.ts → withStepCorners`, `levelCorners`, `stepLike`): a
+    dashed / dotted / dash-dot step curve has no vertical stroke once the pattern's fill is undone.
+    For a step curve (≥ 70 % of neighbouring path points within 0.2 px of each other and ≤ 20 %
+    sloped by 0.2–2 px, in the real path or the one over the filled pattern) the corners are read
+    from the walk over the filled pattern (each vertical's pair replaces what the real ink left of
+    it when the path is level within 1.5 px for 2 px on both sides), then from the levels either
+    side of each remaining vertical (consecutive levels ≥ max(2.5 px, a width) apart, their ends
+    within a gap + a piece + 2 widths + 2 px, only points near one x between them): x = the centre
+    of the series' ink between the two levels there, or their ends' middle within 4 px.
+  - *With the new kinds (merge of 2026-11-19)*: the bar finder (`bars.ts`) answers a click in a
+    fill first; its bars are kept unless, in auto mode, the clicked fill's edge (`traceAreaEdge`)
+    is a smooth curve — `curve.ts → flatTopped`: the edge cut at steps of > 1.5 px, a bar's top
+    drifts ≤ 2 px from end to end within its piece, a smooth layer drifts far (also where it borders
+    another fill unblended and comes out as 1-px steps) — then it is that layer's edge (a stacked
+    area standing on the baseline was cut into narrow "bars"). The fold follower (`follow.ts`) takes
+    over only when what it adds beyond the column walk has the series' own strength (median peak
+    coverage within 1.15× of the walk's, `strengthAlong`): where curves of one hue meet at a common
+    start it turned back along a lighter or darker one (`l178/s0`, `l179/s3`). Noisy-series retries
+    need ≥ 3 reversals (with 2 they fired on a stress-cycle path, `l203/s0`, path precision 0.979 →
+    0.954).
+  Before → after (506 traces): overall coverage 89.6 → 91.2 %, p95 1.81 → 1.29 px, wrong series
+  5.2 → 4.2 %, corner recall 55.9 → 59.7 %, kind 96.3 %, style 92.5 % unchanged; `style:dashed`
+  corner recall 14.0 → 30.0 %; `color:black` corners 47.0 → 54.1 %; `lw:thin` coverage 86.3 →
+  89.2 %; `scenario:line-markers` coverage 85.0 → 91.2 % (`l01` 77.9 → 91.1 / 31.4 → 74.2 %,
+  `l25/s1` 43.8 → 87.2 %); `scenario:same-colour` corners 41.6 → 48.7 %; `scenario:styles`
+  coverage 89.8 → 94.9 %, p95 2.72 → 0.90 px, wrong 5.5 → 1.8 %, corners 40.7 → 55.0 %; `area`
+  63.6 → 100 % (fill-only stacked layers 0 → 100 %), `noisy` 59.7 → 69.0 %, `touching` 83.1 →
+  94.3 %, `palette:hue` coverage 91.0 → 95.4 %, wrong 22.2 → 11.1 %, `km-styles` corners 40.7 →
+  55.0 %. Unchanged: `scenario:scan-grid` (65.5 %, wrong 27.8 %), `rotated` (71.8 %, 29.2 %),
+  `own-colour-lines` (78.6 %, 13.9 %), `four-series`, `km`, `scenario:top-axis` style (62.5 %),
+  `log-log` p95 (5.95 px), `color:grey` p95 (1.73 px). Trade-offs (rebaselined with the gains):
+  pooled median errors rise by 0.0002–0.04 px (traces that now succeed are scored on more,
+  harder points; `area` 0.34 → 0.38 px: a fill edge sits ~0.7 px off matplotlib's path, which
+  blends the next layer into the boundary pixel); `l31/s3` (a JPEG dashed line touching a thick
+  brown curve whose peak is only ~1.2 × its own) 98.8 → 92.8 %; `l07/s3` 58.9 → 57.5 %;
+  `l106/s2` 98.1 → 97.1 %; `l43/s1` corners 23 → 22 of 32; `l78/s1` coverage 84.6 → 83.0 % (with
+  corners 15 → 22 of 70); `l93/s0` (a scatter traced as a curve either way) 14 → 6 points.
+  **Tried and rejected**: a noisy-series prediction in every gap (steep lines and polylines under
+  markers broke); counting reversals only across thin runs, or only where both run ends move (a
+  noisy line's columns span from one level to the next, so neither holds); requiring continuous
+  ink for a noisy series (the cause of a busy-scatter regression was riding, not the noise test);
+  riding as the first choice in every gap (a straight chord across the hidden stretch, and step
+  curves under censor ticks, got worse); validating corners from the filled walk without
+  checking that the path is level beside them (spurious corners on smooth dashed curves); for
+  scans, never leaving a run that is mostly ruling by its far end, or never taking one off the
+  prediction (fixed `l121/s0` running up a gridline and `l126/s2` 27 → 58 %, but a steep curve
+  crossing a horizontal gridline leaves exactly such a run by its far end: `l122/s0`, `l123/s0`,
+  `l125/s0` lost 2–7 % coverage, and a 20–40 px "along the column" condition removed the gain
+  too). **Known failures**: a curve hidden under another for longer than 30 % of the plot width
+  ends there (riding does not lift the hidden-gap limit); `l184/s1` (a light shade hidden under a
+  darker one, then leaving it upward) still follows the darker one; a legend box over a curve
+  ends the trace there (`l193/s0`, `l194/s1`: inside the box is background, wider than the open
+  gap limit); noisy JPEG series at 72 DPI (`l182/s3` 23.6 %, style unread); dashed series among
+  dashed gridlines of their colour (`l191/s1` reads dash-dot and follows the grid, `l192/s1`
+  62.5 %); dotted KM steps with "|" ticks (`l196/s1` reads dash-dot, 33 %, 6/42 corners); scans
+  as before (rulings above).
+- **New kinds: curves that double back, and bars (2026-11-19, `new-kinds`).** Two kinds the
+  column walker cannot do at all, each in its own file with a small hook in `index.ts`; both take
+  over only where the old code fails, and every one of the 397 earlier per-trace baseline entries
+  is unchanged.
+  - *Curves that double back* (`follow.ts`): closed loops (hysteresis M–H and P–E loops, cyclic
+    voltammograms, Lissajous figures, limit cycles), curves that fold back (S-curves, nose curves,
+    an impedance arc that curls back, depth profiles drawn with y as the variable), spirals. The
+    column walk gives one y per x, so it follows such a curve only between two folds.
+    `followStroke` walks the stroke as a path: a ring of ~1.5 line widths around the current point
+    is cut into arcs of the series' ink and the walk moves half a ring towards the straightest arc
+    it has not walked, centred on the stroke's cross-section; walked ink is marked, so a
+    self-crossing is crossed straight over. When nothing continues it: straight on further out
+    (across its own path, ink of another colour up to 60 px, or a short break), or along ink of
+    another colour that runs on its course (another series drawn over it) to where it comes out
+    again, or a turn (the one unwalked way on, looked for from the stroke's tip outwards — a
+    sharp one is a cusp and its tip a point; a faint way on, under ¾ of the strongest, or one
+    that does not go on for six rings, is not one; two equal ways end the walk), or, at a dead
+    end, back along its own path to an unwalked branch leaving within 35° of the way back (the
+    merged tips of an M–H loop) — never one crossed by unwalked ink the other way. Rulings
+    (`rulings.ts`) of every thickness may be crossed but never walked along. The walk is closed
+    when it comes back onto its start heading the way it set out. It replaces the column walk only
+    when `takesOver`: the path is closed, or comes back in x by more than max(the marker size
+    limit, 6 line widths, 4 % of the box) without having walked back along itself (an open path
+    that retraced is a guess), it passes through at least half of the column walk's points and is
+    at least 1.25× as long, and at most 6 % of its steps went through ink wider than the stroke (a
+    line through filled markers of its colour). The follower runs only when the column walk shows
+    a fold (`mayDoubleBack`: a jump between neighbouring columns, an end short of the box's left
+    or right edge, or ink of the series behind an end, off the walk). In auto mode, when a marker
+    shape cut from the clicked stroke is found three times or more, a closed loop through the
+    seed still makes it a curve. **Order**: an open path runs from its left end; a
+    closed one from its leftmost point, clockwise on screen, and its first point is repeated at
+    the end (the loop is closed in the table too). `path` and `points` are in drawing order, not
+    sorted by x (the `path` doc comment in `types.ts` says so; no shape change). Points
+    (`pickPoints`): the ends and cusps, then the point farthest from the polyline through those
+    kept (Douglas–Peucker order), then the longest stretch halved, up to `maxPoints`.
+  - *Data-step UI*: nothing to change. Accept appends the points in the order returned; the table
+    and the exports show placement order unless the user turns on "Sort by X" (off by default; on,
+    it sorts a loop by x like any line); the project file keeps placement order; placed points are
+    never joined by lines; the ghost path is drawn in path order.
+  - *Bars* (`bars.ts`, in auto and markers mode, never in curve mode; before frame lines along
+    the box are taken out, so a row of bars standing on the bottom edge is not one): one click on
+    a bar returns `kind: 'markers'` with one point per bar of that series at the middle of its
+    value end — a bar on the baseline: its top edge (horizontal: its right end); below the
+    baseline: its bottom edge (left end); a stacked segment: its edge away from the baseline (its
+    top); with an error bar: the bar's own end, never the cap; an edged bar: the middle of the
+    edge's stroke. Method: the series' ink is cut into runs along the value axis (both
+    orientations are tried; the one with more rectangles wins), thin ink of another colour inside
+    a run (hatching, caps, a curve over the bars) bridged; runs of neighbouring columns chain, and
+    a chain is cut into rectangles whose ends stay put (a column with more ink beyond an end than
+    the chain's usual outline — an error-bar stem, a curve — never cuts; one odd column between
+    two that fit is noise; a sliver beside a rectangle is its blurred side). The unit width is the
+    commonest among the rectangles sharing an end with the clicked one; in a chain of touching
+    rectangles one n units wide is n bars of one height (a histogram drawn without edges). The
+    baseline is the end most bars share — unless it is their far end (top; right for horizontal
+    bars) and their other ends sit on ink (the top of a 100 % stack, with or without a gridline
+    along it); bars away from it count when ink runs from them to it (stacked
+    segments). Without a baseline the bars are stacked segments sitting on ink, value at the far
+    end; a baseline must explain at least as many bars as that reading. Not bars: lengths all
+    alike and ≤ 30 px (markers in a row), the longest shorter than max(8 px, ¼ of the width), fewer
+    than four marker-sized rectangles (filled squares), marker-sized rectangles none of which is
+    longer than 1.5 widths (the fills of circles, squares or black-edged markers on their error
+    bars: Find points takes them; merge of 2026-11-19), a rectangle with ink of its colour on its
+    side that is no bar, or touching pieces sharing no end (a thick line's flat stretches). When the
+    plot box cut the bars — a value end on its edge, or the series' ink going on just past an edge
+    a bar ends on (a box that stops at the last gridline) — they are looked for again over the
+    whole image, and that answer is kept when it has at least as many bars. A lone
+    bar is returned only in markers mode. *Order with Find points*: the bar finder runs first (not
+    in curve mode) and answers before any marker code, so the marker classing (colour strength,
+    outline, second shape) never sees or filters a bar click; when it finds no bars, Find points
+    runs as before — which is why compact marker-sized families are left to it.
+  - *Benchmark*: l200–l229 (`bench/lines/generate_kinds.py`, called by `generate.py`): 16 path
+    charts (32 series, tags `series:path` plus `loop`, `closed`, `cusps`, `merged-tips`,
+    `vertical`, `overhang`, `spiral`, `parametric`, `self-crossing`, …) and 14 bar charts (29
+    series, `kind: "bars"`, loaded as scatter series whose markers are the value ends; tags
+    `bars:plain|grouped|stacked|horizontal|negative|errorbars|outlined|hatched|edged|thin|labels`,
+    `histogram`), in matplotlib's ggplot, seaborn, dark_background, fivethirtyeight, bmh,
+    grayscale and classic styles, PNG/JPEG, 72–200 dpi. Coverage by columns says nothing about a
+    loop, so `series:path` traces get three more gated metrics (on top of the old ones, absent
+    from every other category): **path coverage** (share of the true path's length within 3 px of
+    the traced polyline), **path precision** (share of the traced polyline within 3 px of the
+    path: points out of order cut across and lose it) and **points order** (min/max of the
+    suggested points' polyline length and the true length). Committed first with today's engine
+    (honest baseline), then: **paths** (32) path coverage 51.1 → 87.6 %, path precision 91.1 →
+    92.8 %, points order 51.0 → 88.2 % (loop 50.6 → 76.7 % coverage, closed 51.8 → 86.3 %,
+    vertical 73.3 → 98.6 %, overhang 53.7 → 84.0 %, spiral 25.2 → 99.9 %, parametric 43.2 →
+    87.5 %, self-crossing 26.3 → 52.8 %); **bars** (29) kind 6.9 → 96.5 %, marker recall 0 →
+    93.1 %, precision 0 → 63.0 % (plain, stacked, histograms, horizontal, thin: 98–100 % / 98–100 %;
+    grouped 86.0 / 42.2 %, below zero 75.0 / 43.9 %, with error bars 80.0 / 51.1 %; the low
+    precisions are the hatched and outlined series below, which the old marker path still answers
+    with dozens of "markers"). 21 path traces and 26 bar traces gain; the one trade-off is
+    `l202/s1` (a P–E loop whose tips are one merged stroke): path coverage 53 → 96 % but its two
+    tips 2/2 → 0/2. The followed paths' centreline error is ~0.04 px median instead of the column
+    walk's ~0.02 px (half-pixel cross-section sampling), over far more of each path; with that
+    and the lost tips the shared categories the new traces fall into move (overall median 0.032
+    → 0.035 px, corner recall 58.81 → 58.75 %, `color:grey` corner recall 71.4 → 64.3 %). All 397
+    earlier per-trace entries are unchanged. Cost: the follower runs only when the column walk
+    shows a fold (a jump, an end short of the box's left or right edge, or its own ink turning
+    back behind an end), once per trace; the bar finder only when the click is inside a solid
+    4 × 4 block of ink.
+  - *Known failures (new kinds)*: a P–E loop whose two branches merge into one line before each
+    tip loses its tips (the walk stops where they merge: two equal ways back); a curve folding
+    back that the walk can only finish by walking back along itself (a minor loop drawn inside a
+    same-colour major loop, `l205`, and the curl of `l215/s1`) is left to the column walk — an
+    open path is never trusted after retracing (allowed, an earlier trace, `l114/s0`, went back
+    along its curve and out along an error bar); stress–strain cycles drawn in one black stroke (crossings
+    and shared zero-stress points at every reload, `l203`) close early and are not used; a P–E
+    ellipse crossing another loop of a similar grey is taken for markers (`l202/s0`); an S-curve
+    whose fold crosses the other S-curve (`l208/s1`) and the same-colour minor loop (`l205/s1`)
+    follow the other series (wrong). Bars: outlined bars without fill (`bars:outlined`) and bars
+    told apart only by hatching on white (`l228/s1`) are not found — their ink is a thin stroke,
+    traced as a curve or matched as markers; cross-hatched grey bars (`l229/s0`) give hatching
+    "markers"; one 100 % stack's JPEG boundary keeps one bar short (`l222/s3`, 6/7); a spine drawn
+    at zero is taken for the x axis by `detectAxes`, so bars below it are outside the plot box
+    and lost (unchanged by the 2026-11-19 detection work: the box still ends at the zero line; a
+    whole-image second look whenever a baseline sits on the box's edge found more false bars than
+    true ones, and was dropped); a click on a bar in curve mode traces its outline as before.
+  - *Tried and rejected*: summed reversal of the path in x as the "doubles back" test (a line
+    going round open markers on it reverses by their width every few columns: 3 earlier traces
+    changed) — replaced by the deepest return behind a point reached; agreement with ≥ 85 % of the
+    column walk's points (a walk that jumped to the other branch of a fold agrees only up to it);
+    accepting open paths that retraced (gains `l205`, `l215/s1`; changed the earlier `l114/s0`);
+    turn search connected through ink at any distance (turned from a curve's end at the frame
+    onto a bar's side 60 px away); running the follower on every trace (+70 % time per trace on a
+    loaded machine; now only on fold evidence); bars: an end reference from the first column (a
+    blurred side cut bars in two), the width of the narrowest mate as the unit (fragments made it
+    3 px), a baseline from coincident tops of an upper stack layer (now it must explain at least
+    as many bars as the stacked reading), and a whole-image retry whenever a baseline sits on the
+    box's edge (more false bars than true ones).
 
 - **Marker styles (2026-11-19; 476 traces)**: appended `marker-styles` charts l140–l169 (30 charts,
   79 marker classes, each a scatter series with exact centres; `build_marks`): stars, triangles in
@@ -1303,6 +1642,13 @@ applies them only on "Accept" — the same rule as axis suggestions. The engine 
   one is lost; legend samples whose label letters touch (small text at low dpi) or that are drawn
   with error bars are still counted; thin "x" in scans and among dots are over-counted as before
   (x precision 48 %); scan rings crossed by a thick curve at a shallow angle are lost.
+  *Merged with styles, new kinds and axis-detection styles (646 traces)*: every trace equals its
+  branch's except three, all better through main's exact plot boxes — `l164/s0` loses 2 legend
+  samples (9/9 of 9), the angle-response figure's orange and red series each gain a marker
+  (10/12 of 13, 10/13 of 11; wrong group 0, where the curve-tracing branch had 11 each). The bar
+  finder first took the fills of black-edged circles on their error bars (`l147/s0`, `l148/s0`)
+  for marker-sized bars, 4–5 px above the centres; the compact-family rule above gives them back
+  to Find points (7/7, 10/11 as before), with no bar or path trace changing.
 
 ## Auto-trace — UI
 

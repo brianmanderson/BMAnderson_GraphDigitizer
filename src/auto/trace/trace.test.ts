@@ -560,6 +560,84 @@ describe('traceLine: polylines with a marker on every vertex', () => {
   }
 });
 
+describe('traceLine: line-chart styles', () => {
+  it('follows the top edge of a fill drawn without an outline', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const top = sine(30, 0.3, 150);
+    // A layer of a stacked-area chart: filled down to the next layer, no edge line.
+    c.paint(GREEN, 50, 100, 350, 230, (x, y) => x >= 50 && x <= 350 && y <= 230 && y >= 150 + 30 * Math.sin((x - 50) / 45 + 0.3));
+    c.paint(BLUE, 50, 230, 350, 259, (x, y) => x >= 50 && x <= 350 && y > 230);
+    const r = traceLine(c.request({ x: 200, y: 200 }));
+    expect(r.ok).toBe(true);
+    expect(r.kind).toBe('curve');
+    const path = pts(r);
+    expect(Math.min(...path.map((p) => p.x))).toBeLessThanOrEqual(52);
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThanOrEqual(348);
+    expect(path.every((p) => polyDist(p, top) < 1)).toBe(true);
+  });
+
+  it('follows a curve hidden under another of another colour for a stretch, to its real end', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    // The red curve runs exactly on the blue one from x = 150 to 230, drawn over it, while the blue
+    // one bends from falling to rising: straight on from where it went under, it is lost.
+    const blue = Array.from({ length: 301 }, (_, i) => ({ x: 50 + i, y: 100 + 0.004 * (i - 140) ** 2 }));
+    const red = blue.map((p) => ({ x: p.x, y: p.x < 150 ? p.y + (150 - p.x) * 0.8 : p.x > 230 ? p.y + (p.x - 230) * 0.8 : p.y }));
+    c.stroke(blue, 2, BLUE);
+    c.stroke(red, 2.4, RED);
+    const r = traceLine(c.request(blue[40]!));
+    const path = pts(r);
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(345);
+    expect(path.filter((p) => p.x > 240).every((p) => polyDist(p, blue) < 1.5)).toBe(true);
+  }, 30_000); // painting two 300-point strokes supersampled takes seconds on a loaded machine
+
+  it('follows a noisy signal that jumps up and down across its gaps', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    // A measured signal: a new value every column, scattered by up to ±14 px about a slow drift;
+    // a 1.2-px line.
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    const signal: P[] = [];
+    for (let x = 50; x <= 350; x++) signal.push({ x, y: 140 + 40 * Math.sin((x - 50) / 70) + 14 * rand() });
+    c.stroke(signal, 1.2, BLUE);
+    const r = traceLine(c.request(signal[75]!));
+    const path = pts(r);
+    expect(Math.max(...path.map((p) => p.x)) - Math.min(...path.map((p) => p.x))).toBeGreaterThan(250);
+    expect(path.every((p) => polyDist(p, signal) < 2)).toBe(true);
+  }, 30_000); // a 300-point stroke painted supersampled
+
+  it('keeps a lighter shade of one hue on its own course where a darker one crosses it', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const light: RGB = [107, 174, 214];
+    const dark: RGB = [8, 48, 107];
+    // They cross at a shallow angle (under 9°) and run within a stroke of each other for 30 px.
+    const a = Array.from({ length: 301 }, (_, i) => ({ x: 50 + i, y: 200 - 0.35 * i }));
+    const b = Array.from({ length: 301 }, (_, i) => ({ x: 50 + i, y: 200 - 0.35 * i + 0.15 * (i - 150) }));
+    c.stroke(a, 2.5, light);
+    c.stroke(b, 2.5, dark);
+    const r = traceLine(c.request(a[20]!));
+    const path = pts(r);
+    expect(Math.max(...path.map((p) => p.x))).toBeGreaterThan(345);
+    expect(path.every((p) => polyDist(p, a) < 2)).toBe(true);
+  });
+
+  it('keeps the corners of a dashed step curve', () => {
+    const c = new Canvas(400, 280);
+    frame(c);
+    const steps = staircase([50, 100, 150, 200, 250, 300, 350], [40, 70, 100, 130, 160, 190]);
+    for (const d of dashes(steps, [9, 6])) c.stroke(d, 1.8, BLACK);
+    const onDash = dashes(steps, [9, 6]).find((p) => p[0]!.y === 130 && p[p.length - 1]!.y === 130)!;
+    const r = traceLine(c.request({ x: (onDash[0]!.x + onDash[onDash.length - 1]!.x) / 2, y: 130 }));
+    expect(r.style).toBe('dashed');
+    const inner = steps.slice(1, -1);
+    const kept = inner.filter((k) => r.points.some((p) => Math.hypot(p.px - k.x, p.py - k.y) < 2)).length;
+    expect(kept).toBeGreaterThanOrEqual(inner.length - 2);
+  });
+});
+
 describe('traceLine: markers', () => {
   const centres: P[] = [
     { x: 70.3, y: 200.6 },

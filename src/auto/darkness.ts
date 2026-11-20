@@ -5,6 +5,12 @@
  * thin line on white keeps nearly its full contrast; the inside of a large filled area (a bar)
  * falls to ~0, so bars become outlines instead of solid blocks; a grey page background or
  * scanner tint cancels out. A pixel is "ink" when its darkness reaches `INK_THRESHOLD`.
+ *
+ * Polarity. A dark theme draws light ink on a dark background, where nothing is darker than its
+ * neighbourhood. Such an image is read as its negative (`inverted`): when the image's border and
+ * most of the image are dark (both medians below mid-grey) and more pixels stand out lighter than
+ * the border than darker. A light chart with dark bars, or a white panel on a dark page, keeps its
+ * polarity. `gray` is the luma after this step, so "ink is darker" holds for every consumer.
  */
 
 import type { RgbaImage } from './types.ts';
@@ -17,6 +23,13 @@ export interface DarknessMap {
   height: number;
   /** Row-major, 0–255. */
   dark: Float32Array;
+  /**
+   * The luma the map was computed from (row-major, 0–255; the negative on a dark theme). Optional
+   * so a map built by hand (tests) stays valid: without it panel and gridline detection are off.
+   */
+  gray?: Float32Array;
+  /** Light ink on a dark background: `gray` and `dark` are those of the negative. */
+  inverted?: boolean;
 }
 
 /** Rec. 601 luma; transparent pixels are composited on white (charts are drawn on paper). */
@@ -38,9 +51,56 @@ export function windowRadius(width: number, height: number): number {
   return Math.max(7, Math.round(Math.min(width, height) / 40));
 }
 
+/** Median of the values at `indices` (or of all of `gray`), by histogram. */
+function medianLevel(gray: Float32Array, indices: Int32Array | null): number {
+  const hist = new Int32Array(256);
+  const n = indices ? indices.length : gray.length;
+  for (let i = 0; i < n; i++) {
+    const v = Math.round(gray[indices ? (indices[i] as number) : i] as number);
+    hist[v] = (hist[v] as number) + 1;
+  }
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v] as number;
+    if (acc * 2 >= n) return v;
+  }
+  return 255;
+}
+
+/** Indices of the pixels in the image's outer ring (~1 % of the short side, at least 2 px). */
+export function borderRing(w: number, h: number): Int32Array {
+  const m = Math.min(Math.max(2, Math.round(0.01 * Math.min(w, h))), Math.floor(Math.min(w, h) / 2));
+  const out: number[] = [];
+  for (let y = 0; y < h; y++) {
+    const edgeRow = y < m || y >= h - m;
+    for (let x = 0; x < w; x++) if (edgeRow || x < m || x >= w - m) out.push(y * w + x);
+  }
+  return Int32Array.from(out);
+}
+
+/** A pixel stands out from the background by at least this much luma (polarity vote). */
+const POLARITY_MARGIN = 50;
+
+/** Whether the image is light ink on a dark background (see the header). */
+export function isDarkTheme(gray: Float32Array, w: number, h: number): boolean {
+  if (w < 8 || h < 8) return false;
+  const bg = medianLevel(gray, borderRing(w, h));
+  if (bg >= 128 || medianLevel(gray, null) >= 128) return false;
+  let lighter = 0;
+  let darker = 0;
+  for (let i = 0; i < gray.length; i++) {
+    const g = gray[i] as number;
+    if (g > bg + POLARITY_MARGIN) lighter++;
+    else if (g < bg - POLARITY_MARGIN) darker++;
+  }
+  return lighter > darker;
+}
+
 export function darknessMap(img: RgbaImage): DarknessMap {
   const { width: w, height: h } = img;
   const gray = toGray(img);
+  const inverted = isDarkTheme(gray, w, h);
+  if (inverted) for (let i = 0; i < gray.length; i++) gray[i] = 255 - (gray[i] as number);
   const r = windowRadius(w, h);
   // Integral image with a zero first row/column.
   const W = w + 1;
@@ -69,7 +129,7 @@ export function darknessMap(img: RgbaImage): DarknessMap {
       dark[y * w + x] = d > 0 ? d : 0;
     }
   }
-  return { width: w, height: h, dark };
+  return inverted ? { width: w, height: h, dark, gray, inverted } : { width: w, height: h, dark, gray };
 }
 
 /** Bilinear sample at a sub-pixel position (integer = pixel centre); −1 outside the image. */

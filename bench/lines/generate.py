@@ -1373,14 +1373,467 @@ def uncluttered(rgb: np.ndarray, x: int, y: int, col: np.ndarray, bg: np.ndarray
     return True
 
 
+# Charts l170-l199 (appended; ids below STYLE_FROM belong to other builders and stay byte-identical):
+# line-chart looks the corpus lacked ("styles"), one variant per chart - (variant, JPEG quality or 0,
+# dpi). A shaded band of the series' own lighter colour around each curve (with dashed limits in the
+# JPEG one); filled areas under an edge line; stacked areas with and without edge lines (the truth
+# is each layer's top edge); six to eight series from one palette (tab10, a colour-blind palette,
+# shades of one hue, shades of grey, the last also with line styles); noisy time series crossing
+# many times; curves that run together for a stretch before parting (the upper one hides the
+# other); 1-px lines at low DPI, antialiased and crisp; dark and grey-panel themes with their
+# gridlines; dashed / dotted gridlines in the series' colour; text labels, an arrow and a legend box
+# lying over the curves; Kaplan-Meier pairs of one colour with "|" censor ticks, solid + dashed and
+# solid + dotted; steep sigmoids; log-x dose-response curves with bands; log-log power laws.
+STYLE_FROM = 170
+STYLE_VARIANTS = [
+    ("band", 0, 100), ("band-limits", 78, 120),
+    ("area", 0, 100), ("area", 82, 96),
+    ("stacked", 0, 100), ("stacked-fill", 0, 120),
+    ("palette:tab10", 0, 120), ("palette:colorblind", 0, 100), ("palette:hue", 0, 150), ("palette:grey", 0, 100), ("palette:grey-styles", 70, 120),
+    ("noisy", 0, 100), ("noisy", 80, 72),
+    ("touching", 0, 100), ("touching-hue", 0, 120),
+    ("hairline:aa", 0, 72), ("hairline:crisp", 0, 96),
+    ("theme:dark", 0, 100), ("theme:dark-band", 85, 100),
+    ("theme:ggplot", 0, 100), ("theme:darkgrid", 75, 120),
+    ("own-grid:dashed", 0, 120), ("own-grid:dotted", 0, 100),
+    ("annotations", 0, 100), ("annotations", 80, 120),
+    ("km:dashed", 0, 120), ("km:dotted", 0, 150),
+    ("steep", 0, 100), ("log-x", 0, 100), ("log-log", 0, 120),
+]
+STYLE_THEMES = {"theme:dark": "dark_background", "theme:dark-band": "dark_background", "theme:ggplot": "ggplot",
+                "theme:darkgrid": "seaborn-v0_8-darkgrid"}
+OKABE_ITO = ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442"]
+
+
+def curve_family(rng: np.random.Generator, xs: np.ndarray, n: int, ylo: float, yhi: float) -> list:
+    """n curves as one figure shows them: one model at n parameter values, with a slow wobble each so
+    that neighbours cross here and there."""
+    t = (xs - xs.min()) / np.ptp(xs)
+    kind = int(rng.integers(0, 3))
+    out = []
+    for k in range(n):
+        f = (k + 0.5) / n
+        if kind == 0:  # saturating growth to different plateaus
+            y = (0.25 + 0.75 * f) * (1 - np.exp(-rng.uniform(2, 7) * t))
+        elif kind == 1:  # decay from one start
+            y = np.exp(-(0.4 + 4 * f) * t ** rng.uniform(0.8, 1.6))
+        else:  # absorption and elimination: a peak, then a tail
+            ka, ke = rng.uniform(6, 14), 0.8 + 3 * f
+            y = np.exp(-ke * t) - np.exp(-ka * t)
+            y = y / y.max() * (0.35 + 0.65 * (1 - f))
+        y = y + rng.uniform(0.0, 0.04) * np.sin(2 * math.pi * (rng.uniform(0.5, 2) * t + rng.uniform(0, 1)))
+        out.append(ylo + (yhi - ylo) * (0.05 + 0.9 * y))
+    return out
+
+
+def pick_seed_styles(s, others, rgb, bg, keepout, W, H):
+    """A seed for the "styles" charts: on the series (or, for an area without an edge line, in its
+    fill just below the top edge), at least 3 px clear of every other series, outside the legend
+    and the text boxes. First a pixel that passes pick_seed's test (coverage >= 0.6 by the series'
+    colour over the panel, no ink of another colour within 3 px); where a fill, a band or a theme's
+    gridlines leave none, a pixel at least 60 % of the way from the panel's colour to the series'."""
+    col = np.array(to_rgb(s["color"])) * 255
+    cands = resample_poly(s["path"], 1.0)
+    if s["kind"] == "step":
+        d_corner = np.min(np.hypot(cands[:, None, 0] - s["path"][None, :, 0], cands[:, None, 1] - s["path"][None, :, 1]), 1)
+        cands = cands[d_corner >= max(4.0, 2 * s["lw_px"])]
+    if len(s["censor"]):
+        d_c = np.min(np.hypot(cands[:, None, 0] - s["censor"][None, :, 0], cands[:, None, 1] - s["censor"][None, :, 1]), 1)
+        cands = cands[d_c >= s["ms_px"]]
+    cands = cands + np.array([0.0, s["seed_dy"]])
+    clear = np.full(len(cands), 1e9)
+    for o in others:
+        clear = np.minimum(clear, seg_dist(cands, o["path"]) - o["lw_px"] / 2 - s["lw_px"] / 2)
+        if len(o["censor"]):
+            clear = np.minimum(clear, seg_dist(cands, o["censor"]) - o["ms_px"] / 2)
+    for x0, y0, x1, y1 in keepout:
+        inside = (cands[:, 0] >= x0 - 6) & (cands[:, 0] <= x1 + 6) & (cands[:, 1] >= y0 - 6) & (cands[:, 1] <= y1 + 6)
+        clear[inside] = -1e9
+    if np.any(clear >= 3):
+        cands, clear = cands[clear >= 3], clear[clear >= 3]
+    xr = (cands[:, 0] - cands[:, 0].min()) / max(1e-9, np.ptp(cands[:, 0]))
+    # Not on the very tip of a series (where the others leave no other place, a click is still inside it).
+    order = np.argsort(-(np.minimum(clear, 12.0) - 4.0 * np.abs(xr - s["seed_at"]) - 20.0 * ((xr < 0.04) | (xr > 0.96))))
+    tol = max(30.0, 0.4 * float(np.linalg.norm(col - bg)))
+    for strict in (True, False):
+        for idx in order:
+            x, y = int(round(cands[idx, 0])), int(round(cands[idx, 1]))
+            if not (3 <= x < W - 3 and 3 <= y < H - 3) or clear[idx] < -1e8:
+                continue
+            if strict and coverage_at(rgb, x, y, col, bg) >= 0.6 and uncluttered(rgb, x, y, col, bg):
+                return [x, y]
+            if not strict and float(np.linalg.norm(rgb[y, x].astype(float) - col)) <= tol:
+                return [x, y]
+    raise RuntimeError(f"no visible seed for a {s['kind']} series")
+
+
+def build_styles(i: int):
+    """One chart of the "styles" set (see STYLE_FROM)."""
+    rng = np.random.default_rng(5000 + i)
+    variant, jpeg_q, dpi = STYLE_VARIANTS[i - STYLE_FROM]
+    w_in = float(rng.uniform(5.5, 7.5))
+    h_in = float(w_in * rng.uniform(0.58, 0.75))
+    if w_in * dpi > 900:
+        w_in, h_in = 900 / dpi, 900 / dpi * h_in / w_in
+    font = str(FONTS[int(rng.integers(0, len(FONTS)))])
+    theme = STYLE_THEMES.get(variant)
+    rc = {"path.snap": False, "font.family": font, "font.size": float(rng.uniform(8, 11))}
+    tags = []
+    grid = False
+    frame = "box"
+    with plt.style.context(theme or "default"), plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(w_in, h_in), dpi=dpi)
+        hexc = matplotlib.colors.to_hex
+        xlo, xhi = 0.0, float(rng.choice([10, 24, 60, 100]))
+        ylo, yhi = 0.0, float(rng.choice([1, 10, 100]))
+        xs = np.linspace(xlo, xhi, 400)
+        t = (xs - xlo) / (xhi - xlo)
+        span = yhi - ylo
+        series = []
+        texts = []  # artists whose boxes seeds keep out of
+        leg = None
+        floor = False  # the y axis starts at ylo exactly (areas)
+        pal = [hexc(c) for c in rng.permutation(PALETTE)]
+
+        def add(kind, style, color, lw, xd, yd, verts=None, cens=(), ms=0.0, seed_dy=0.0, edge=True):
+            series.append(dict(kind=kind, style=style, marker=None, color=color, lw=lw, ms=ms, xs=np.asarray(xd), ys=np.asarray(yd),
+                               verts=np.column_stack([xd, yd]) if verts is None else verts, cens=list(cens),
+                               seed_at=float(rng.uniform(0.25, 0.75)), seed_dy=seed_dy, edge=edge))
+
+        def band(xd, yd, color, k, lo=0.04, hi=0.09):
+            half = span * rng.uniform(lo, hi) * (1 + rng.uniform(0, 1.2) * np.linspace(0, 1, len(xd)))
+            ax.fill_between(xd, yd - half, yd + half, color=color, alpha=float(rng.uniform(0.15, 0.3)), lw=0, zorder=1 + 0.1 * k)
+            return half
+
+        if variant in ("band", "band-limits"):
+            tags += ["band"] + (["band-limits"] if variant == "band-limits" else [])
+            for k in range(2 if variant == "band" else 3):
+                ys = smooth_curve(rng, xs, ylo, yhi)
+                half = band(xs, ys, pal[k], k)
+                if variant == "band-limits":
+                    for sign in (-1, 1):
+                        ax.plot(xs, ys + sign * half, color=pal[k], lw=0.7, ls="--", alpha=0.7, zorder=1.5)
+                lw = float(rng.uniform(1.2, 2.2))
+                ax.plot(xs, ys, color=pal[k], lw=lw, zorder=3 + k)
+                add("line", "solid", pal[k], lw, xs, ys)
+        elif variant == "area":
+            tags += ["area"]
+            floor = True
+            for k in range(2):
+                ys = smooth_curve(rng, xs, ylo + 0.25 * span, yhi)
+                lw = float(rng.uniform(1.0, 2.0))
+                if k == 0 or jpeg_q:
+                    ax.fill_between(xs, ylo, ys, color=pal[k], alpha=float(rng.uniform(0.3, 0.45)), lw=0, zorder=1 + 0.1 * k)
+                ax.plot(xs, ys, color=pal[k], lw=lw, zorder=3 + k)
+                add("line", "solid", pal[k], lw, xs, ys)
+        elif variant in ("stacked", "stacked-fill"):
+            tags += ["area", "stacked"] + (["area:no-edge"] if variant == "stacked-fill" else [])
+            floor = True
+            n = 3 if variant == "stacked" else 4
+            base = np.full(len(xs), ylo)
+            for k in range(n):
+                hgt = span / n * rng.uniform(0.45, 0.85) * (1 + rng.uniform(0.2, 0.5) * np.sin(2 * math.pi * (rng.uniform(0.4, 1.5) * t + rng.uniform(0, 1))))
+                top = base + hgt
+                if variant == "stacked":
+                    lw = float(rng.uniform(1.0, 1.8))
+                    ax.fill_between(xs, base, top, color=pal[k], alpha=float(rng.uniform(0.4, 0.55)), lw=0, zorder=1)
+                    ax.plot(xs, top, color=pal[k], lw=lw, zorder=3 + k)
+                    add("line", "solid", pal[k], lw, xs, top)
+                else:
+                    ax.fill_between(xs, base, top, color=pal[k], lw=0, zorder=1)
+                    add("line", "none", pal[k], 0.0, xs, top, seed_dy=2.5, edge=False)
+                base = top
+        elif variant.startswith("palette:"):
+            name = variant.split(":")[1]
+            tags += ["many-series", "palette:grey" if name.startswith("grey") else f"palette:{name}"]
+            grid = name in ("tab10", "hue")
+            if name == "tab10":
+                cols = [hexc(plt.cm.tab10(k)) for k in range(8)]
+            elif name == "colorblind":
+                cols = list(OKABE_ITO)
+            elif name == "hue":
+                cmap = plt.cm.Blues if rng.random() < 0.5 else plt.cm.Reds
+                cols = [hexc(cmap(v)) for v in np.linspace(0.35, 1.0, 6)]
+            elif name == "grey":
+                cols = [hexc(str(v)) for v in (0.0, 0.25, 0.45, 0.6, 0.72, 0.8)]
+            else:
+                cols = [hexc(str(v)) for v in (0.0, 0.3, 0.5, 0.65, 0.78)]
+            styles = ["solid", "dashed", "solid", "dotted", "dashdot"] if name == "grey-styles" else ["solid"] * len(cols)
+            order = rng.permutation(len(cols))
+            for k, ys in enumerate(curve_family(rng, xs, len(cols), ylo, yhi)):
+                c, st = cols[int(order[k])], styles[k % len(styles)]
+                lw = float(rng.uniform(1.2, 1.9))
+                ax.plot(xs, ys, color=c, lw=lw, ls="-" if st == "solid" else STYLES[st], zorder=3 + k, label=f"group {k + 1}")
+                add("line", st, c, lw, xs, ys)
+            if name in ("tab10", "colorblind"):
+                leg = ax.legend(loc="best", ncol=2, fontsize=float(rng.uniform(6.5, 8)))
+        elif variant == "noisy":
+            tags += ["noisy"]
+            grid = jpeg_q > 0
+            n_pts = int(rng.integers(350, 600))
+            xs = np.linspace(xlo, xhi, n_pts)
+            kernel = np.hanning(31) / np.hanning(31).sum()
+            for k in range(3 if not jpeg_q else 4):
+                walk = np.convolve(np.cumsum(rng.normal(0, 1, n_pts + 30)), kernel, mode="valid")
+                ys = (walk - walk.mean()) / max(1e-9, np.ptp(walk)) * 0.5 + rng.normal(0, rng.uniform(0.03, 0.07), n_pts) + 0.5 + 0.1 * (k - 1)
+                ys = ylo + span * ys
+                lw = float(rng.uniform(0.8, 1.2))
+                ax.plot(xs, ys, color=pal[k], lw=lw, zorder=3 + k)
+                add("line", "solid", pal[k], lw, xs, ys)
+        elif variant in ("touching", "touching-hue"):
+            tags += ["touching"] + (["palette:hue"] if variant == "touching-hue" else [])
+            cols = ["#1f4e79", "#6baed6", "#3182bd"] if variant == "touching-hue" else pal
+
+            def smoothstep(u):
+                u = np.clip(u, 0, 1)
+                return u * u * (3 - 2 * u)
+
+            ya = smooth_curve(rng, xs, ylo + 0.2 * span, yhi - 0.2 * span)
+            t1 = float(rng.uniform(0.3, 0.45))
+            t2 = t1 + float(rng.uniform(0.15, 0.25))
+            # The second curve is the first one over t1…t2 exactly, and leaves it smoothly either side.
+            yb = ya + span * (rng.uniform(0.12, 0.25) * float(rng.choice([-1, 1])) * smoothstep((t1 - t) / 0.25)
+                              + rng.uniform(0.12, 0.25) * float(rng.choice([-1, 1])) * smoothstep((t - t2) / 0.25))
+            curves = [ya, yb]
+            if variant == "touching-hue":  # a third one that only touches the first, at one point
+                t0 = float(rng.uniform(0.6, 0.85))
+                curves.append(ya + span * float(rng.uniform(0.8, 1.6)) * float(rng.choice([-1, 1])) * (t - t0) ** 2)
+            for k, ys in enumerate(curves):
+                lw = float(rng.uniform(1.3, 2.2))
+                ax.plot(xs, ys, color=cols[k], lw=lw, zorder=3 + k)
+                add("line", "solid", cols[k], lw, xs, ys)
+        elif variant.startswith("hairline"):
+            crisp = variant.endswith("crisp")
+            tags += ["hairline", "hairline:crisp" if crisp else "hairline:aa"]
+            lw = 72.0 / dpi  # one pixel
+            cols = pal[:3] + ["#000000"]
+            for k in range(4):
+                ys = smooth_curve(rng, xs, ylo, yhi)
+                st = "dashed" if crisp and k == 2 else "solid"
+                ax.plot(xs, ys, color=cols[k], lw=lw, ls="-" if st == "solid" else "--", antialiased=not crisp, zorder=3 + k)
+                add("line", st, cols[k], lw, xs, ys)
+        elif theme:
+            tags += ["theme:dark" if "dark_background" in theme else "theme:grey-panel"] + (["band"] if variant == "theme:dark-band" else [])
+            grid = True
+            cyc = [hexc(c) for c in plt.rcParams["axes.prop_cycle"].by_key()["color"]]
+            n = {"theme:dark": 4, "theme:dark-band": 3, "theme:ggplot": 4, "theme:darkgrid": 5}[variant]
+            for k in range(n):
+                ys = smooth_curve(rng, xs, ylo, yhi)
+                if variant == "theme:dark-band":
+                    band(xs, ys, cyc[k], k)
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=cyc[k], lw=lw, zorder=3 + k)
+                add("line", "solid", cyc[k], lw, xs, ys)
+            if "dark_background" in theme:
+                ax.grid(True, color="#4d4d4d", lw=0.6)
+            else:
+                ax.grid(True)
+        elif variant.startswith("own-grid"):
+            tags += ["grid:series-colour"]
+            grid = True
+            dotted = variant.endswith("dotted")
+            c = pal[0] if dotted else "#000000"
+            specs = [("solid", c), ("dashed", c)] + ([] if dotted else [("solid", pal[1])])
+            for k, (st, col) in enumerate(specs):
+                ys = smooth_curve(rng, xs, ylo, yhi)
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=col, lw=lw, ls="-" if st == "solid" else "--", zorder=3 + k)
+                add("line", st, col, lw, xs, ys)
+            ax.grid(True, color=c, ls=":" if dotted else "--", lw=float(rng.uniform(0.5, 0.8)))
+        elif variant == "annotations":
+            tags += ["annotations", "legend-over"]
+            for k in range(3):
+                ys = smooth_curve(rng, xs, ylo, yhi)
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=pal[k], lw=lw, zorder=3 + k, label=["Control", "Treated", "Reference"][k])
+                add("line", "solid", pal[k], lw, xs, ys)
+                # A label per curve: above it in its colour, on it in a white box, on it in black.
+                j = int(rng.integers(40, 360))
+                fs = float(rng.uniform(8, 10))
+                if k == 0:
+                    texts.append(ax.annotate(["Control", "Treated", "Reference"][k], (xs[j], ys[j]), xytext=(0, 3), textcoords="offset points",
+                                             color=pal[k], fontsize=fs, ha="center", va="bottom", zorder=6))
+                elif k == 1:
+                    texts.append(ax.text(xs[j], ys[j], ["Control", "Treated", "Reference"][k], color=pal[k], fontsize=fs, ha="center", va="center",
+                                         zorder=6, bbox=dict(facecolor="white", edgecolor="none", pad=1.5)))
+                else:
+                    texts.append(ax.text(xs[j], ys[j], "n = %d" % int(rng.integers(12, 90)), color="k", fontsize=fs, ha="center", va="center", zorder=6))
+            # An arrow to the first curve's highest point, from a note beside it.
+            j = int(np.clip(np.argmax(series[0]["ys"]), 30, 370))
+            texts.append(ax.annotate("peak", (xs[j], series[0]["ys"][j]), xytext=(float(rng.choice([-45, 45])), float(rng.uniform(-40, -25))),
+                                     textcoords="offset points", fontsize=float(rng.uniform(8, 10)), ha="center", zorder=6,
+                                     arrowprops=dict(arrowstyle="->", color="k", lw=0.9)))
+            loc = str(rng.choice(["center", "center right", "lower center", "upper center"]))
+            leg = ax.legend(loc=loc, framealpha=0.8, fancybox=True) if jpeg_q else ax.legend(loc=loc, framealpha=1.0, fancybox=False, edgecolor="k")
+            leg.set_zorder(7)
+        elif variant.startswith("km:"):
+            other = variant.split(":")[1]
+            tags += ["km-styles"]
+            xhi = float(rng.choice([24, 60, 120]))
+            ylo, yhi = 0.0, 1.0
+            c = "#000000" if other == "dashed" else pal[0]
+            for k, st in enumerate(["solid", other]):
+                kx, ky, cens = km_curve(rng, xhi)
+                lw = float(rng.uniform(1.0, 2.0))
+                ms = float(rng.uniform(5, 8))
+                ax.plot(kx, ky, color=c, lw=lw, ls="-" if st == "solid" else STYLES[st], drawstyle="steps-post", zorder=3 + k)
+                if cens:
+                    cc = np.array(cens)
+                    ax.plot(cc[:, 0], cc[:, 1], ls="none", marker="|", color=c, ms=ms, mew=max(0.8, lw * 0.8), zorder=3 + k)
+                add("step", st, c, lw, kx, ky, verts=step_vertices(kx, ky), cens=cens, ms=ms)
+        elif variant == "steep":
+            tags += ["steep"]
+            xs = np.linspace(xlo, xhi, 4000)
+            t = (xs - xlo) / (xhi - xlo)
+            centres = rng.permutation([0.3, 0.5, 0.7]) + rng.uniform(-0.06, 0.06, 3)
+            for k in range(3):
+                rate = float(rng.choice([60, 120, 250]))
+                up = float(rng.choice([-1, 1]))
+                lo, hi = ylo + span * rng.uniform(0.03, 0.2), yhi - span * rng.uniform(0.03, 0.2)
+                ys = lo + (hi - lo) / (1 + np.exp(-up * rate * (t - centres[k])))
+                st = "dashed" if k == 2 else "solid"
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=pal[k], lw=lw, ls="-" if st == "solid" else "--", zorder=3 + k)
+                add("line", st, pal[k], lw, xs, ys)
+        elif variant == "log-x":
+            tags += ["log-x", "band"]
+            grid = True
+            xs = np.logspace(-2, 2, 500)
+            ylo, yhi, span = 0.0, 100.0, 100.0
+            for k in range(3):
+                ec50 = 10 ** float(rng.uniform(-1.2, 1.2))
+                bottom, top = float(rng.uniform(0, 15)), float(rng.uniform(70, 100))
+                ys = bottom + (top - bottom) / (1 + (ec50 / xs) ** float(rng.uniform(0.8, 2.5)))
+                band(xs, ys, pal[k], k, 0.03, 0.06)
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=pal[k], lw=lw, zorder=3 + k)
+                add("line", "solid", pal[k], lw, xs, ys)
+            ax.set_xscale("log")
+            ax.grid(True, which="major", color="#c8c8c8", lw=0.7)
+            ax.grid(True, which="minor", color="#e6e6e6", lw=0.5)
+        else:  # log-log
+            tags += ["log-log"]
+            grid = True
+            xs = np.logspace(0, 4, 500)
+            for k in range(4):
+                a, b = 10 ** float(rng.uniform(-1, 2)), float(rng.uniform(-1.4, 1.2))
+                ys = a * xs ** b
+                if k == 1:  # a power law with a cut-off: straight, then bending down
+                    ys = ys * np.exp(-xs / 10 ** float(rng.uniform(2.8, 3.6)))
+                st = "dashed" if k == 3 else "solid"
+                lw = float(rng.uniform(1.2, 2.0))
+                ax.plot(xs, ys, color=pal[k], lw=lw, ls="-" if st == "solid" else "--", zorder=3 + k)
+                add("line", st, pal[k], lw, xs, ys)
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.grid(True, which="major", color="#c8c8c8", lw=0.7)
+            ax.grid(True, which="minor", color="#e6e6e6", lw=0.5)
+
+        logx, logy = variant in ("log-x", "log-log"), variant == "log-log"
+        allv = np.vstack([s["verts"] for s in series])
+        if not logx:
+            ax.set_xlim(xlo - 0.02 * (xhi - xlo), xhi + 0.02 * (xhi - xlo))
+        if not logy:
+            pad_y = 0.06 * (allv[:, 1].max() - allv[:, 1].min() + 1e-9)
+            ax.set_ylim(ylo if floor else allv[:, 1].min() - pad_y, allv[:, 1].max() + pad_y)
+        if grid and not theme and not variant.startswith(("own-grid", "log")):
+            ax.grid(True, color=str(rng.choice(["#b0b0b0", "#d0d0d0"])), ls=str(rng.choice(["-", "--", ":"])), lw=float(rng.uniform(0.5, 1.0)))
+        if not theme and rng.random() < 0.4:
+            frame = "L"
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+        if theme and "dark_background" not in theme:
+            frame = "none"
+        ax.set_xlabel(str(rng.choice(["Time (months)", "Time (h)", "Dose (mg)", "Concentration", "Frequency (Hz)"])))
+        ax.set_ylabel(str(rng.choice(["Survival", "Response (%)", "Signal (a.u.)", "Count", "Fraction"])))
+        fig.tight_layout()
+        fig.canvas.draw()
+        W, H = fig.canvas.get_width_height()
+        rgba = np.asarray(fig.canvas.buffer_rgba()).copy()
+        box = px_of(ax.transAxes.transform([(0, 1), (1, 1), (1, 0), (0, 0)]), H)
+        bg = np.array(to_rgb(ax.get_facecolor())) * 255
+        keepout = []
+        legend_box = None
+        for artist in texts + ([leg] if leg is not None else []):
+            bb = artist.get_window_extent()
+            p = px_of(np.array([[bb.x0, bb.y1], [bb.x1, bb.y0]]), H)
+            keepout.append([float(p[0, 0]), float(p[0, 1]), float(p[1, 0]), float(p[1, 1])])
+        if leg is not None:
+            legend_box = keepout[-1]
+        for s in series:
+            s["path"] = px_of(ax.transData.transform(s["verts"]), H)
+            s["points"] = px_of(ax.transData.transform(np.column_stack([s["xs"], s["ys"]])), H)
+            s["censor"] = px_of(ax.transData.transform(np.array(s["cens"])), H) if s["cens"] else np.zeros((0, 2))
+            s["lw_px"] = s["lw"] * dpi / 72
+            s["ms_px"] = s["ms"] * dpi / 72
+        plt.close(fig)
+
+    rgb = rgba[:, :, :3]
+    for k, s in enumerate(series):
+        others = [o for j, o in enumerate(series) if j != k]
+        s["crossing"] = any(crosses(s["path"], o["path"]) for o in others)
+        s["seed"] = pick_seed_styles(s, others, rgb, bg, keepout, W, H)
+    tags = ["scenario:styles"] + tags + ["grid" if grid else "no-grid", f"frame:{frame}", "jpeg" if jpeg_q else "png",
+                                         "dpi:low" if dpi <= 96 else "dpi:mid" if dpi <= 150 else "dpi:high"]
+    if leg is not None:
+        tags.append("legend")
+    same = variant.startswith(("km:", "own-grid"))
+    out_series = []
+    for k, s in enumerate(series):
+        r, g, b = (round(255 * c) for c in to_rgb(s["color"]))
+        stags = [f"series:{s['kind']}"]
+        if s["edge"]:
+            stags += [f"style:{s['style']}", "lw:thin" if s["lw_px"] < 1.5 else "lw:thick"]
+        stags.append("color:black" if max(r, g, b) < 30 else "color:grey" if max(r, g, b) - min(r, g, b) < 12 else "color:colour")
+        if s["crossing"]:
+            stags.append("crossing")
+        if len(s["censor"]):
+            stags.append("censor-ticks")
+        if same and sum(o["color"] == s["color"] for o in series) > 1:
+            stags.append("same-colour")
+        path = [[round(float(x), 3), round(float(y), 3)] for x, y in s["path"]]
+        entry = {
+            "id": f"s{k}",
+            "kind": s["kind"],
+            "tags": stags,
+            "color": [r, g, b],
+            "style": s["style"],
+            "marker": None,
+            "lineWidthPx": round(s["lw_px"], 3),
+            "markerSizePx": round(s["ms_px"], 3),
+            "seed": s["seed"],
+            "data": [[round(float(x), 6), round(float(y), 6)] for x, y in zip(s["xs"], s["ys"])],
+            "pixels": [[round(float(x), 3), round(float(y), 3)] for x, y in s["points"]],
+            "path": path,
+        }
+        if s["kind"] == "step":
+            entry["corners"] = path[1:-1]
+        out_series.append(entry)
+    doc = {
+        "image": f"l{i:02d}.{'jpg' if jpeg_q else 'png'}",
+        "width": W,
+        "height": H,
+        "description": (f"Synthetic styles chart ({variant}), {len(series)} series, dpi {dpi}, font {font}"
+                        + (f", JPEG q{jpeg_q}" if jpeg_q else "") + ". Generated by bench/lines/generate.py."),
+        "tags": tags,
+        "plotBox": [[round(float(c), 3) for c in p] for p in box],
+        "legendBox": [round(v, 3) for v in legend_box] if legend_box else None,
+        "series": out_series,
+    }
+    return Image.fromarray(rgb), doc, jpeg_q
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("l*.*"):
         old.unlink()
     total = 0
     traces = 0
-    for i in range(COUNT):
-        img, doc, q = build_marks(i) if i >= MARKS_FROM else build_busy(i) if i >= BUSY_FROM else build_scan(i) if i >= SCAN_FROM else build(i)
+    # COUNT covers l00-l169 (MARKS_FROM's marker-styles end at 169); then l170-l199 (STYLE_FROM).
+    ids = [*range(COUNT), *range(STYLE_FROM, STYLE_FROM + len(STYLE_VARIANTS))]
+    for i in ids:
+        img, doc, q = (build_styles(i) if i >= STYLE_FROM else build_marks(i) if i >= MARKS_FROM else build_busy(i) if i >= BUSY_FROM
+                       else build_scan(i) if i >= SCAN_FROM else build(i))
         name = doc["image"]
         if SCAN_FROM <= i < BUSY_FROM:
             img = img.convert("L")  # a black-and-white scan: one grey channel
@@ -1393,7 +1846,10 @@ def main() -> int:
         traces += len(doc["series"])
         kinds = " ".join(s["kind"] + ("+m" if s.get("marker") and s["kind"] == "line" else "") for s in doc["series"])
         print(f"{name:8s} {img.width:5d}x{img.height:<5d} {' '.join(doc['tags'])} | {kinds}")
-    print(f"{COUNT} charts, {traces} series, {total / 1e6:.2f} MB of images")
+    print(f"{len(ids)} charts, {traces} series, {total / 1e6:.2f} MB of images")
+    # l200-l229, "new kinds" (curves that are not functions of x, bar charts): generate_kinds.py.
+    import generate_kinds
+    generate_kinds.write_all()
     return 0
 
 
