@@ -1,5 +1,5 @@
 """
-Charts l200-l229 of the line-tracing corpus ("new kinds"): graphs whose data are not one y per x,
+Charts l200-l237 of the line-tracing corpus ("new kinds"): graphs whose data are not one y per x,
 and bar charts. Called by generate.py's main (after its own charts, which stay byte-identical) and
 runnable alone, which rewrites only these files:
 
@@ -16,7 +16,7 @@ staircases, depth profiles with y as the independent variable, isotherms with a 
 trajectory); `closed`, `self-crossing` and `cusps` say what else is in the path. `corners` are the
 vertices a user needs as points: step corners, the tips of a loop, the ends of a vertical drop.
 
-Track B, l216-l229 - bars, as `kind: "bars"` series tagged `series:bars` whose `markers` are the
+Track B, l216-l229 and l230-l237 - bars, as `kind: "bars"` series tagged `series:bars` whose `markers` are the
 value end of every bar of the series, at the middle of the bar's width: the top edge of a bar above
 its baseline, the bottom edge of one below it, the right or left end of a horizontal bar, the top
 edge of a stacked segment. Bars of height zero are not drawn and have no truth. `bars:plain`,
@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate import FONTS, OUT, coverage_at, px_of, resample_poly, seg_dist  # noqa: E402
 
 KINDS_FROM = 200
-KINDS_COUNT = 30
+KINDS_COUNT = 38
 
 # (builder, style sheet or None, dpi, JPEG quality or 0, legend)
 SPECS = [
@@ -87,6 +87,17 @@ SPECS = [
     ("barh-grouped", "dark_background", 100, 0, True),
     ("bars-outlined-hatched", None, 150, 0, True),
     ("bars-hatched-colour", None, 100, 90, True),
+    # l230-l237 (appended in round two): black-and-white hatched and outlined bars, bars told apart
+    # only by their hatching, negative bars under a spine drawn at zero, hatched horizontal and
+    # stacked bars, an outlined histogram, four coloured series with error caps.
+    ("bars-bw-hatched", None, 120, 0, True),
+    ("bars-bw-errorbars", "grayscale", 100, 85, True),
+    ("bars-negative-spine", None, 100, 0, True),
+    ("barh-hatched-negative", None, 150, 0, True),
+    ("bars-same-face-hatch", "ggplot", 100, 0, True),
+    ("bars-stacked-hatched", None, 120, 80, True),
+    ("histogram-outlined", None, 100, 0, False),
+    ("bars-grouped-errcaps", "seaborn-v0_8-whitegrid", 96, 0, True),
 ]
 
 
@@ -485,6 +496,112 @@ def build_b(name, ax, rng):
         ax.axhline(0, color="k", lw=0.8, zorder=2)
         ax.set_xticks(np.arange(n), cats[:n])
         ylabel = "Difference"
+    elif name == "bars-bw-hatched":
+        # Publication black and white: four series told apart only by their hatching.
+        n, k_n = 5, 4
+        wd = 0.8 / k_n
+        for k, hatch in enumerate(["//", "\\\\", "xx", ".."]):
+            s = bar_series(np.arange(n) + (k - (k_n - 1) / 2) * wd, rng.uniform(5, 40, n), wd, 0, "k", ["bars:grouped", "bars:hatched", "fill:hatch-only", "same-colour"],
+                           edge="k", elw=0.8, hatch=hatch, seed_on="hatch", face="white")
+            handles.append(draw_bars(ax, s, label=f"strain {k + 1}"))
+            series.append(s)
+        ax.set_xticks(np.arange(n), ["WT", "KO1", "KO2", "KO3", "KO4"])
+        ylabel = "Expression (a.u.)"
+    elif name == "bars-bw-errorbars":
+        # Outlined, hatched and solid black bars of one colour, with error caps and negative values.
+        n = 5
+        wd = 0.8 / 3
+        looks = [("white", None, "outline", ["bars:outlined"]), ("white", "///", "hatch", ["bars:hatched", "fill:hatch-only"]), ("k", None, "fill", [])]
+        for k, (face, hatch, seed_on, extra) in enumerate(looks):
+            v = rng.uniform(-8, 25, n)
+            v[np.abs(v) < 2.5] += 5.0
+            s = bar_series(np.arange(n) + (k - 1) * wd, v, wd, 0, "k", ["bars:grouped", "same-colour", "bars:negative", "bars:errorbars"] + extra,
+                           edge="k", elw=0.9, hatch=hatch, seed_on=seed_on, face=face)
+            handles.append(draw_bars(ax, s, yerr=rng.uniform(0.8, 2.5, n), label=["sham", "low", "high"][k]))
+            series.append(s)
+        ax.axhline(0, color="k", lw=0.8, zorder=2)
+        ax.set_xticks(np.arange(n), [f"wk {j + 1}" for j in range(n)])
+        ylabel = "Change from baseline (%)"
+    elif name == "bars-negative-spine":
+        # The bottom spine drawn at zero: bars hang below the axis line, category labels at the bottom.
+        n, k_n = 7, 2
+        cols = cycle_colors(rng, k_n)
+        wd = 0.38
+        for k in range(k_n):
+            v = rng.uniform(-20, 30, n)
+            v[np.abs(v) < 3.0] -= 6.0
+            s = bar_series(np.arange(n) + (k - 0.5) * wd, v, wd, 0, cols[k], ["bars:grouped", "bars:negative", "bars:zero-spine"])
+            handles.append(draw_bars(ax, s, label=["2023", "2024"][k]))
+            series.append(s)
+        ax.spines["bottom"].set_position(("data", 0))
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(axis="x", which="both", length=0, labelbottom=False)
+        ax.set_xticks(np.arange(n))
+        for j in range(n):
+            ax.annotate(cats[j], (j, 0), xycoords=("data", "axes fraction"), xytext=(0, -12), textcoords="offset points", ha="center", fontsize=9)
+        ylabel = "Net flow (%)"
+    elif name == "barh-hatched-negative":
+        n = 6
+        wd = 0.38
+        looks = [("white", "\\\\", "hatch", ["bars:hatched", "fill:hatch-only"]), ("white", None, "outline", ["bars:outlined"])]
+        for k, (face, hatch, seed_on, extra) in enumerate(looks):
+            v = rng.uniform(-15, 30, n)
+            v[np.abs(v) < 2.5] += 5.0
+            s = bar_series(np.arange(n) + (k - 0.5) * wd, v, wd, 0, "k", ["bars:horizontal", "bars:grouped", "bars:negative", "same-colour"] + extra,
+                           horizontal=True, edge="k", elw=0.8, hatch=hatch, seed_on=seed_on, face=face)
+            handles.append(draw_bars(ax, s, label=["men", "women"][k]))
+            series.append(s)
+        ax.axvline(0, color="k", lw=0.8, zorder=2)
+        ax.set_yticks(np.arange(n), ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"])
+        xlabel, ylabel = "Change (pp)", ""
+    elif name == "bars-same-face-hatch":
+        # One fill colour for every series: plain, diagonal and cross hatching tell them apart.
+        n, k_n = 5, 3
+        face = cycle_colors(rng, 1)[0]
+        wd = 0.8 / k_n
+        for k, hatch in enumerate([None, "//", "xx"]):
+            s = bar_series(np.arange(n) + (k - 1) * wd, rng.uniform(5, 40, n), wd, 0, face, ["bars:grouped", "bars:same-face"] + (["bars:hatched"] if hatch else []),
+                           edge="k", elw=0.6, hatch=hatch)
+            handles.append(draw_bars(ax, s, label=["A", "B", "C"][k]))
+            series.append(s)
+        ax.set_xticks(np.arange(n), [f"site {j + 1}" for j in range(n)])
+        ylabel = "Cover (%)"
+    elif name == "bars-stacked-hatched":
+        # A black-and-white stack: an outlined layer, a hatched one and a cross-ruled one.
+        n, k_n = 6, 3
+        raw = rng.uniform(4, 20, (k_n, n))
+        base = np.zeros(n)
+        looks = [(None, "outline", ["bars:outlined"]), ("//", "hatch", ["bars:hatched", "fill:hatch-only"]), ("++", "hatch", ["bars:hatched", "fill:hatch-only", "hatch:ruled"])]
+        for k, (hatch, seed_on, extra) in enumerate(looks):
+            s = bar_series(np.arange(n), base + raw[k], 0.6, base.copy(), "k", ["bars:stacked", "same-colour"] + extra, edge="k", elw=0.8, hatch=hatch, seed_on=seed_on, face="white")
+            handles.append(draw_bars(ax, s, label=["fixed", "variable", "other"][k]))
+            series.append(s)
+            base = base + raw[k]
+        ax.set_xticks(np.arange(n), [str(2018 + j) for j in range(n)])
+        ylabel = "Cost (k$)"
+    elif name == "histogram-outlined":
+        data = rng.normal(40, 10, 400)
+        counts, edges = np.histogram(data, bins=18)
+        wd = float(edges[1] - edges[0])
+        keep = counts > 0
+        s = bar_series((edges[:-1] + wd / 2)[keep], counts[keep].astype(float), wd, 0, "k", ["histogram", "bars:outlined"], edge="k", elw=0.8, seed_on="outline", face="white")
+        draw_bars(ax, s)
+        series.append(s)
+        xlabel, ylabel = "Age (years)", "Patients"
+    elif name == "bars-grouped-errcaps":
+        n, k_n = 5, 4
+        cols = cycle_colors(rng, k_n)
+        wd = 0.8 / k_n
+        for k in range(k_n):
+            v = rng.uniform(-10, 30, n)
+            v[np.abs(v) < 3.0] += 6.0
+            s = bar_series(np.arange(n) + (k - (k_n - 1) / 2) * wd, v, wd, 0, cols[k], ["bars:grouped", "bars:negative", "bars:errorbars", "bars:four"])
+            handles.append(draw_bars(ax, s, yerr=rng.uniform(1.0, 4.0, n), label=f"dose {k + 1}"))
+            series.append(s)
+        ax.axhline(0, color="k", lw=0.8, zorder=2)
+        ax.set_xticks(np.arange(n), cats[:n])
+        ylabel = "Response (%)"
     else:
         raise ValueError(name)
     ax.set_xlabel(xlabel)
@@ -684,7 +801,7 @@ def build_kind(i: int):
 
 
 def write_all() -> int:
-    """Writes l200-l229 (only these files are touched)."""
+    """Writes l200-l237 (only these files are touched)."""
     OUT.mkdir(parents=True, exist_ok=True)
     total = 0
     traces = 0
