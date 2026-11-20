@@ -76,6 +76,8 @@ const MIN_LONGEST = 8;
 const MIN_SMALL_FAMILY = 4;
 /** Bars all of one length up to this are markers in a row. */
 const UNIFORM_MAX = 30;
+/** A family of marker-sized bars none longer than this many unit widths is markers. */
+const COMPACT_BARS = 1.5;
 
 export interface BarsInput {
   /** The image, for a second look beyond the region (see `filledBars`). */
@@ -621,6 +623,9 @@ function family(g: Grid, chains: Segment[][], seedU: number, seedV: number, lone
   // A few marker-sized rectangles are markers (filled squares), whatever they line up with.
   const small = Math.max(seedW, seedSeg.hi - seedSeg.lo) <= markerMax;
   if (small && new Set(out.map((b) => b.seg)).size < MIN_SMALL_FAMILY) return null;
+  // Marker-sized rectangles none of which is clearly longer than wide are the fills of markers
+  // (circles, squares, black-edged markers on their error bars), not bars: Find points takes them.
+  if (small && Math.max(...lengths) <= COMPACT_BARS * unit) return null;
   return { bars: out, valueHigh };
 }
 

@@ -130,6 +130,17 @@ description: >
    pieces copies can't explain — text, rings, lines — dropped; copies placed greedily). A filled
    template among ≥ 60 small blobs of its colour must be solid inside (`solid` in `findMarkers`):
    a pile of "+" is no diamond.
+   Every template hit is then judged by what the fit does not see (`sameMarker`): colour strength
+   (a lighter/darker shade of the hue is another series) and the *outline* (`outline.ts`: 72
+   sub-pixel radii of the ink, or of an open marker's inside, compared with the clicked marker's;
+   rays hidden under other colours, running into neighbours or along attached strokes say
+   nothing; a stroke crossing a ring's inside is looked past). Several separate disagreeing
+   stretches = another shape; a *rough* fit is kept unless ≥ 2 other failed hits (not legend
+   samples) explain it far better. Small (< 5.5 px), stroke-like ("x", "+") and tiny-hole
+   templates skip the outline. A small marker on its error bar/line (1.5–2.5 px deep) is cut out
+   of it only after the ring test, when clicked on and clearly thicker than the attached strokes.
+   `legendSample` also follows a line handle to the label, ignores ink touching the marker and
+   needs thin-stroked letters (scan dashes are not letters).
 10. Bars (`bars.ts → filledBars`, 2026-11-19; not in curve mode; before `excludeEdgeLines`, so a
     row of bars on the bottom edge is no frame line): the series' ink cut into runs along the value
     axis (both orientations tried; thin other ink inside a run — hatching, caps, a curve — bridged),
@@ -140,7 +151,8 @@ description: >
     baseline = the end most bars share (unless it is their far end and the other ends sit on ink: a
     100 % stack's top, gridline or not), else stacked segments sitting on ink; a baseline must explain at least as
     many bars as the stacked reading. Not bars: lengths all alike and ≤ 30 px, longest bar
-    < max(8 px, ¼ width), fewer than 4 marker-sized ones, a bar with non-bar ink of its colour on
+    < max(8 px, ¼ width), fewer than 4 marker-sized ones, marker-sized ones none longer than 1.5
+    widths (edged markers' fills: left to Find points, which runs only when no bars are found), a bar with non-bar ink of its colour on
     its side or touching pieces that share no end (a thick line's flat stretches). Box cut the
     bars (a value end on its edge, or series ink just past an edge a bar ends on) → looked at
     again over the whole image. Returns `kind: 'markers'`, one
@@ -179,7 +191,7 @@ description: >
   `kind: "bars"` series (loaded as scatter; `markers` = value ends; tags `bars:*`, `histogram`).
   `score.ts` adds `pathCoverage` / `pathPrecision` / `pointsOrder` (gated) for `series:path` only
   — absent from every other category, so earlier entries gain no key.
-- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (170 charts, 484 series; committed,
+- `bench/lines/generate.py` → `synthetic/lNN.{png,jpg,json}` (230 charts, 624 series; committed,
   ~6 MB; charts are only ever appended — l60–l71 are the `kinks` scenario, l72–l83
   `same-colour` (solid + dashed/dotted pairs of one colour), l84–l95 `find-points` (filled vs open
   or circle vs square scatter of one colour with error bars), l96–l107 `grid-crossing` (a thick
@@ -192,7 +204,13 @@ description: >
   (300–1000 small black "+"/"x"/dot markers in overlapping clusters, filled diamonds among them,
   grey or coloured curves through the cloud with a corner on the first, percent labels, an
   offset range frame `detectAxes` boxes from where the extended axes would meet, log-log or linear; `build_busy`; marker truth
-  per class, `corners` = the curve's corner), l170–l199 `styles` (`build_styles`, one variant per
+  per class, `corners` = the curve's corner), l140–l169 `marker-styles` (`build_marks`, one
+  `MARK_CHARTS` entry per chart: 2–4 marker classes — stars, triangles ×4, pentagons, hexagons,
+  thin diamonds, filled/thin plus and x, … — filled / open / hollow / edged / semi-transparent,
+  4.5–16 px, one colour or similar hues, error bars, on lines, legends, dark / ggplot / seaborn
+  themes, JPEG, low dpi; tags `marker:*`, `fill:*`, `edge:*`, `alpha`, `theme:*`,
+  `similar-hues`, `one-colour-classes`, `legend:samples`, `layout:*`, `size:*`),
+  l170–l199 `styles` (`build_styles`, one variant per
   chart from `STYLE_VARIANTS`: bands, filled / stacked areas — truth = a layer's top edge, seed in
   the fill when it has no edge line —, 6–8 series of one palette, noisy series, curves running
   together, 1-px lines, dark / grey-panel themes, gridlines in the series' colour, annotations
@@ -233,7 +251,11 @@ by a dense grid often go unread, a marker touching a curve or gridline traces as
 busy-scatter: a minority of thin markers ("x") among dense piles of dots is over-counted, two grey
 curves of different shades meeting can send the walk along the darker one, corners hidden under a
 marker or next to a fast-turning curve are often not kept, a walk can hop past a curve's end onto
-a faint marker; styles: a curve hidden under another for more than 30 % of the plot width ends
+a faint marker;
+marker styles: a filled marker of another class inside two heavily overlapping clicked ones is
+taken, markers half under a close colour (JPEG orange on red) or a semi-transparent one are
+lost, legend samples with run-together labels or drawn with error bars still count;
+styles: a curve hidden under another for more than 30 % of the plot width ends
 there, a light shade hidden under a darker one can leave with the darker one (`l184/s1`), a legend
 box over a curve ends the trace at the box, noisy JPEG series at 72 DPI fragment, dashed series
 among dashed gridlines of their colour are misread / follow the grid, dotted KM steps with "|"
