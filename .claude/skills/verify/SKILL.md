@@ -48,8 +48,10 @@ test, tolerance, fixture, lint rule, corpus or baseline to get there; fix the co
   and `<path>.json` (`bench/summary.ts`): the console numbers unrounded, ratios in percent, a
   unit in every column heading. Works with `--only`; never touches `last-run.json` or a baseline.
 - `test:e2e` is `playwright test` (Chromium, 1366×768) over `e2e/*.spec.ts`. First time on a
-  machine: `npx playwright install chromium`. It starts `npm run dev` on port **5174** (reusing
-  one already there), so a dev server on 5173 doesn't interfere. Focus with
+  machine: `npx playwright install chromium`. It starts its own `npm run dev` on port **5174**
+  (`E2E_PORT` picks another, for gates running side by side), so a dev server on 5173 doesn't
+  interfere. A server already on that port fails the run at once ("port in use") rather than
+  being tested in its place; stop it, or set `E2E_REUSE=1` to reuse it on purpose. Focus with
   `npx playwright test e2e/real-km.spec.ts`; on failure read
   `test-results/<test>/error-context.md` or `npx playwright show-trace <trace.zip>`.
 

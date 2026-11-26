@@ -28,7 +28,10 @@ export default defineConfig({
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse a server by default: one already on the port may belong to another checkout
+    // (the suite would test its code) or stop mid-run (every open page reloads). With
+    // --strictPort a busy port then fails the run at once. E2E_REUSE=1 opts back in.
+    reuseExistingServer: process.env.E2E_REUSE === '1',
     timeout: 60_000,
   },
 });

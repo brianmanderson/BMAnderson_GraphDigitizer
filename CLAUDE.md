@@ -42,7 +42,8 @@ points each (linear, log10, ln, reciprocal, date/time) — by hand or with "Auto
   `lint`, `test`, `bench:axes` (~8 s; exits 1 on any regression vs `bench/axes/baseline.json`),
   `bench:lines` (~15 s; same vs `bench/lines/baseline.json`) and `test:e2e`. Never ease a test,
   tolerance, fixture, corpus or baseline to make it pass.
-- `test:e2e` needs `npx playwright install chromium` once and runs its own server on :5174.
+- `test:e2e` needs `npx playwright install chromium` once and runs its own server on :5174
+  (`E2E_PORT` to change; a server already there fails the run unless `E2E_REUSE=1`).
 - `npm run privacy:check` (not in `verify`; own CI job) builds, serves `dist/` on a free port
   and records every request of a scripted session — page and workers, over CDP — into
   `privacy-report.json`; exit 1 on any foreign origin, any request outside `BASE_PATH`, or if
